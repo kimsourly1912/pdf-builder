@@ -9,6 +9,7 @@ PDF editing and content extraction run locally in the browser. D1 and R2 are use
 - PDF upload, page navigation, reordering, rotation, and zoom
 - Text, highlights, drawing, shapes, signatures, images, and form fields
 - Checkbox/radio groups, dates, dropdowns, initials, and image placeholders
+- Cambodia address fields with cascading province, district, commune, and village selection
 - Khmer text rendering and export support
 - Extract text, metadata, bookmarks, form fields, annotations, and attachments
 - TXT, JSON, HTML, and edited/fillable PDF export
@@ -98,3 +99,13 @@ npm run deploy
 - R2: source PDFs and completed PDFs
 
 Recipient link tokens are random and only their SHA-256 hashes are stored in D1.
+
+## Cambodia Gazetteer
+
+The Cambodia address field loads bilingual administrative data through
+`/api/gazetteer`. The server route validates parent codes, normalizes the
+external response, and allows shared caching for four hours. The browser never
+calls the external service directly, so templates and recipient links use the
+same stable contract.
+
+Source data: https://cambo-gazetteer.manethpak.dev/api/docs

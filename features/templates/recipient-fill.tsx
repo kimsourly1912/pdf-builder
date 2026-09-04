@@ -14,10 +14,21 @@ import Image from "next/image";
 import khmerFontUrl from "@expo-google-fonts/noto-sans-khmer/400Regular/NotoSansKhmer_400Regular.ttf?url";
 
 import { Button } from "@/components/ui/button";
+import { CambodiaAddressField } from "@/features/gazetteer/cambodia-address-field";
+import {
+  formatCambodiaAddress,
+  isAddressComplete,
+  isGazetteerLevel,
+  parseCambodiaAddress,
+} from "@/features/gazetteer/gazetteer";
 import type {
   TemplateAnnotation,
   TemplateFillPayload,
 } from "@/features/templates/template.types";
+import type {
+  GazetteerLanguage,
+  GazetteerLevel,
+} from "@/features/gazetteer/gazetteer.types";
 
 type PdfViewport = { width: number; height: number };
 type PdfPage = {
@@ -37,6 +48,7 @@ type FieldOption = { id: string; label: string; checked: boolean };
 const FIELD_TYPES = new Set([
   "input",
   "dropdown",
+  "cambodia-address",
   "checkbox",
   "radio",
   "checkbox-group",
@@ -235,6 +247,7 @@ function FillAnnotation(props: { annotation: TemplateAnnotation; value: unknown;
   if (annotation.type === "input" || annotation.type === "initials") return <div className="absolute" style={style}>{Boolean(annotation.multiline) ? <textarea value={String(props.value ?? "")} placeholder={placeholder} required={required} onChange={(event) => props.onChange(event.target.value)} className="size-full resize-none rounded border bg-white px-2 py-1 outline-none focus:ring-2 focus:ring-blue-500" style={{ color: annotation.color, borderColor, fontSize }} /> : <input value={String(props.value ?? "")} placeholder={placeholder} required={required} onChange={(event) => props.onChange(event.target.value)} className="size-full rounded border bg-white px-2 outline-none focus:ring-2 focus:ring-blue-500" style={{ color: annotation.color, borderColor, fontSize }} />}</div>;
   if (annotation.type === "date") return <div className="absolute" style={style}><input type="date" value={String(props.value ?? "")} required={required} onChange={(event) => props.onChange(event.target.value)} className="size-full rounded border bg-white px-2 outline-none focus:ring-2 focus:ring-blue-500" style={{ color: annotation.color, borderColor, fontSize }} /></div>;
   if (annotation.type === "dropdown") return <div className="absolute" style={style}><select value={String(props.value ?? "")} required={required} onChange={(event) => props.onChange(event.target.value)} className="size-full rounded border bg-white px-2 outline-none focus:ring-2 focus:ring-blue-500" style={{ color: annotation.color, borderColor, fontSize }}><option value="">{getString(annotation.label, "Select an option")}</option>{options.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}</select></div>;
+  if (annotation.type === "cambodia-address") return <div className="absolute" style={style}><CambodiaAddressField value={props.value} language={getGazetteerLanguage(annotation.gazetteerLanguage)} deepestLevel={getGazetteerLevel(annotation.gazetteerLevel)} required={required} label={getString(annotation.label, "Cambodia address")} onChange={props.onChange} style={{ color: annotation.color, borderColor, fontSize }} /></div>;
   if (annotation.type === "checkbox" || annotation.type === "radio") return <button type="button" aria-label={getString(annotation.fieldName, annotation.type)} aria-pressed={Boolean(props.value)} onClick={() => props.onChange(!props.value)} className={`absolute flex items-center justify-center border-2 bg-white ${annotation.type === "radio" ? "rounded-full" : "rounded"}`} style={{ ...style, borderColor: annotation.color }}>{Boolean(props.value) && (annotation.type === "radio" ? <span className="size-1/2 rounded-full" style={{ backgroundColor: annotation.color }} /> : <Check className="size-full" style={{ color: annotation.color }} />)}</button>;
   if (annotation.type === "checkbox-group" || annotation.type === "radio-group") {
     const selected = Array.isArray(props.value) ? props.value.map(String) : [];
@@ -269,12 +282,16 @@ function initialValues(annotations: TemplateAnnotation[]) {
     if (annotation.type === "checkbox" || annotation.type === "radio") return [annotation.id, Boolean(annotation.checked)];
     if (annotation.type === "checkbox-group" || annotation.type === "radio-group") return [annotation.id, getOptions(annotation.options).filter((option) => option.checked).map((option) => option.id)];
     if (annotation.type === "dropdown") return [annotation.id, getOptions(annotation.options).find((option) => option.checked)?.id ?? ""];
+    if (annotation.type === "cambodia-address") return [annotation.id, parseCambodiaAddress(annotation.address)];
     if (annotation.type === "image-placeholder") return [annotation.id, typeof annotation.imageData === "string" ? annotation.imageData : ""];
     return [annotation.id, getString(annotation.text, "")];
   }));
 }
 
 function fieldIsValid(annotation: TemplateAnnotation, value: unknown) {
+  if (annotation.type === "cambodia-address") {
+    return !Boolean(annotation.required) || isAddressComplete(value, getGazetteerLevel(annotation.gazetteerLevel));
+  }
   if (Boolean(annotation.required)) {
     if (Array.isArray(value) && value.length === 0) return false;
     if (typeof value === "boolean" && !value) return false;
@@ -303,7 +320,7 @@ async function buildCompletedPdf(pdfBytes: Uint8Array<ArrayBuffer>, pageOrder: T
     const { page, text, x, topY, size, maxWidth, color } = options;
     if (!containsKhmer(text)) {
       const parsedColor = hexToRgb(color);
-      page.drawText(text, { x, y: topY - size, size, font, color: rgb(parsedColor.r, parsedColor.g, parsedColor.b), maxWidth });
+      page.drawText(text, { x, y: topY - size, size, lineHeight: size * 1.35, font, color: rgb(parsedColor.r, parsedColor.g, parsedColor.b), maxWidth });
       return;
     }
     const rendered = await renderKhmerTextImage({ text, fontSize: size, color, maxWidth });
@@ -326,6 +343,10 @@ async function buildCompletedPdf(pdfBytes: Uint8Array<ArrayBuffer>, pageOrder: T
     } else if (annotation.type === "dropdown") {
       const label = getOptions(annotation.options).find((option) => option.id === value)?.label ?? "";
       await drawText({ page, text: label, x: x + 4, topY: y + Math.max(14, (boxHeight + 12) / 2), size: 12, maxWidth: Math.max(4, boxWidth - 8), color: annotation.color });
+    } else if (annotation.type === "cambodia-address") {
+      const address = formatCambodiaAddress(value, getGazetteerLanguage(annotation.gazetteerLanguage), "\n");
+      const size = Math.max(6, getNumber(annotation.fontSize, 10));
+      await drawText({ page, text: address, x: x + 4, topY: y + boxHeight - 4, size, maxWidth: Math.max(4, boxWidth - 8), color: annotation.color });
     } else if ((annotation.type === "checkbox" || annotation.type === "radio") && value) {
       if (annotation.type === "radio") page.drawCircle({ x: x + boxWidth / 2, y: y + boxHeight / 2, size: Math.min(boxWidth, boxHeight) * 0.28, color: rgb(color.r, color.g, color.b) });
       else {
@@ -373,6 +394,8 @@ async function buildCompletedPdf(pdfBytes: Uint8Array<ArrayBuffer>, pageOrder: T
 
 function getString(value: unknown, fallback: string) { return typeof value === "string" ? value : fallback; }
 function getNumber(value: unknown, fallback: number) { return typeof value === "number" && Number.isFinite(value) ? value : fallback; }
+function getGazetteerLevel(value: unknown): GazetteerLevel { return isGazetteerLevel(value) ? value : "village"; }
+function getGazetteerLanguage(value: unknown): GazetteerLanguage { return value === "km" || value === "en" || value === "bilingual" ? value : "bilingual"; }
 function getOptions(value: unknown): FieldOption[] { return Array.isArray(value) ? value.filter((option): option is FieldOption => Boolean(option) && typeof option === "object" && typeof (option as FieldOption).id === "string" && typeof (option as FieldOption).label === "string") : []; }
 function getPoints(value: unknown): Array<{ x: number; y: number }> { return Array.isArray(value) ? value.filter((point): point is { x: number; y: number } => Boolean(point) && typeof point === "object" && typeof (point as { x?: unknown }).x === "number" && typeof (point as { y?: unknown }).y === "number") : []; }
 function getStrokes(value: unknown): Array<Array<{ x: number; y: number }>> { return Array.isArray(value) ? value.map(getPoints).filter((stroke) => stroke.length > 1) : []; }

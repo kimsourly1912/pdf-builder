@@ -25,6 +25,7 @@ import {
   LoaderCircle,
   ListFilter,
   LockKeyhole,
+  MapPinned,
   Maximize2,
   Minus,
   MousePointer2,
@@ -55,10 +56,22 @@ import type { RecipientRole } from "@/features/templates/template.types";
 import { Button } from "@/components/ui/button";
 import { PdfExtractionDialog } from "@/features/extraction/pdf-extraction-dialog";
 import { extractPdfContent } from "@/features/extraction/pdf-extraction";
+import { CambodiaAddressField } from "@/features/gazetteer/cambodia-address-field";
+import {
+  formatCambodiaAddress,
+  isAddressComplete,
+  parseCambodiaAddress,
+  truncateCambodiaAddress,
+} from "@/features/gazetteer/gazetteer";
 import type {
   PdfDocumentForExtraction,
   PdfExtractionResult,
 } from "@/features/extraction/pdf-extraction";
+import type {
+  CambodiaAddressValue,
+  GazetteerLanguage,
+  GazetteerLevel,
+} from "@/features/gazetteer/gazetteer.types";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -102,6 +115,7 @@ type Tool =
   | "rectangle"
   | "input"
   | "dropdown"
+  | "cambodia-address"
   | "checkbox"
   | "radio"
   | "checkbox-group"
@@ -122,6 +136,7 @@ type AnnotationType =
   | "rectangle"
   | "input"
   | "dropdown"
+  | "cambodia-address"
   | "checkbox"
   | "radio"
   | "checkbox-group"
@@ -161,6 +176,9 @@ type Annotation = {
   validation?: "none" | "email" | "number" | "phone";
   tabIndex?: number;
   recipientRoleId?: string;
+  address?: CambodiaAddressValue;
+  gazetteerLanguage?: GazetteerLanguage;
+  gazetteerLevel?: GazetteerLevel;
 };
 type EditorMode = "build" | "fill";
 type PageEntry = {
@@ -244,6 +262,7 @@ const TOOL_SHORTCUT_ITEMS: Array<{
   { key: "R", label: "Rectangle", tool: "rectangle" },
   { key: "I", label: "Text input", tool: "input" },
   { key: "V", label: "Dropdown", tool: "dropdown" },
+  { key: "K", label: "Cambodia address", tool: "cambodia-address" },
   { key: "C", label: "Checkbox", tool: "checkbox" },
   { key: "O", label: "Radio button", tool: "radio" },
   { key: "B", label: "Checkbox group", tool: "checkbox-group" },
@@ -290,6 +309,7 @@ function isInteractivePdfField(type: AnnotationType) {
   return (
     type === "input" ||
     type === "dropdown" ||
+    type === "cambodia-address" ||
     type === "date" ||
     type === "initials" ||
     type === "checkbox" ||
@@ -323,6 +343,9 @@ function cloneAnnotations(annotations: Annotation[]) {
       stroke.map((point) => ({ ...point })),
     ),
     options: annotation.options?.map((option) => ({ ...option })),
+    address: annotation.address
+      ? parseCambodiaAddress(annotation.address)
+      : undefined,
   }));
 }
 
@@ -395,6 +418,15 @@ function fieldValueIsValid(annotation: Annotation) {
     if (
       annotation.type === "dropdown" &&
       !annotation.options?.some((option) => option.checked)
+    ) {
+      return false;
+    }
+    if (
+      annotation.type === "cambodia-address" &&
+      !isAddressComplete(
+        annotation.address,
+        annotation.gazetteerLevel ?? "village",
+      )
     ) {
       return false;
     }
@@ -481,6 +513,7 @@ function annotationContainsKhmer(annotation: Annotation) {
   return (
     containsKhmer(annotation.text) ||
     containsKhmer(annotation.label) ||
+    containsKhmer(formatCambodiaAddress(annotation.address, "km")) ||
     annotation.options?.some((option) => containsKhmer(option.label)) === true
   );
 }
@@ -646,6 +679,17 @@ function annotationToSvg(
     const borderColor = escapeHtml(annotation.borderColor ?? "#64748b");
     const selected = annotation.options?.find((option) => option.checked)?.label;
     return `<rect x="${x}" y="${y}" width="${width}" height="${height}" rx="4" fill="white" stroke="${borderColor}"/><text x="${x + 7}" y="${y + height / 2}" dominant-baseline="middle" fill="${color}" font-family="PDF Studio Khmer, Arial, sans-serif" font-size="${fontSize}">${escapeHtml(selected ?? annotation.label ?? "Select an option")}</text><text x="${x + width - 16}" y="${y + height / 2}" dominant-baseline="middle" fill="#64748b" font-size="12">▼</text>`;
+  }
+  if (annotation.type === "cambodia-address") {
+    const fontSize = annotation.fontSize ?? 11;
+    const borderColor = escapeHtml(annotation.borderColor ?? "#64748b");
+    const address = formatCambodiaAddress(
+      annotation.address,
+      annotation.gazetteerLanguage ?? "bilingual",
+      "\n",
+    );
+    const lines = (address || annotation.label || "Cambodia address").split("\n");
+    return `<rect x="${x}" y="${y}" width="${width}" height="${height}" rx="4" fill="white" stroke="${borderColor}"/><text x="${x + 7}" y="${y + fontSize + 5}" fill="${color}" font-family="PDF Studio Khmer, Arial, sans-serif" font-size="${fontSize}">${lines.map((line, index) => `<tspan x="${x + 7}" dy="${index === 0 ? 0 : fontSize * 1.45}">${escapeHtml(line)}</tspan>`).join("")}</text>`;
   }
   if (annotation.type === "highlight") {
     return `<rect x="${x}" y="${y}" width="${width}" height="${height}" fill="${color}" opacity="0.35"/>`;
@@ -990,6 +1034,77 @@ function GroupFieldEditor(props: {
       <Button type="button" variant="outline" size="sm" onClick={addOption}>
         <Plus className="size-3.5" /> Add option
       </Button>
+    </div>
+  );
+}
+
+function GazetteerFieldEditor(props: {
+  annotation: Annotation;
+  compact?: boolean;
+  onChange: (changes: Partial<Annotation>) => void;
+}) {
+  return (
+    <div className={props.compact ? "flex min-w-max items-center gap-2" : "space-y-3"}>
+      <label className="block text-[11px] font-semibold text-slate-500">
+        <span className={props.compact ? "sr-only" : "block"}>Field label</span>
+        <input
+          aria-label="Cambodia address field label"
+          value={props.annotation.label ?? ""}
+          onChange={(event) => props.onChange({ label: event.target.value })}
+          placeholder="Cambodia address"
+          className={`${props.compact ? "h-8 w-40" : "mt-1 h-8 w-full"} rounded-md border border-slate-200 bg-white px-2 text-xs font-normal text-slate-800 outline-none focus:border-blue-500`}
+        />
+      </label>
+      <label className="block text-[11px] font-semibold text-slate-500">
+        <span className={props.compact ? "sr-only" : "block"}>Display language</span>
+        <select
+          aria-label="Cambodia address display language"
+          value={props.annotation.gazetteerLanguage ?? "bilingual"}
+          onChange={(event) => {
+            const gazetteerLanguage = event.target.value as GazetteerLanguage;
+            props.onChange({
+              gazetteerLanguage,
+              text: formatCambodiaAddress(
+                props.annotation.address,
+                gazetteerLanguage,
+              ),
+            });
+          }}
+          className={`${props.compact ? "h-8 w-32" : "mt-1 h-8 w-full"} rounded-md border border-slate-200 bg-white px-2 text-xs font-normal text-slate-800 outline-none focus:border-blue-500`}
+        >
+          <option value="bilingual">Khmer + English</option>
+          <option value="km">Khmer</option>
+          <option value="en">English</option>
+        </select>
+      </label>
+      <label className="block text-[11px] font-semibold text-slate-500">
+        <span className={props.compact ? "sr-only" : "block"}>Address depth</span>
+        <select
+          aria-label="Cambodia address depth"
+          value={props.annotation.gazetteerLevel ?? "village"}
+          onChange={(event) => {
+            const gazetteerLevel = event.target.value as GazetteerLevel;
+            const address = truncateCambodiaAddress(
+              props.annotation.address,
+              gazetteerLevel,
+            );
+            props.onChange({
+              gazetteerLevel,
+              address,
+              text: formatCambodiaAddress(
+                address,
+                props.annotation.gazetteerLanguage ?? "bilingual",
+              ),
+            });
+          }}
+          className={`${props.compact ? "h-8 w-32" : "mt-1 h-8 w-full"} rounded-md border border-slate-200 bg-white px-2 text-xs font-normal text-slate-800 outline-none focus:border-blue-500`}
+        >
+          <option value="province">Province</option>
+          <option value="district">District</option>
+          <option value="commune">Commune</option>
+          <option value="village">Village</option>
+        </select>
+      </label>
     </div>
   );
 }
@@ -2291,6 +2406,34 @@ export function PdfEditor() {
       return;
     }
 
+    if (tool === "cambodia-address") {
+      const fieldWidth = Math.min(0.62, 340 / basePageSize.width);
+      const fieldHeight = Math.min(0.22, 140 / basePageSize.height);
+      const annotation: Annotation = {
+        id: createAnnotationId(),
+        page: pageNumber,
+        type: "cambodia-address",
+        x: Math.min(1 - fieldWidth, point.x),
+        y: Math.min(1 - fieldHeight, point.y),
+        width: fieldWidth,
+        height: fieldHeight,
+        color,
+        borderColor: "#64748b",
+        label: "Cambodia address",
+        address: parseCambodiaAddress(null),
+        gazetteerLanguage: "bilingual",
+        gazetteerLevel: "village",
+        fontSize: 11,
+        fieldName: "Cambodia address",
+        required: false,
+        tabIndex: annotations.length + 1,
+      };
+      commit([...annotations, annotation]);
+      setSelectedId(annotation.id);
+      setTool("select");
+      return;
+    }
+
     if (tool === "image-placeholder") {
       const placeholderWidth = Math.min(0.44, 240 / basePageSize.width);
       const placeholderHeight = Math.min(0.24, 130 / basePageSize.height);
@@ -2933,7 +3076,8 @@ export function PdfEditor() {
             fieldHeight = size;
           }
           const fieldBorder =
-            annotation.type === "input"
+            annotation.type === "input" ||
+            annotation.type === "cambodia-address"
               ? hexToRgb(annotation.borderColor ?? "#64748b")
               : parsed;
           const appearance = {
@@ -2955,16 +3099,25 @@ export function PdfEditor() {
           if (
             annotation.type === "input" ||
             annotation.type === "date" ||
-            annotation.type === "initials"
+            annotation.type === "initials" ||
+            annotation.type === "cambodia-address"
           ) {
             const field = form.createTextField(fieldName);
             configureField(field, annotation);
-            if (annotation.multiline) field.enableMultiline();
+            if (annotation.multiline || annotation.type === "cambodia-address") {
+              field.enableMultiline();
+            }
             const value =
-              annotation.type === "input" &&
-              annotation.text === "Text input"
-                ? ""
-                : annotation.text ?? "";
+              annotation.type === "cambodia-address"
+                ? formatCambodiaAddress(
+                    annotation.address,
+                    annotation.gazetteerLanguage ?? "bilingual",
+                    "\n",
+                  )
+                : annotation.type === "input" &&
+                    annotation.text === "Text input"
+                  ? ""
+                  : annotation.text ?? "";
             const fieldFontSize = annotation.fontSize ?? 14;
             if (containsKhmer(value)) {
               field.addToPage(page, {
@@ -3726,6 +3879,14 @@ export function PdfEditor() {
                   <ListFilter />
                 </ToolButton>
                 <ToolButton
+                  label="Cambodia address"
+                  shortcut="K"
+                  active={tool === "cambodia-address"}
+                  onClick={() => setTool("cambodia-address")}
+                >
+                  <MapPinned />
+                </ToolButton>
+                <ToolButton
                   label="Checkbox"
                   shortcut="C"
                   active={tool === "checkbox"}
@@ -3943,7 +4104,8 @@ export function PdfEditor() {
                 {(selectedAnnotation.type === "text" ||
                   selectedAnnotation.type === "input" ||
                   selectedAnnotation.type === "date" ||
-                  selectedAnnotation.type === "initials") && (
+                  selectedAnnotation.type === "initials" ||
+                  selectedAnnotation.type === "cambodia-address") && (
                   <FontSizeControl
                     compact
                     value={selectedAnnotation.fontSize ?? 16}
@@ -3967,6 +4129,13 @@ export function PdfEditor() {
                   selectedAnnotation.type === "radio-group" ||
                   selectedAnnotation.type === "dropdown") && (
                   <GroupFieldEditor
+                    compact
+                    annotation={selectedAnnotation}
+                    onChange={updateSelected}
+                  />
+                )}
+                {selectedAnnotation.type === "cambodia-address" && (
+                  <GazetteerFieldEditor
                     compact
                     annotation={selectedAnnotation}
                     onChange={updateSelected}
@@ -4002,7 +4171,8 @@ export function PdfEditor() {
                     }
                   />
                 )}
-                {selectedAnnotation.type === "input" && (
+                {(selectedAnnotation.type === "input" ||
+                  selectedAnnotation.type === "cambodia-address") && (
                   <div className="flex shrink-0 items-center gap-2">
                     <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">
                       Border
@@ -4314,6 +4484,40 @@ export function PdfEditor() {
                               <span className="truncate">{annotation.options?.find((option) => option.checked)?.label ?? annotation.label ?? "Select an option"}</span><ChevronRight className="size-3 rotate-90" />
                             </span>
                           )
+                        )}
+                        {annotation.type === "cambodia-address" && (
+                          <div
+                            className="size-full"
+                            onPointerDown={
+                              editorMode === "fill"
+                                ? (event) => event.stopPropagation()
+                                : undefined
+                            }
+                          >
+                            <CambodiaAddressField
+                              value={annotation.address}
+                              language={annotation.gazetteerLanguage ?? "bilingual"}
+                              deepestLevel={annotation.gazetteerLevel ?? "village"}
+                              disabled={editorMode !== "fill"}
+                              required={annotation.required}
+                              label={annotation.label}
+                              onChange={(address) =>
+                                updateAnnotationValue(annotation.id, {
+                                  address,
+                                  text: formatCambodiaAddress(
+                                    address,
+                                    annotation.gazetteerLanguage ?? "bilingual",
+                                  ),
+                                })
+                              }
+                              style={{
+                                color: annotation.color,
+                                borderColor:
+                                  annotation.borderColor ?? "#64748b",
+                                fontSize: (annotation.fontSize ?? 11) * zoom,
+                              }}
+                            />
+                          </div>
                         )}
                         {annotation.type === "checkbox" && (
                           <button
@@ -4628,7 +4832,8 @@ export function PdfEditor() {
                 {(selectedAnnotation.type === "text" ||
                   selectedAnnotation.type === "input" ||
                   selectedAnnotation.type === "date" ||
-                  selectedAnnotation.type === "initials") && (
+                  selectedAnnotation.type === "initials" ||
+                  selectedAnnotation.type === "cambodia-address") && (
                   <div>
                     <p className="mb-3 text-xs font-semibold text-slate-600">
                       Font size
@@ -4664,6 +4869,17 @@ export function PdfEditor() {
                         : "Group label and options"}
                     </p>
                     <GroupFieldEditor
+                      annotation={selectedAnnotation}
+                      onChange={updateSelected}
+                    />
+                  </div>
+                )}
+                {selectedAnnotation.type === "cambodia-address" && (
+                  <div>
+                    <p className="mb-3 text-xs font-semibold text-slate-600">
+                      Cambodia address
+                    </p>
+                    <GazetteerFieldEditor
                       annotation={selectedAnnotation}
                       onChange={updateSelected}
                     />
@@ -4780,7 +4996,8 @@ export function PdfEditor() {
                     </div>
                   </div>
                 )}
-                {selectedAnnotation.type === "input" && (
+                {(selectedAnnotation.type === "input" ||
+                  selectedAnnotation.type === "cambodia-address") && (
                   <div>
                     <p className="text-xs font-semibold text-slate-600">
                       Border color

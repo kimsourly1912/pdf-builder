@@ -17,6 +17,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 
 import { Button } from "@/components/ui/button";
+import { formatCambodiaAddress } from "@/features/gazetteer/gazetteer";
 
 type TemplateSummary = {
   id: string;
@@ -218,6 +219,9 @@ function EmptyState(props: { title: string; description: string }) {
 function formatValue(value: unknown) {
   if (Array.isArray(value)) return value.join(", ");
   if (typeof value === "boolean") return value ? "Yes" : "No";
+  if (value && typeof value === "object" && "province" in value) {
+    return formatCambodiaAddress(value, "bilingual") || "—";
+  }
   if (value && typeof value === "object") return JSON.stringify(value);
   return String(value ?? "—");
 }
