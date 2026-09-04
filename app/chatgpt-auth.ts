@@ -1,6 +1,5 @@
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
-import { env } from "cloudflare:workers";
 
 export type ChatGPTUser = {
   displayName: string;
@@ -78,12 +77,6 @@ function getAuthenticatedEmail(requestHeaders: Headers): string | null {
     requestHeaders.get(CLOUDFLARE_ACCESS_EMAIL_HEADER);
   if (email) return email.trim().toLowerCase();
 
-  const runtime = env as unknown as {
-    DEV_OWNER_EMAIL?: string;
-    ENVIRONMENT?: string;
-  };
-  if (runtime.ENVIRONMENT === "development" && runtime.DEV_OWNER_EMAIL) {
-    return runtime.DEV_OWNER_EMAIL.trim().toLowerCase();
-  }
+  if (import.meta.env.DEV) return "owner@localhost";
   return null;
 }
