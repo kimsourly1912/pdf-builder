@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { readFileSync, writeFileSync } from "node:fs";
+import { appendFileSync, readFileSync, writeFileSync } from "node:fs";
 
 const ACCOUNT_ID = requiredEnvironmentVariable("CLOUDFLARE_ACCOUNT_ID");
 const API_TOKEN = requiredEnvironmentVariable("CLOUDFLARE_API_TOKEN");
@@ -38,7 +38,11 @@ async function main() {
   run("npx", ["wrangler", "deploy", "--config", WRANGLER_CONFIG_PATH]);
 
   await verifyDeployment(hostname);
-  console.log(`Production deployment verified: https://${hostname}`);
+  const productionUrl = `https://${hostname}`;
+  if (process.env.GITHUB_ENV) {
+    appendFileSync(process.env.GITHUB_ENV, `PRODUCTION_URL=${productionUrl}\n`, "utf8");
+  }
+  console.log(`Production deployment verified: ${productionUrl}`);
 }
 
 async function ensureD1Database() {
