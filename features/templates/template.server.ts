@@ -20,14 +20,10 @@ type FilesBucket = {
 };
 
 export function requireRequestOwner(request: Request): string {
-  const runtime = env as unknown as {
-    DEV_OWNER_EMAIL?: string;
-    ENVIRONMENT?: string;
-  };
   const email = (
     request.headers.get(USER_EMAIL_HEADER) ??
     request.headers.get(CLOUDFLARE_ACCESS_EMAIL_HEADER) ??
-    (runtime.ENVIRONMENT === "development" ? runtime.DEV_OWNER_EMAIL : null)
+    (import.meta.env.DEV ? "owner@localhost" : null)
   )
     ?.trim()
     .toLowerCase();
