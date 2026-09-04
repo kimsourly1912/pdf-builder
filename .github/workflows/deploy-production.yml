@@ -27,6 +27,23 @@ jobs:
       MANAGEMENT_EMAIL: kimsur61@gmail.com
 
     steps:
+      - name: Report deployment start
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          jq -n \
+            --arg state "pending" \
+            --arg context "cloudflare/production" \
+            --arg description "Production deployment is running" \
+            '{state: $state, context: $context, description: $description}' \
+          | curl --fail-with-body \
+              --request POST \
+              --header "Accept: application/vnd.github+json" \
+              --header "Authorization: Bearer $GH_TOKEN" \
+              --header "X-GitHub-Api-Version: 2022-11-28" \
+              "https://api.github.com/repos/${GITHUB_REPOSITORY}/statuses/${GITHUB_SHA}" \
+              --data-binary @-
+
       - name: Check out source
         uses: actions/checkout@v4
 
@@ -44,23 +61,6 @@ jobs:
 
       - name: Test production build
         run: npm test
-
-      - name: Report deployment start
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          jq -n \
-            --arg state "pending" \
-            --arg context "cloudflare/production" \
-            --arg description "Production deployment is running" \
-            '{state: $state, context: $context, description: $description}' \
-          | curl --fail-with-body \
-              --request POST \
-              --header "Accept: application/vnd.github+json" \
-              --header "Authorization: Bearer $GH_TOKEN" \
-              --header "X-GitHub-Api-Version: 2022-11-28" \
-              "https://api.github.com/repos/${GITHUB_REPOSITORY}/statuses/${GITHUB_SHA}" \
-              --data-binary @-
 
       - name: Provision and deploy production
         run: node scripts/deploy-production.mjs
