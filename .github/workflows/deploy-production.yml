@@ -8,6 +8,7 @@ on:
 
 concurrency:
   # This repository intentionally has one Cloudflare production target.
+  # Local wrangler.dev.jsonc resources are never deployed.
   group: pdf-builder-production
   cancel-in-progress: false
 
