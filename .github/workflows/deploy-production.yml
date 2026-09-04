@@ -1,0 +1,47 @@
+name: Deploy production
+
+on:
+  push:
+    branches:
+      - codex/pdf-studio-self-host
+  workflow_dispatch:
+
+concurrency:
+  group: pdf-builder-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Validate and deploy
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 20
+    env:
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      MANAGEMENT_EMAIL: kimsur61@gmail.com
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Use Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Test production build
+        run: npm test
+
+      - name: Provision and deploy production
+        run: node scripts/deploy-production.mjs
