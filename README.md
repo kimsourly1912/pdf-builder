@@ -34,6 +34,22 @@ Open the local URL printed by Vite. Local template management uses `owner@localh
 
 ## Deploy to your Cloudflare account
 
+The `Deploy production` GitHub Actions workflow is the canonical production
+deployment. It creates or reuses the D1 database and R2 bucket, applies pending
+migrations, configures Cloudflare Access, deploys the Worker, and verifies the
+protected and public routes.
+
+Configure these GitHub Actions repository secrets:
+
+- `CLOUDFLARE_ACCOUNT_ID`
+- `CLOUDFLARE_API_TOKEN`
+
+Pushes to `codex/pdf-studio-self-host` deploy the single production Worker.
+There are no Cloudflare development or staging environments. The separate
+`wrangler.dev.jsonc` file is only for local emulation.
+
+For a manual production deployment:
+
 1. Authenticate Wrangler:
 
    ```bash
@@ -65,13 +81,10 @@ Open the local URL printed by Vite. Local template management uses `owner@localh
 
 The editor and recipient fill links can remain public. The management routes expect an authenticated email from Cloudflare Access using the `Cf-Access-Authenticated-User-Email` header.
 
-Protect these paths with Cloudflare Access and allow only your account:
-
-- `/templates*`
-- `/api/templates*`
-- `/api/submissions*`
-
-Keep `/fill/*` public so recipients can use their secure token links.
+The production workflow protects the editor and management APIs with one
+owner-only Access application. More-specific bypass applications keep
+`/fill*`, `/api/fill*`, `/api/gazetteer*`, and `/assets*` public so recipients
+can complete their secure token links without an account.
 
 If you deploy behind another authentication provider, update these files to read its verified identity header:
 
