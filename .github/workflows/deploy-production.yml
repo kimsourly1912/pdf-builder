@@ -7,6 +7,7 @@ on:
   workflow_dispatch:
 
 concurrency:
+  # This repository intentionally has one Cloudflare production target.
   group: pdf-builder-production
   cancel-in-progress: false
 
