@@ -2,8 +2,7 @@ import "server-only";
 
 import { env } from "cloudflare:workers";
 
-const USER_EMAIL_HEADER = "oai-authenticated-user-email";
-const CLOUDFLARE_ACCESS_EMAIL_HEADER = "cf-access-authenticated-user-email";
+import { getOwnerSession } from "@/lib/auth";
 
 type FilesBucket = {
   delete(key: string): Promise<void>;
@@ -19,16 +18,10 @@ type FilesBucket = {
   ): Promise<unknown>;
 };
 
-export function requireRequestOwner(request: Request): string {
-  const email = (
-    request.headers.get(USER_EMAIL_HEADER) ??
-    request.headers.get(CLOUDFLARE_ACCESS_EMAIL_HEADER) ??
-    (import.meta.env.DEV ? "owner@localhost" : null)
-  )
-    ?.trim()
-    .toLowerCase();
-  if (!email) throw new Response("Authentication required", { status: 401 });
-  return email;
+export async function requireRequestOwner(request: Request): Promise<string> {
+  const session = await getOwnerSession(request.headers);
+  if (!session) throw new Response("Authentication required", { status: 401 });
+  return session.user.email.trim().toLowerCase();
 }
 
 export function getFilesBucket(): FilesBucket {

@@ -10,7 +10,7 @@ import {
 
 export async function GET(request: Request) {
   try {
-    const ownerEmail = requireRequestOwner(request);
+    const ownerEmail = await requireRequestOwner(request);
     const db = getDb();
     const rows = await db
       .select({

@@ -9,7 +9,9 @@
     "directory": "dist/client"
   },
   "vars": {
-    "ENVIRONMENT": "production"
+    "ENVIRONMENT": "production",
+    "BETTER_AUTH_URL": "https://pdf-builder.kimsur61.workers.dev",
+    "MANAGEMENT_EMAIL": "kimsur61@gmail.com"
   },
   "d1_databases": [
     {

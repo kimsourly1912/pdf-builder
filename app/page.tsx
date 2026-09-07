@@ -1,5 +1,9 @@
 import { PdfEditor } from "@/app/pdf-editor";
+import { requireChatGPTUser } from "@/app/chatgpt-auth";
 
-export default function Home() {
+export const dynamic = "force-dynamic";
+
+export default async function Home() {
+  await requireChatGPTUser("/");
   return <PdfEditor />;
 }

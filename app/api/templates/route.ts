@@ -20,7 +20,7 @@ const MAX_PDF_SIZE = 35 * 1024 * 1024;
 
 export async function GET(request: Request) {
   try {
-    const ownerEmail = requireRequestOwner(request);
+    const ownerEmail = await requireRequestOwner(request);
     const db = getDb();
     const templateRows = await db
       .select()
@@ -71,7 +71,7 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   let uploadedKey: string | null = null;
   try {
-    const ownerEmail = requireRequestOwner(request);
+    const ownerEmail = await requireRequestOwner(request);
     const formData = await request.formData();
     const pdf = formData.get("pdf");
     const name = String(formData.get("name") ?? "").trim();

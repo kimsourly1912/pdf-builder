@@ -8,6 +8,13 @@
       "when": 1788232120597,
       "tag": "0000_dark_stardust",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1788749573271,
+      "tag": "0001_good_thundra",
+      "breakpoints": true
     }
   ]
 }

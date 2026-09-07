@@ -15,7 +15,7 @@ export async function POST(
   context: { params: Promise<{ id: string }> },
 ) {
   try {
-    const ownerEmail = requireRequestOwner(request);
+    const ownerEmail = await requireRequestOwner(request);
     const { id } = await context.params;
     const payload = (await request.json()) as { roleId?: string };
     const roleId = payload.roleId?.trim();

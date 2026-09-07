@@ -17,6 +17,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 
 import { Button } from "@/components/ui/button";
+import { SignOutButton } from "@/components/auth/sign-out-button";
 import { formatCambodiaAddress } from "@/features/gazetteer/gazetteer";
 
 type TemplateSummary = {
@@ -143,6 +144,7 @@ export function TemplatesDashboard(props: { displayName: string }) {
           </div>
           <div className="flex items-center gap-2">
             <span className="hidden max-w-48 truncate text-xs text-slate-500 sm:block">{props.displayName}</span>
+            <SignOutButton />
             <Button asChild size="sm" className="bg-blue-600 hover:bg-blue-700"><Link href="/"><FileText className="size-4" /> New template</Link></Button>
           </div>
         </div>

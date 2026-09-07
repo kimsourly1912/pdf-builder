@@ -14,7 +14,7 @@ export async function GET(
   context: { params: Promise<{ id: string }> },
 ) {
   try {
-    const ownerEmail = requireRequestOwner(request);
+    const ownerEmail = await requireRequestOwner(request);
     const { id } = await context.params;
     const db = getDb();
     const [row] = await db

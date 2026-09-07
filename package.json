@@ -19,10 +19,12 @@
   },
   "dependencies": {
     "@base-ui/react": "^1.7.0",
+    "@better-auth/drizzle-adapter": "^1.7.3",
     "@expo-google-fonts/noto-sans-khmer": "^0.4.3",
     "@hookform/resolvers": "^5.7.1",
     "@pdf-lib/fontkit": "^1.1.1",
     "@shadcn/react": "^0.3.0",
+    "better-auth": "^1.7.3",
     "class-variance-authority": "0.7.1",
     "clsx": "2.1.1",
     "cmdk": "^1.1.1",
@@ -46,7 +48,7 @@
     "sonner": "^2.0.8",
     "tailwind-merge": "3.6.0",
     "vaul": "^1.1.2",
-    "zod": "^3.25.76"
+    "zod": "^4.5.4"
   },
   "devDependencies": {
     "@cloudflare/vite-plugin": "1.37.1",

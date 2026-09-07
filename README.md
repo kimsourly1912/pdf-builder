@@ -30,19 +30,29 @@ npm run db:migrate:local
 npm run dev
 ```
 
-Open the local URL printed by Vite. Local template management uses `owner@localhost` as the development owner.
+Open the local URL printed by Vite. Local authentication uses the development
+values in `wrangler.dev.jsonc`; create a local owner through Better Auth before
+using the protected editor routes.
 
 ## Deploy to your Cloudflare account
 
 The `Deploy production` GitHub Actions workflow is the canonical production
 deployment. It creates or reuses the D1 database and R2 bucket, applies pending
-migrations, configures Cloudflare Access, deploys the Worker, and verifies the
-protected and public routes.
+migrations, creates the Better Auth owner when needed, removes the legacy
+Cloudflare Access applications, deploys the Worker, and verifies protected and
+public routes.
 
 Configure these GitHub Actions repository secrets:
 
 - `CLOUDFLARE_ACCOUNT_ID`
 - `CLOUDFLARE_API_TOKEN`
+- `PDF_BUILDER_OWNER_PASSWORD` (at least 12 characters)
+
+The owner password is used only by the deployment runner to create or verify
+the configured owner account. The workflow generates the persistent Better
+Auth signing secret directly in Cloudflare and never prints it. Public account
+registration is blocked; a short-lived bootstrap secret is removed immediately
+after the owner is verified.
 
 Pushes to `codex/pdf-studio-self-host` deploy the single production Worker.
 There are no Cloudflare development or staging environments. The separate
@@ -77,21 +87,24 @@ For a manual production deployment:
    npm run deploy
    ```
 
-## Protect template management
+## Authentication and route protection
 
-The editor and recipient fill links can remain public. The management routes expect an authenticated email from Cloudflare Access using the `Cf-Access-Authenticated-User-Email` header.
+Better Auth email/password sessions protect the editor, templates, submissions,
+and their management APIs. Sessions are stored in D1 and only
+`kimsur61@gmail.com` is accepted as the management owner.
 
-The production workflow protects the editor and management APIs with one
-owner-only Access application. More-specific bypass applications keep
-`/fill*`, `/api/fill*`, `/api/gazetteer*`, and `/assets*` public so recipients
-can complete their secure token links without an account.
+The production workflow removes the former Cloudflare Access applications after
+it proves that owner sign-in works. `/fill*`, `/api/fill*`,
+`/api/gazetteer*`, `/api/auth*`, and static assets remain public; recipient
+links continue to rely on their random capability tokens.
 
-If you deploy behind another authentication provider, update these files to read its verified identity header:
+The relevant implementation files are:
 
-- `app/chatgpt-auth.ts`
-- `features/templates/template.server.ts`
+- `lib/auth.ts`
+- `app/api/auth/[...all]/route.ts`
+- `app/sign-in/page.tsx`
 
-Never trust an email header sent directly by a public client. It must be set and protected by your reverse proxy or identity provider.
+The application does not trust caller-supplied identity headers.
 
 ## Useful commands
 
@@ -108,7 +121,7 @@ npm run deploy
 ## Storage model
 
 - Browser storage: current local editing draft
-- D1: templates, recipient links, and submission records
+- D1: Better Auth users/sessions, templates, recipient links, and submissions
 - R2: source PDFs and completed PDFs
 
 Recipient link tokens are random and only their SHA-256 hashes are stored in D1.
