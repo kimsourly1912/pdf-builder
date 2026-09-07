@@ -53,6 +53,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import khmerFontUrl from "@expo-google-fonts/noto-sans-khmer/400Regular/NotoSansKhmer_400Regular.ttf?url";
 import type { RecipientRole } from "@/features/templates/template.types";
+import type { LabelBinding } from "@/features/templates/label-binding";
+import { createFieldKey, duplicateFieldKeys } from "@/features/templates/label-binding";
 import { Button } from "@/components/ui/button";
 import { PdfExtractionDialog } from "@/features/extraction/pdf-extraction-dialog";
 import { extractPdfContent } from "@/features/extraction/pdf-extraction";
@@ -170,6 +172,8 @@ type Annotation = {
   label?: string;
   options?: FieldOption[];
   fieldName?: string;
+  fieldKey?: string;
+  labelBinding?: LabelBinding;
   placeholder?: string;
   required?: boolean;
   multiline?: boolean;
@@ -209,7 +213,16 @@ type Interaction =
       scrollLeft: number;
       scrollTop: number;
     };
-type PdfViewport = { width: number; height: number };
+type PdfViewport = {
+  width: number;
+  height: number;
+  convertToViewportPoint(x: number, y: number): [number, number];
+};
+type PdfTextRun = {
+  id: string;
+  text: string;
+  rect: { x: number; y: number; width: number; height: number };
+};
 type PdfPage = {
   getViewport(options: { scale: number; rotation?: number }): PdfViewport;
   render(options: {
@@ -218,7 +231,12 @@ type PdfPage = {
     viewport: PdfViewport;
   }): { promise: Promise<void>; cancel: () => void };
   getTextContent(): Promise<{
-    items: Array<{ str?: string }>;
+    items: Array<{
+      str?: string;
+      width?: number;
+      height?: number;
+      transform?: number[];
+    }>;
   }>;
 };
 type PdfDocument = {
@@ -346,6 +364,9 @@ function cloneAnnotations(annotations: Annotation[]) {
     address: annotation.address
       ? parseCambodiaAddress(annotation.address)
       : undefined,
+    labelBinding: annotation.labelBinding
+      ? { ...annotation.labelBinding, rect: { ...annotation.labelBinding.rect } }
+      : undefined,
   }));
 }
 
@@ -355,6 +376,43 @@ function createPageEntry(sourcePage: number): PageEntry {
     sourcePage,
     rotation: 0,
   };
+}
+
+function createPdfTextRuns(
+  items: Array<{ str?: string; width?: number; height?: number; transform?: number[] }>,
+  viewport: PdfViewport,
+) {
+  return items.flatMap<PdfTextRun>((item, index) => {
+    const text = item.str?.trim();
+    const transform = item.transform;
+    if (!text || !transform || transform.length < 6) return [];
+    const x = transform[4];
+    const baseline = transform[5];
+    const width = Math.max(item.width ?? 0, 1);
+    const height = Math.max(item.height ?? Math.abs(transform[3]) ?? 0, 1);
+    const corners = [
+      viewport.convertToViewportPoint(x, baseline),
+      viewport.convertToViewportPoint(x + width, baseline),
+      viewport.convertToViewportPoint(x, baseline + height),
+      viewport.convertToViewportPoint(x + width, baseline + height),
+    ];
+    const xs = corners.map(([pointX]) => pointX);
+    const ys = corners.map(([, pointY]) => pointY);
+    const left = Math.max(0, Math.min(...xs));
+    const top = Math.max(0, Math.min(...ys));
+    const right = Math.min(viewport.width, Math.max(...xs));
+    const bottom = Math.min(viewport.height, Math.max(...ys));
+    return [{
+      id: `${index}-${text}`,
+      text,
+      rect: {
+        x: left / viewport.width,
+        y: top / viewport.height,
+        width: Math.max(2, right - left) / viewport.width,
+        height: Math.max(2, bottom - top) / viewport.height,
+      },
+    }];
+  });
 }
 
 function openDraftDatabase() {
@@ -1461,6 +1519,8 @@ export function PdfEditor() {
   const [undoStack, setUndoStack] = useState<Annotation[][]>([]);
   const [redoStack, setRedoStack] = useState<Annotation[][]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [labelBindingFieldId, setLabelBindingFieldId] = useState<string | null>(null);
+  const [pdfTextRuns, setPdfTextRuns] = useState<PdfTextRun[]>([]);
   const [signatureOpen, setSignatureOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [templateOpen, setTemplateOpen] = useState(false);
@@ -1582,6 +1642,9 @@ export function PdfEditor() {
         scale: zoom,
         rotation: currentPageEntry.rotation,
       });
+      const textContent = await page.getTextContent();
+      if (cancelled) return;
+      setPdfTextRuns(createPdfTextRuns(textContent.items, viewport));
       const canvas = canvasRef.current;
       const context = canvas.getContext("2d");
       if (!context) return;
@@ -2706,6 +2769,38 @@ export function PdfEditor() {
     );
   }
 
+  function startLabelBinding() {
+    if (!selectedAnnotation) return;
+    setLabelBindingFieldId(selectedAnnotation.id);
+    setError("Click the existing PDF text that labels this field.");
+  }
+
+  function bindPdfLabel(run: PdfTextRun) {
+    if (!labelBindingFieldId) return;
+    const fieldKey = createFieldKey(run.text, `field_${labelBindingFieldId.slice(-8)}`);
+    commit(
+      annotations.map((annotation) =>
+        annotation.id === labelBindingFieldId
+          ? {
+              ...annotation,
+              fieldName: run.text,
+              fieldKey,
+              labelBinding: {
+                text: run.text,
+                sourceText: run.text,
+                page: pageNumber,
+                rect: run.rect,
+                source: "pdf-text" as const,
+              },
+            }
+          : annotation,
+      ),
+    );
+    setSelectedId(labelBindingFieldId);
+    setLabelBindingFieldId(null);
+    setError("");
+  }
+
   function updateAnnotationValue(id: string, changes: Partial<Annotation>) {
     setAnnotations((current) =>
       current.map((annotation) =>
@@ -2773,6 +2868,17 @@ export function PdfEditor() {
           ? { ...annotation, recipientRoleId: defaultRoleId }
           : annotation,
       );
+      const duplicateKeys = duplicateFieldKeys(
+        templateAnnotations.filter((annotation) => isAssignableTemplateField(annotation.type)),
+      );
+      if (duplicateKeys.size > 0) {
+        setInvalidFieldIds(
+          templateAnnotations
+            .filter((annotation) => duplicateKeys.has(createFieldKey(annotation.fieldKey || annotation.fieldName || annotation.label || annotation.type)))
+            .map((annotation) => annotation.id),
+        );
+        throw new Error(`Field keys must be unique: ${[...duplicateKeys].join(", ")}`);
+      }
       const formData = new FormData();
       formData.set(
         "pdf",
@@ -4247,6 +4353,26 @@ export function PdfEditor() {
                     ref={canvasRef}
                     className="pointer-events-none absolute inset-0 size-full"
                   />
+                  {labelBindingFieldId && annotations.some((annotation) => annotation.id === labelBindingFieldId && annotation.page === pageNumber) && pdfTextRuns.map((run) => (
+                    <button
+                      key={run.id}
+                      type="button"
+                      title={`Bind label: ${run.text}`}
+                      aria-label={`Bind PDF label ${run.text}`}
+                      onPointerDown={(event) => event.stopPropagation()}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        bindPdfLabel(run);
+                      }}
+                      className="absolute z-30 cursor-pointer rounded-sm border border-blue-500 bg-blue-300/25 transition hover:bg-amber-300/60 focus-visible:outline-2 focus-visible:outline-blue-700"
+                      style={{
+                        left: `${run.rect.x * 100}%`,
+                        top: `${run.rect.y * 100}%`,
+                        width: `${run.rect.width * 100}%`,
+                        height: `${run.rect.height * 100}%`,
+                      }}
+                    />
+                  ))}
                   {pageAnnotations.map((annotation) => {
                     const selected = annotation.id === selectedId;
                     if (annotation.type === "drawing") {
@@ -4910,6 +5036,34 @@ export function PdfEditor() {
                         className="mt-1 h-8 w-full rounded-md border border-slate-200 bg-white px-2 text-xs font-normal text-slate-800 outline-none focus:border-blue-500"
                       />
                     </label>
+                    <label className="block text-[11px] font-semibold text-slate-500">
+                      Field key
+                      <input
+                        value={selectedAnnotation.fieldKey ?? createFieldKey(selectedAnnotation.fieldName || selectedAnnotation.label || selectedAnnotation.type)}
+                        onChange={(event) => updateSelected({ fieldKey: createFieldKey(event.target.value) })}
+                        placeholder="customer_name"
+                        className="mt-1 h-8 w-full rounded-md border border-slate-200 bg-white px-2 font-mono text-xs font-normal text-slate-800 outline-none focus:border-blue-500"
+                      />
+                    </label>
+                    <div className="rounded-lg border border-slate-200 bg-white p-2">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="text-[11px] font-semibold text-slate-600">PDF label</p>
+                          <p className="mt-0.5 truncate text-[11px] text-slate-400">
+                            {selectedAnnotation.labelBinding?.text || "No label bound"}
+                          </p>
+                        </div>
+                        <Button type="button" variant="outline" size="sm" onClick={startLabelBinding}>
+                          <MousePointer2 className="size-3.5" />
+                          {selectedAnnotation.labelBinding ? "Change" : "Bind"}
+                        </Button>
+                      </div>
+                      {selectedAnnotation.labelBinding && (
+                        <Button type="button" variant="ghost" size="sm" className="mt-1 h-7 px-2 text-rose-600" onClick={() => updateSelected({ labelBinding: undefined })}>
+                          Remove binding
+                        </Button>
+                      )}
+                    </div>
                     {(selectedAnnotation.type === "input" || selectedAnnotation.type === "initials") && (
                       <label className="block text-[11px] font-semibold text-slate-500">
                         Placeholder

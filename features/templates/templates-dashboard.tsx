@@ -19,6 +19,7 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { SignOutButton } from "@/components/auth/sign-out-button";
 import { formatCambodiaAddress } from "@/features/gazetteer/gazetteer";
+import type { SubmissionAnswer } from "@/features/templates/label-binding";
 
 type TemplateSummary = {
   id: string;
@@ -47,6 +48,7 @@ type SubmissionSummary = {
   recipientName: string;
   recipientEmail: string;
   values: Record<string, unknown>;
+  answers: SubmissionAnswer[];
   hasCompletedPdf: boolean;
   submittedAt: string;
 };
@@ -209,7 +211,7 @@ function SubmissionList(props: { submissions: SubmissionSummary[] }) {
   return <div className="mt-5 space-y-3">{props.submissions.map((submission) => (
     <article key={submission.id} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
       <div className="flex flex-wrap items-start justify-between gap-3"><div><p className="flex items-center gap-2 text-sm font-bold text-slate-900"><Check className="size-4 text-emerald-600" /> {submission.recipientName}</p><p className="mt-1 text-xs text-slate-400">{submission.templateName} · {submission.roleName} · {new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(new Date(submission.submittedAt))}</p>{submission.recipientEmail && <p className="mt-1 text-xs text-slate-500">{submission.recipientEmail}</p>}</div>{submission.hasCompletedPdf && <Button asChild variant="outline" size="sm"><a href={`/api/submissions/${submission.id}/pdf`}><Download className="size-3.5" /> Completed PDF</a></Button>}</div>
-      <details className="mt-4 rounded-xl bg-slate-50 p-3"><summary className="cursor-pointer text-xs font-semibold text-slate-600">View submitted values</summary><dl className="mt-3 grid gap-2 sm:grid-cols-2">{Object.entries(submission.values).map(([field, value]) => <div key={field} className="rounded-lg bg-white p-2"><dt className="truncate text-[10px] font-semibold uppercase tracking-wide text-slate-400">{field}</dt><dd className="mt-1 break-words text-sm text-slate-700">{formatValue(value)}</dd></div>)}</dl></details>
+      <details className="mt-4 rounded-xl bg-slate-50 p-3"><summary className="cursor-pointer text-xs font-semibold text-slate-600">View submitted values</summary><dl className="mt-3 grid gap-2 sm:grid-cols-2">{submission.answers.map((answer) => <div key={answer.fieldId} className="rounded-lg bg-white p-2"><dt className="truncate text-[10px] font-semibold uppercase tracking-wide text-slate-400">{answer.label}</dt><dd className="mt-1 break-words text-sm text-slate-700">{formatValue(answer.value)}</dd><dd className="mt-1 font-mono text-[10px] text-slate-400">{answer.key}</dd></div>)}</dl></details>
     </article>
   ))}</div>;
 }

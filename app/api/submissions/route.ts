@@ -7,6 +7,13 @@ import {
   jsonError,
   requireRequestOwner,
 } from "@/features/templates/template.server";
+import {
+  annotationFieldKey,
+  annotationLabel,
+  isSubmissionAnswer,
+} from "@/features/templates/label-binding";
+import type { SubmissionAnswer } from "@/features/templates/label-binding";
+import type { TemplateAnnotation } from "@/features/templates/template.types";
 
 export async function GET(request: Request) {
   try {
@@ -38,8 +45,7 @@ export async function GET(request: Request) {
 
     return Response.json({
       submissions: rows.map((row) => {
-        const values = safeObject(row.valuesJson);
-        const labels = annotationLabels(row.annotationsJson);
+        const answers = submissionAnswers(row.valuesJson, row.annotationsJson);
         return {
           id: row.id,
           templateId: row.templateId,
@@ -49,9 +55,8 @@ export async function GET(request: Request) {
           recipientName: row.recipientName,
           recipientEmail: row.recipientEmail,
           submittedAt: row.submittedAt,
-          values: Object.fromEntries(
-            Object.entries(values).map(([id, value]) => [labels[id] ?? id, value]),
-          ),
+          answers,
+          values: Object.fromEntries(answers.map((answer) => [answer.label, answer.value])),
           hasCompletedPdf: Boolean(row.completedFileKey),
         };
       }),
@@ -63,41 +68,32 @@ export async function GET(request: Request) {
   }
 }
 
-function annotationLabels(value: string) {
+function parseAnnotations(value: string) {
   try {
-    const parsed = JSON.parse(value) as Array<{
-      id?: unknown;
-      fieldName?: unknown;
-      label?: unknown;
-      type?: unknown;
-    }>;
-    if (!Array.isArray(parsed)) return {};
-    return Object.fromEntries(
-      parsed.flatMap((annotation) => {
-        if (typeof annotation.id !== "string") return [];
-        const label =
-          typeof annotation.fieldName === "string" && annotation.fieldName.trim()
-            ? annotation.fieldName.trim()
-            : typeof annotation.label === "string" && annotation.label.trim()
-              ? annotation.label.trim()
-              : typeof annotation.type === "string"
-                ? annotation.type
-                : annotation.id;
-        return [[annotation.id, label]];
-      }),
-    );
+    const parsed = JSON.parse(value) as unknown;
+    return Array.isArray(parsed) ? parsed as TemplateAnnotation[] : [];
   } catch {
-    return {};
+    return [];
   }
 }
 
-function safeObject(value: string) {
+function submissionAnswers(valuesJson: string, annotationsJson: string) {
+  const annotations = parseAnnotations(annotationsJson);
   try {
-    const parsed = JSON.parse(value) as unknown;
-    return parsed && !Array.isArray(parsed) && typeof parsed === "object"
-      ? parsed
-      : {};
+    const parsed = JSON.parse(valuesJson) as unknown;
+    if (Array.isArray(parsed)) return parsed.filter(isSubmissionAnswer);
+    if (!parsed || typeof parsed !== "object") return [];
+    const values = parsed as Record<string, unknown>;
+    return annotations
+      .filter((annotation) => Object.hasOwn(values, annotation.id))
+      .map<SubmissionAnswer>((annotation) => ({
+        fieldId: annotation.id,
+        key: annotationFieldKey(annotation),
+        label: annotationLabel(annotation),
+        type: annotation.type,
+        value: values[annotation.id],
+      }));
   } catch {
-    return {};
+    return [];
   }
 }

@@ -20,6 +20,8 @@ export type TemplateAnnotation = {
   height: number;
   color: string;
   recipientRoleId?: string;
+  fieldKey?: string;
+  labelBinding?: import("@/features/templates/label-binding").LabelBinding;
   [key: string]: unknown;
 };
 

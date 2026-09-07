@@ -8,6 +8,7 @@ import {
   jsonError,
 } from "@/features/templates/template.server";
 import { isRecipientFieldType } from "@/features/templates/template-fields";
+import { buildSubmissionAnswers } from "@/features/templates/label-binding";
 import type {
   TemplateAnnotation,
   TemplateFillPayload,
@@ -119,7 +120,7 @@ export async function POST(
       recipientLinkId: fillContext.link.id,
       recipientName,
       recipientEmail,
-      valuesJson: JSON.stringify(values),
+      valuesJson: JSON.stringify(buildSubmissionAnswers(assignedFields, values)),
       completedFileKey,
     });
     return Response.json(
