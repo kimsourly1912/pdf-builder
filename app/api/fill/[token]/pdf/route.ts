@@ -1,7 +1,12 @@
-import { and, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 
 import { getDb } from "@/db";
-import { recipientLinks, templates } from "@/db/schema";
+import {
+  recipientLinks,
+  templates,
+  templateVersions,
+} from "@/db/schema";
+import { recipientLinkAvailability } from "@/features/templates/recipient-link-lifecycle";
 import {
   getFilesBucket,
   hashRecipientToken,
@@ -17,23 +22,28 @@ export async function GET(
     if (!/^[A-Za-z0-9_-]{40,60}$/u.test(token)) {
       return jsonError("Fill link not found.", 404);
     }
-    const db = getDb();
-    const [row] = await db
-      .select({ link: recipientLinks, template: templates })
+    const [row] = await getDb()
+      .select({
+        link: recipientLinks,
+        template: templates,
+        version: templateVersions,
+      })
       .from(recipientLinks)
       .innerJoin(templates, eq(recipientLinks.templateId, templates.id))
-      .where(
-        and(
-          eq(recipientLinks.tokenHash, await hashRecipientToken(token)),
-          eq(recipientLinks.status, "active"),
-        ),
+      .innerJoin(
+        templateVersions,
+        eq(recipientLinks.templateVersionId, templateVersions.id),
       )
+      .where(eq(recipientLinks.tokenHash, await hashRecipientToken(token)))
       .limit(1);
     if (!row) return jsonError("Fill link not found.", 404);
-    if (row.link.expiresAt && new Date(row.link.expiresAt) <= new Date()) {
-      return jsonError("This fill link has expired.", 410);
+
+    const availability = recipientLinkAvailability(row.link);
+    if (!availability.available) {
+      return jsonError(availability.message, availability.httpStatus);
     }
-    const object = await getFilesBucket().get(row.template.fileKey);
+
+    const object = await getFilesBucket().get(row.version.fileKey);
     if (!object) return jsonError("PDF not found.", 404);
     return new Response(object.body, {
       headers: {
@@ -47,3 +57,4 @@ export async function GET(
     return jsonError("The PDF could not be loaded.", 500);
   }
 }
+

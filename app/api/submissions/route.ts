@@ -1,7 +1,12 @@
 import { desc, eq } from "drizzle-orm";
 
 import { getDb } from "@/db";
-import { recipientLinks, submissions, templates } from "@/db/schema";
+import {
+  recipientLinks,
+  submissions,
+  templates,
+  templateVersions,
+} from "@/db/schema";
 import {
   isResponse,
   jsonError,
@@ -24,7 +29,9 @@ export async function GET(request: Request) {
         id: submissions.id,
         templateId: templates.id,
         templateName: templates.name,
-        annotationsJson: templates.annotationsJson,
+        templateVersionId: submissions.templateVersionId,
+        versionNumber: templateVersions.versionNumber,
+        annotationsJson: templateVersions.annotationsJson,
         roleName: recipientLinks.roleName,
         roleColor: recipientLinks.roleColor,
         recipientName: submissions.recipientName,
@@ -35,6 +42,10 @@ export async function GET(request: Request) {
       })
       .from(submissions)
       .innerJoin(templates, eq(submissions.templateId, templates.id))
+      .innerJoin(
+        templateVersions,
+        eq(submissions.templateVersionId, templateVersions.id),
+      )
       .innerJoin(
         recipientLinks,
         eq(submissions.recipientLinkId, recipientLinks.id),
@@ -50,6 +61,8 @@ export async function GET(request: Request) {
           id: row.id,
           templateId: row.templateId,
           templateName: row.templateName,
+          templateVersionId: row.templateVersionId,
+          versionNumber: row.versionNumber,
           roleName: row.roleName,
           roleColor: row.roleColor,
           recipientName: row.recipientName,

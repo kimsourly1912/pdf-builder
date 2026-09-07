@@ -14,6 +14,9 @@ PDF editing and content extraction run locally in the browser. D1 and R2 are use
 - Extract text, metadata, bookmarks, form fields, annotations, and attachments
 - TXT, JSON, HTML, and edited/fillable PDF export
 - Reusable templates, recipient roles, secure fill links, and submissions inbox
+- Immutable published template versions pinned to every recipient link
+- Expiring and revocable recipient links with configurable submission limits
+- Idempotent submission retries that cannot create duplicate records
 - Mobile layout, pinch zoom, keyboard shortcuts, undo, and redo
 
 ## Requirements
@@ -131,6 +134,10 @@ npm run deploy
 - R2: source PDFs and completed PDFs
 
 Recipient link tokens are random and only their SHA-256 hashes are stored in D1.
+New links expire after 30 days and allow one submission by default. The owner can
+rotate or revoke them from the templates dashboard. Each link stays pinned to
+the exact published template version it was created for, and submission retries
+reuse the original result through a client-generated idempotency key.
 
 ## Cambodia Gazetteer
 

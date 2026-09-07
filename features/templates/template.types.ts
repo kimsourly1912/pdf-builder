@@ -28,6 +28,8 @@ export type TemplateAnnotation = {
 export type TemplateFillPayload = {
   template: {
     id: string;
+    versionId: string;
+    versionNumber: number;
     name: string;
     description: string;
     fileName: string;
@@ -35,4 +37,9 @@ export type TemplateFillPayload = {
     pageOrder: TemplatePageEntry[];
   };
   recipient: RecipientRole;
+  link: {
+    expiresAt: string | null;
+    maxSubmissions: number;
+    submissionCount: number;
+  };
 };

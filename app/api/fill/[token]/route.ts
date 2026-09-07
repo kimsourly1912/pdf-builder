@@ -1,14 +1,23 @@
 import { and, eq } from "drizzle-orm";
 
-import { getDb } from "@/db";
-import { recipientLinks, submissions, templates } from "@/db/schema";
+import { getDatabaseBinding, getDb } from "@/db";
+import {
+  recipientLinks,
+  submissions,
+  templates,
+  templateVersions,
+} from "@/db/schema";
+import { buildSubmissionAnswers } from "@/features/templates/label-binding";
+import {
+  recipientLinkAvailability,
+  validIdempotencyKey,
+} from "@/features/templates/recipient-link-lifecycle";
 import {
   getFilesBucket,
   hashRecipientToken,
   jsonError,
 } from "@/features/templates/template.server";
 import { isRecipientFieldType } from "@/features/templates/template-fields";
-import { buildSubmissionAnswers } from "@/features/templates/label-binding";
 import type {
   TemplateAnnotation,
   TemplateFillPayload,
@@ -16,6 +25,7 @@ import type {
 } from "@/features/templates/template.types";
 
 const MAX_COMPLETED_PDF_SIZE = 35 * 1024 * 1024;
+
 export async function GET(
   _request: Request,
   context: { params: Promise<{ token: string }> },
@@ -23,24 +33,31 @@ export async function GET(
   try {
     const { token } = await context.params;
     const fillContext = await findFillContext(token);
-    if (!fillContext) return jsonError("This fill link is invalid or expired.", 404);
+    if (!fillContext) return jsonError("This fill link is invalid.", 404);
+
+    const availability = recipientLinkAvailability(fillContext.link);
+    if (!availability.available) {
+      return jsonError(availability.message, availability.httpStatus);
+    }
 
     const annotations = parseArray<TemplateAnnotation>(
-      fillContext.template.annotationsJson,
+      fillContext.version.annotationsJson,
     ).filter(
       (annotation) =>
         !isRecipientFieldType(annotation.type) ||
         annotation.recipientRoleId === fillContext.link.roleId,
     );
     const pageOrder = parseArray<TemplatePageEntry>(
-      fillContext.template.pageOrderJson,
+      fillContext.version.pageOrderJson,
     );
     const payload: TemplateFillPayload = {
       template: {
         id: fillContext.template.id,
+        versionId: fillContext.version.id,
+        versionNumber: fillContext.version.versionNumber,
         name: fillContext.template.name,
         description: fillContext.template.description,
-        fileName: fillContext.template.fileName,
+        fileName: fillContext.version.fileName,
         annotations,
         pageOrder,
       },
@@ -48,6 +65,11 @@ export async function GET(
         id: fillContext.link.roleId,
         name: fillContext.link.roleName,
         color: fillContext.link.roleColor,
+      },
+      link: {
+        expiresAt: fillContext.link.expiresAt,
+        maxSubmissions: fillContext.link.maxSubmissions,
+        submissionCount: fillContext.link.submissionCount,
       },
     };
     return Response.json(payload, {
@@ -67,7 +89,31 @@ export async function POST(
   try {
     const { token } = await context.params;
     const fillContext = await findFillContext(token);
-    if (!fillContext) return jsonError("This fill link is invalid or expired.", 404);
+    if (!fillContext) return jsonError("This fill link is invalid.", 404);
+
+    const idempotencyKey = request.headers.get("Idempotency-Key");
+    if (!validIdempotencyKey(idempotencyKey)) {
+      return jsonError("A valid idempotency key is required.", 400);
+    }
+
+    const existingSubmission = await findIdempotentSubmission(
+      fillContext.link.id,
+      idempotencyKey,
+    );
+    if (existingSubmission) {
+      return Response.json({
+        submission: {
+          id: existingSubmission.id,
+          status: "completed",
+          reused: true,
+        },
+      });
+    }
+
+    const availability = recipientLinkAvailability(fillContext.link);
+    if (!availability.available) {
+      return jsonError(availability.message, availability.httpStatus);
+    }
 
     const formData = await request.formData();
     const recipientName = String(formData.get("recipientName") ?? "")
@@ -86,7 +132,7 @@ export async function POST(
     if (!values) return jsonError("Submitted field values are invalid.", 400);
 
     const assignedFields = parseArray<TemplateAnnotation>(
-      fillContext.template.annotationsJson,
+      fillContext.version.annotationsJson,
     ).filter(
       (annotation) =>
         isRecipientFieldType(annotation.type) &&
@@ -105,7 +151,8 @@ export async function POST(
       ) {
         return jsonError("The completed PDF is invalid or too large.", 400);
       }
-      completedFileKey = `submissions/${fillContext.template.id}/${submissionId}/completed.pdf`;
+      completedFileKey =
+        `submissions/${fillContext.template.id}/${submissionId}/completed.pdf`;
       await getFilesBucket().put(
         completedFileKey,
         await completedPdf.arrayBuffer(),
@@ -113,18 +160,92 @@ export async function POST(
       );
     }
 
-    const db = getDb();
-    await db.insert(submissions).values({
-      id: submissionId,
-      templateId: fillContext.template.id,
-      recipientLinkId: fillContext.link.id,
-      recipientName,
-      recipientEmail,
-      valuesJson: JSON.stringify(buildSubmissionAnswers(assignedFields, values)),
-      completedFileKey,
-    });
+    const now = new Date().toISOString();
+    const database = getDatabaseBinding();
+    const results = await database.batch([
+      database
+        .prepare(
+          `INSERT OR IGNORE INTO submissions (
+            id, template_id, recipient_link_id, template_version_id,
+            idempotency_key, recipient_name, recipient_email, values_json,
+            completed_file_key, submitted_at
+          )
+          SELECT ?, template_id, id, template_version_id, ?, ?, ?, ?, ?, ?
+          FROM recipient_links
+          WHERE id = ?
+            AND token_hash = ?
+            AND template_version_id = ?
+            AND status = 'active'
+            AND submission_count < max_submissions
+            AND (expires_at IS NULL OR expires_at > ?)`,
+        )
+        .bind(
+          submissionId,
+          idempotencyKey,
+          recipientName,
+          recipientEmail,
+          JSON.stringify(buildSubmissionAnswers(assignedFields, values)),
+          completedFileKey,
+          now,
+          fillContext.link.id,
+          fillContext.link.tokenHash,
+          fillContext.version.id,
+          now,
+        ),
+      database
+        .prepare(
+          `UPDATE recipient_links
+          SET submission_count = submission_count + 1,
+              status = CASE
+                WHEN submission_count + 1 >= max_submissions
+                THEN 'completed'
+                ELSE 'active'
+              END,
+              completed_at = CASE
+                WHEN submission_count + 1 >= max_submissions
+                THEN ?
+                ELSE completed_at
+              END,
+              updated_at = ?
+          WHERE id = ?
+            AND EXISTS (SELECT 1 FROM submissions WHERE id = ?)`,
+        )
+        .bind(now, now, fillContext.link.id, submissionId),
+    ]);
+
+    const inserted = Number(results[0]?.meta?.changes ?? 0) > 0;
+    if (!inserted) {
+      if (completedFileKey) {
+        await getFilesBucket().delete(completedFileKey).catch(() => undefined);
+        completedFileKey = null;
+      }
+      const racedSubmission = await findIdempotentSubmission(
+        fillContext.link.id,
+        idempotencyKey,
+      );
+      if (racedSubmission) {
+        return Response.json({
+          submission: {
+            id: racedSubmission.id,
+            status: "completed",
+            reused: true,
+          },
+        });
+      }
+      return jsonError(
+        "This fill link has already reached its submission limit.",
+        409,
+      );
+    }
+
     return Response.json(
-      { submission: { id: submissionId, status: "completed" } },
+      {
+        submission: {
+          id: submissionId,
+          status: "completed",
+          reused: false,
+        },
+      },
       { status: 201 },
     );
   } catch (error) {
@@ -139,23 +260,38 @@ export async function POST(
 async function findFillContext(token: string) {
   if (!/^[A-Za-z0-9_-]{40,60}$/u.test(token)) return null;
   const tokenHash = await hashRecipientToken(token);
-  const db = getDb();
-  const [row] = await db
-    .select({ link: recipientLinks, template: templates })
+  const [row] = await getDb()
+    .select({
+      link: recipientLinks,
+      template: templates,
+      version: templateVersions,
+    })
     .from(recipientLinks)
     .innerJoin(templates, eq(recipientLinks.templateId, templates.id))
+    .innerJoin(
+      templateVersions,
+      eq(recipientLinks.templateVersionId, templateVersions.id),
+    )
+    .where(eq(recipientLinks.tokenHash, tokenHash))
+    .limit(1);
+  return row ?? null;
+}
+
+async function findIdempotentSubmission(
+  recipientLinkId: string,
+  idempotencyKey: string,
+) {
+  const [submission] = await getDb()
+    .select({ id: submissions.id })
+    .from(submissions)
     .where(
       and(
-        eq(recipientLinks.tokenHash, tokenHash),
-        eq(recipientLinks.status, "active"),
+        eq(submissions.recipientLinkId, recipientLinkId),
+        eq(submissions.idempotencyKey, idempotencyKey),
       ),
     )
     .limit(1);
-  if (!row) return null;
-  if (row.link.expiresAt && new Date(row.link.expiresAt) <= new Date()) {
-    return null;
-  }
-  return row;
+  return submission ?? null;
 }
 
 function parseArray<T>(value: string): T[] {

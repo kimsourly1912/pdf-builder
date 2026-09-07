@@ -53,6 +53,7 @@ let khmerBrowserFontPromise: Promise<void> | null = null;
 export function RecipientFill(props: { token: string }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
+  const idempotencyKeyRef = useRef(crypto.randomUUID());
   const [payload, setPayload] = useState<TemplateFillPayload | null>(null);
   const [pdfDocument, setPdfDocument] = useState<PdfDocument | null>(null);
   const [pdfBytes, setPdfBytes] = useState<Uint8Array<ArrayBuffer> | null>(null);
@@ -170,7 +171,11 @@ export function RecipientFill(props: { token: string }) {
         "completedPdf",
         new File([completedPdf], `${payload.template.name}-completed.pdf`, { type: "application/pdf" }),
       );
-      const response = await fetch(`/api/fill/${props.token}`, { method: "POST", body: formData });
+      const response = await fetch(`/api/fill/${props.token}`, {
+        method: "POST",
+        headers: { "Idempotency-Key": idempotencyKeyRef.current },
+        body: formData,
+      });
       const result = (await response.json()) as { error?: string };
       if (!response.ok) throw new Error(result.error || "Submission could not be saved.");
       setCompleted(true);

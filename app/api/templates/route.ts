@@ -1,7 +1,16 @@
 import { desc, eq } from "drizzle-orm";
 
 import { getDb } from "@/db";
-import { recipientLinks, submissions, templates } from "@/db/schema";
+import {
+  recipientLinks,
+  submissions,
+  templates,
+  templateVersions,
+} from "@/db/schema";
+import {
+  defaultLinkExpiration,
+  recipientLinkAvailability,
+} from "@/features/templates/recipient-link-lifecycle";
 import {
   createRecipientToken,
   getFilesBucket,
@@ -39,6 +48,11 @@ export async function GET(request: Request) {
               roleColor: recipientLinks.roleColor,
               status: recipientLinks.status,
               expiresAt: recipientLinks.expiresAt,
+              maxSubmissions: recipientLinks.maxSubmissions,
+              submissionCount: recipientLinks.submissionCount,
+              revokedAt: recipientLinks.revokedAt,
+              completedAt: recipientLinks.completedAt,
+              templateVersionId: recipientLinks.templateVersionId,
             })
             .from(recipientLinks)
             .where(eq(recipientLinks.templateId, template.id)),
@@ -54,7 +68,10 @@ export async function GET(request: Request) {
           fileName: template.fileName,
           createdAt: template.createdAt,
           updatedAt: template.updatedAt,
-          recipients: links,
+          recipients: links.map((link) => ({
+            ...link,
+            status: recipientLinkAvailability(link).state,
+          })),
           submissionCount: submissionRows.length,
         };
       }),
@@ -99,43 +116,73 @@ export async function POST(request: Request) {
     }
 
     const templateId = crypto.randomUUID();
+    const templateVersionId = crypto.randomUUID();
     uploadedKey = `templates/${ownerEmail}/${templateId}/source.pdf`;
     const files = getFilesBucket();
     await files.put(uploadedKey, await pdf.arrayBuffer(), {
       httpMetadata: { contentType: "application/pdf" },
     });
 
-    const db = getDb();
-    await db.insert(templates).values({
-      id: templateId,
-      ownerEmail,
-      name,
-      description: description.slice(0, 500),
-      fileKey: uploadedKey,
-      fileName: pdf.name || "template.pdf",
-      annotationsJson: JSON.stringify(annotations),
-      pageOrderJson: JSON.stringify(pageOrder),
-    });
-
-    const shareLinks = await Promise.all(
+    const now = new Date().toISOString();
+    const expiresAt = defaultLinkExpiration(new Date(now));
+    const linkRows = await Promise.all(
       roles.map(async (role) => {
         const token = createRecipientToken();
-        await db.insert(recipientLinks).values({
-          id: crypto.randomUUID(),
-          templateId,
-          roleId: role.id,
-          roleName: role.name,
-          roleColor: role.color,
-          tokenHash: await hashRecipientToken(token),
-        });
         return {
-          roleId: role.id,
-          roleName: role.name,
-          roleColor: role.color,
-          url: `${new URL(request.url).origin}/fill/${token}`,
+          row: {
+            id: crypto.randomUUID(),
+            templateId,
+            templateVersionId,
+            roleId: role.id,
+            roleName: role.name,
+            roleColor: role.color,
+            tokenHash: await hashRecipientToken(token),
+            status: "active",
+            expiresAt,
+            maxSubmissions: 1,
+            submissionCount: 0,
+            createdAt: now,
+            updatedAt: now,
+          },
+          token,
         };
       }),
     );
+
+    const db = getDb();
+    await db.batch([
+      db.insert(templates).values({
+        id: templateId,
+        ownerEmail,
+        name,
+        description: description.slice(0, 500),
+        fileKey: uploadedKey,
+        fileName: pdf.name || "template.pdf",
+        annotationsJson: JSON.stringify(annotations),
+        pageOrderJson: JSON.stringify(pageOrder),
+        currentVersionId: templateVersionId,
+      }),
+      db.insert(templateVersions).values({
+        id: templateVersionId,
+        templateId,
+        versionNumber: 1,
+        fileKey: uploadedKey,
+        fileName: pdf.name || "template.pdf",
+        annotationsJson: JSON.stringify(annotations),
+        pageOrderJson: JSON.stringify(pageOrder),
+        publishedAt: now,
+      }),
+      db.insert(recipientLinks).values(linkRows.map(({ row }) => row)),
+    ]);
+
+    const shareLinks = linkRows.map(({ row, token }) => ({
+      roleId: row.roleId,
+      roleName: row.roleName,
+      roleColor: row.roleColor,
+      expiresAt: row.expiresAt,
+      maxSubmissions: row.maxSubmissions,
+      url: `${new URL(request.url).origin}/fill/${token}`,
+    }));
 
     return Response.json(
       { template: { id: templateId, name, shareLinks } },
