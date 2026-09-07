@@ -207,7 +207,7 @@ async function bootstrapAndSignInOwner(hostname, bootstrapToken) {
 
   let signInResponse = await signInOwner(origin);
   if (!signInResponse.ok) {
-    const rotationResponse = await fetch(`${origin}/api/auth/bootstrap-owner`, {
+    const rotationResponse = await fetch(`${origin}/api/internal/bootstrap-owner`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
