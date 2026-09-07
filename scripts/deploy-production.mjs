@@ -249,14 +249,13 @@ function writeProductionDatabaseId(databaseId) {
 }
 
 async function verifyDeployment(hostname, authenticatedCookie) {
-  const rootResponse = await fetch(`https://${hostname}/`, { redirect: "manual" });
-  const rootLocation = rootResponse.headers.get("location") ?? "";
-  if (
-    ![301, 302, 303, 307, 308].includes(rootResponse.status) ||
-    !rootLocation.includes("/sign-in")
-  ) {
-    throw new Error(`Expected the editor to redirect to application sign-in, received HTTP ${rootResponse.status}.`);
-  }
+  await waitForResponse(
+    `https://${hostname}/`,
+    { redirect: "manual" },
+    (response) =>
+      [301, 302, 303, 307, 308].includes(response.status) &&
+      (response.headers.get("location") ?? "").includes("/sign-in"),
+  );
 
   const managementResponse = await fetch(`https://${hostname}/api/templates`, {
     redirect: "manual",
@@ -286,6 +285,19 @@ async function verifyDeployment(hostname, authenticatedCookie) {
   if ([301, 302, 303, 307, 308].includes(gazetteerResponse.status)) {
     throw new Error("The public Gazetteer API was unexpectedly redirected.");
   }
+}
+
+async function waitForResponse(url, options, accepted) {
+  let lastResponse;
+  for (let attempt = 1; attempt <= 12; attempt += 1) {
+    lastResponse = await fetch(url, options);
+    if (accepted(lastResponse)) return lastResponse;
+    if (attempt < 12) await new Promise((resolve) => setTimeout(resolve, 5_000));
+  }
+
+  throw new Error(
+    `Deployment verification did not stabilize for ${url}; last HTTP status was ${lastResponse?.status ?? "unknown"}.`,
+  );
 }
 
 function responseCookieHeader(response) {
