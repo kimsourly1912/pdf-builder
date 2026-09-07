@@ -79,7 +79,6 @@ export function formatCambodiaAddress(
   return GAZETTEER_LEVELS
     .map((level) => address[level])
     .filter((location): location is GazetteerLocation => Boolean(location))
-    .reverse()
     .map((location) => formatLocationLabel(location, language))
     .join(separator);
 }

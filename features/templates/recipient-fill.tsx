@@ -344,7 +344,7 @@ async function buildCompletedPdf(pdfBytes: Uint8Array<ArrayBuffer>, pageOrder: T
       const label = getOptions(annotation.options).find((option) => option.id === value)?.label ?? "";
       await drawText({ page, text: label, x: x + 4, topY: y + Math.max(14, (boxHeight + 12) / 2), size: 12, maxWidth: Math.max(4, boxWidth - 8), color: annotation.color });
     } else if (annotation.type === "cambodia-address") {
-      const address = formatCambodiaAddress(value, getGazetteerLanguage(annotation.gazetteerLanguage), "\n");
+      const address = formatCambodiaAddress(value, getGazetteerLanguage(annotation.gazetteerLanguage));
       const size = Math.max(6, getNumber(annotation.fontSize, 10));
       await drawText({ page, text: address, x: x + 4, topY: y + boxHeight - 4, size, maxWidth: Math.max(4, boxWidth - 8), color: annotation.color });
     } else if ((annotation.type === "checkbox" || annotation.type === "radio") && value) {

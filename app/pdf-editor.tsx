@@ -686,9 +686,8 @@ function annotationToSvg(
     const address = formatCambodiaAddress(
       annotation.address,
       annotation.gazetteerLanguage ?? "bilingual",
-      "\n",
     );
-    const lines = (address || annotation.label || "Cambodia address").split("\n");
+    const lines = [address || annotation.label || "Cambodia address"];
     return `<rect x="${x}" y="${y}" width="${width}" height="${height}" rx="4" fill="white" stroke="${borderColor}"/><text x="${x + 7}" y="${y + fontSize + 5}" fill="${color}" font-family="PDF Studio Khmer, Arial, sans-serif" font-size="${fontSize}">${lines.map((line, index) => `<tspan x="${x + 7}" dy="${index === 0 ? 0 : fontSize * 1.45}">${escapeHtml(line)}</tspan>`).join("")}</text>`;
   }
   if (annotation.type === "highlight") {
@@ -3112,7 +3111,6 @@ export function PdfEditor() {
                 ? formatCambodiaAddress(
                     annotation.address,
                     annotation.gazetteerLanguage ?? "bilingual",
-                    "\n",
                   )
                 : annotation.type === "input" &&
                     annotation.text === "Text input"

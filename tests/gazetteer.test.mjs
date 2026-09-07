@@ -50,7 +50,7 @@ test("formats Cambodia addresses in hierarchy order", () => {
 
   assert.equal(
     gazetteer.formatCambodiaAddress(value, "bilingual"),
-    "ចំការមន / Chamkar Mon, ភ្នំពេញ / Phnom Penh",
+    "ភ្នំពេញ / Phnom Penh, ចំការមន / Chamkar Mon",
   );
 });
 
