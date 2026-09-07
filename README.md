@@ -54,6 +54,12 @@ Auth signing secret directly in Cloudflare and never prints it. Public account
 registration is blocked; a short-lived bootstrap secret is removed immediately
 after the owner is verified.
 
+To rotate a forgotten owner password, replace `PDF_BUILDER_OWNER_PASSWORD` in
+the production environment and rerun deployment. If the stored credential no
+longer matches, the temporary bootstrap process updates only the configured
+owner account, revokes its existing sessions, verifies the new password, and
+removes the bootstrap secret.
+
 Pushes to `codex/pdf-studio-self-host` deploy the single production Worker.
 There are no Cloudflare development or staging environments. The separate
 `wrangler.dev.jsonc` file is only for local emulation.

@@ -205,18 +205,28 @@ async function bootstrapAndSignInOwner(hostname, bootstrapToken) {
       : "The Better Auth owner account already exists.",
   );
 
-  const signInResponse = await fetch(`${origin}/api/auth/sign-in/email`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Origin: origin },
-    body: JSON.stringify({
-      email: MANAGEMENT_EMAIL,
-      password: OWNER_PASSWORD,
-      rememberMe: true,
-    }),
-  });
+  let signInResponse = await signInOwner(origin);
+  if (!signInResponse.ok) {
+    const rotationResponse = await fetch(`${origin}/api/auth/bootstrap-owner`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Origin: origin,
+        "x-pdf-builder-bootstrap": bootstrapToken,
+      },
+      body: JSON.stringify({ password: OWNER_PASSWORD }),
+    });
+    if (!rotationResponse.ok) {
+      throw new Error(
+        `Owner password rotation failed with HTTP ${rotationResponse.status}: ${await rotationResponse.text()}`,
+      );
+    }
+    console.log("Rotated the Better Auth owner password and revoked old sessions.");
+    signInResponse = await signInOwner(origin);
+  }
   if (!signInResponse.ok) {
     throw new Error(
-      `Owner sign-in verification failed with HTTP ${signInResponse.status}. Ensure PDF_BUILDER_OWNER_PASSWORD matches the deployed owner account.`,
+      `Owner sign-in verification failed with HTTP ${signInResponse.status}.`,
     );
   }
 
@@ -233,6 +243,18 @@ async function bootstrapAndSignInOwner(hostname, bootstrapToken) {
   }
   console.log("Verified the Better Auth owner session.");
   return cookie;
+}
+
+function signInOwner(origin) {
+  return fetch(`${origin}/api/auth/sign-in/email`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Origin: origin },
+    body: JSON.stringify({
+      email: MANAGEMENT_EMAIL,
+      password: OWNER_PASSWORD,
+      rememberMe: true,
+    }),
+  });
 }
 
 function writeProductionDatabaseId(databaseId) {
