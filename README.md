@@ -42,7 +42,7 @@ migrations, creates the Better Auth owner when needed, removes the legacy
 Cloudflare Access applications, deploys the Worker, and verifies protected and
 public routes.
 
-Configure these GitHub Actions repository secrets:
+Configure these secrets in the GitHub Actions `production` environment:
 
 - `CLOUDFLARE_ACCOUNT_ID`
 - `CLOUDFLARE_API_TOKEN`

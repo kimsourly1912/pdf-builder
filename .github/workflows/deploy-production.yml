@@ -20,6 +20,7 @@ jobs:
   deploy:
     name: Validate and deploy
     runs-on: ubuntu-latest
+    environment: production
     timeout-minutes: 20
     env:
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
