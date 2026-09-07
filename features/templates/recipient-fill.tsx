@@ -25,6 +25,7 @@ import type {
   TemplateAnnotation,
   TemplateFillPayload,
 } from "@/features/templates/template.types";
+import { isRecipientFieldType } from "@/features/templates/template-fields";
 import type {
   GazetteerLanguage,
   GazetteerLevel,
@@ -45,18 +46,6 @@ type PdfDocument = {
 };
 type FieldOption = { id: string; label: string; checked: boolean };
 
-const FIELD_TYPES = new Set([
-  "input",
-  "dropdown",
-  "cambodia-address",
-  "checkbox",
-  "radio",
-  "checkbox-group",
-  "radio-group",
-  "date",
-  "initials",
-  "image-placeholder",
-]);
 const KHMER_FONT_FAMILY = "PDF Studio Khmer";
 const KHMER_REGRESSION_SAMPLES = ["សួស្តីបង", "រាត្រីសួស្តី"] as const;
 let khmerBrowserFontPromise: Promise<void> | null = null;
@@ -153,7 +142,7 @@ export function RecipientFill(props: { token: string }) {
   async function submit() {
     if (!payload || !pdfBytes) return;
     const invalid = payload.template.annotations.filter(
-      (annotation) => FIELD_TYPES.has(annotation.type) && !fieldIsValid(annotation, values[annotation.id]),
+      (annotation) => isRecipientFieldType(annotation.type) && !fieldIsValid(annotation, values[annotation.id]),
     );
     if (!recipientName.trim()) {
       setError("Enter your name before submitting.");
@@ -278,7 +267,7 @@ function CenteredState(props: { icon: React.ReactNode; title: string; descriptio
 }
 
 function initialValues(annotations: TemplateAnnotation[]) {
-  return Object.fromEntries(annotations.filter((annotation) => FIELD_TYPES.has(annotation.type)).map((annotation) => {
+  return Object.fromEntries(annotations.filter((annotation) => isRecipientFieldType(annotation.type)).map((annotation) => {
     if (annotation.type === "checkbox" || annotation.type === "radio") return [annotation.id, Boolean(annotation.checked)];
     if (annotation.type === "checkbox-group" || annotation.type === "radio-group") return [annotation.id, getOptions(annotation.options).filter((option) => option.checked).map((option) => option.id)];
     if (annotation.type === "dropdown") return [annotation.id, getOptions(annotation.options).find((option) => option.checked)?.id ?? ""];

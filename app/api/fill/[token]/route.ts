@@ -7,6 +7,7 @@ import {
   hashRecipientToken,
   jsonError,
 } from "@/features/templates/template.server";
+import { isRecipientFieldType } from "@/features/templates/template-fields";
 import type {
   TemplateAnnotation,
   TemplateFillPayload,
@@ -14,18 +15,6 @@ import type {
 } from "@/features/templates/template.types";
 
 const MAX_COMPLETED_PDF_SIZE = 35 * 1024 * 1024;
-const FIELD_TYPES = new Set([
-  "input",
-  "dropdown",
-  "checkbox",
-  "radio",
-  "checkbox-group",
-  "radio-group",
-  "date",
-  "initials",
-  "image-placeholder",
-]);
-
 export async function GET(
   _request: Request,
   context: { params: Promise<{ token: string }> },
@@ -39,7 +28,7 @@ export async function GET(
       fillContext.template.annotationsJson,
     ).filter(
       (annotation) =>
-        !FIELD_TYPES.has(annotation.type) ||
+        !isRecipientFieldType(annotation.type) ||
         annotation.recipientRoleId === fillContext.link.roleId,
     );
     const pageOrder = parseArray<TemplatePageEntry>(
@@ -99,7 +88,7 @@ export async function POST(
       fillContext.template.annotationsJson,
     ).filter(
       (annotation) =>
-        FIELD_TYPES.has(annotation.type) &&
+        isRecipientFieldType(annotation.type) &&
         annotation.recipientRoleId === fillContext.link.roleId,
     );
     const allowedIds = new Set(assignedFields.map((field) => field.id));
