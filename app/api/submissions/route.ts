@@ -19,6 +19,7 @@ import {
 } from "@/features/templates/label-binding";
 import type { SubmissionAnswer } from "@/features/templates/label-binding";
 import type { TemplateAnnotation } from "@/features/templates/template.types";
+import { isStoredSubmissionImage } from "@/features/templates/file-validation";
 
 export async function GET(request: Request) {
   try {
@@ -56,7 +57,20 @@ export async function GET(request: Request) {
 
     return Response.json({
       submissions: rows.map((row) => {
-        const answers = submissionAnswers(row.valuesJson, row.annotationsJson);
+        const answers = submissionAnswers(row.valuesJson, row.annotationsJson).map(
+          (answer) => ({
+            ...answer,
+            value: isStoredSubmissionImage(answer.value)
+              ? {
+                  kind: "submission-image",
+                  url: `/api/submissions/${row.id}/images/${answer.fieldId}`,
+                  width: answer.value.width,
+                  height: answer.value.height,
+                  size: answer.value.size,
+                }
+              : answer.value,
+          }),
+        );
         return {
           id: row.id,
           templateId: row.templateId,

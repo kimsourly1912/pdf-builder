@@ -19,6 +19,8 @@ import {
   jsonError,
   requireRequestOwner,
 } from "@/features/templates/template.server";
+import { inspectPdf } from "@/features/templates/file-validation";
+import { validateTemplateDefinition } from "@/features/templates/submission-validation";
 import type {
   RecipientRole,
   TemplateAnnotation,
@@ -114,12 +116,24 @@ export async function POST(request: Request) {
     if (!validRoles(roles)) {
       return jsonError("Add between 1 and 10 valid recipient roles.", 400);
     }
+    const pdfBytes = new Uint8Array(await pdf.arrayBuffer()) as Uint8Array<ArrayBuffer>;
+    const pdfInspection = await inspectPdf(pdfBytes);
+    if (!pdfInspection) {
+      return jsonError("The uploaded file is not a valid PDF.", 400);
+    }
+    const definitionError = validateTemplateDefinition({
+      annotations,
+      pageOrder,
+      roles,
+      sourcePageCount: pdfInspection.pageCount,
+    });
+    if (definitionError) return jsonError(definitionError, 422);
 
     const templateId = crypto.randomUUID();
     const templateVersionId = crypto.randomUUID();
     uploadedKey = `templates/${ownerEmail}/${templateId}/source.pdf`;
     const files = getFilesBucket();
-    await files.put(uploadedKey, await pdf.arrayBuffer(), {
+    await files.put(uploadedKey, pdfBytes.buffer, {
       httpMetadata: { contentType: "application/pdf" },
     });
 
@@ -218,8 +232,10 @@ function validRoles(value: RecipientRole[] | null): value is RecipientRole[] {
       typeof role.id !== "string" ||
       typeof role.name !== "string" ||
       typeof role.color !== "string" ||
-      !role.id ||
+      !/^[A-Za-z0-9_-]{1,120}$/u.test(role.id) ||
       !role.name.trim() ||
+      role.id.length > 120 ||
+      role.name.length > 80 ||
       !/^#[0-9a-f]{6}$/iu.test(role.color) ||
       ids.has(role.id)
     ) {

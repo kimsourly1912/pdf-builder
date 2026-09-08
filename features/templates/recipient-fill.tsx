@@ -26,6 +26,10 @@ import type {
   TemplateFillPayload,
 } from "@/features/templates/template.types";
 import { isRecipientFieldType } from "@/features/templates/template-fields";
+import {
+  normalizedPointToPdf,
+  normalizedRectToPdfBox,
+} from "@/features/templates/pdf-coordinates";
 import type {
   GazetteerLanguage,
   GazetteerLevel,
@@ -33,6 +37,7 @@ import type {
 
 type PdfViewport = { width: number; height: number };
 type PdfPage = {
+  rotate: number;
   getViewport(options: { scale: number; rotation?: number }): PdfViewport;
   render(options: {
     canvas: HTMLCanvasElement;
@@ -115,10 +120,11 @@ export function RecipientFill(props: { token: string }) {
       if (!entry) return;
       const page = await pdfDocument!.getPage(entry.sourcePage);
       if (cancelled || !canvasRef.current) return;
-      const base = page.getViewport({ scale: 1, rotation: entry.rotation });
+      const rotation = (page.rotate + entry.rotation) % 360;
+      const base = page.getViewport({ scale: 1, rotation });
       const availableWidth = Math.min(900, (viewportRef.current?.clientWidth ?? 700) - 24);
       const scale = Math.max(0.35, availableWidth / base.width);
-      const viewport = page.getViewport({ scale, rotation: entry.rotation });
+      const viewport = page.getViewport({ scale, rotation });
       const canvas = canvasRef.current;
       const context = canvas.getContext("2d");
       if (!context) return;
@@ -149,6 +155,10 @@ export function RecipientFill(props: { token: string }) {
       setError("Enter your name before submitting.");
       return;
     }
+    if (recipientEmail.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/u.test(recipientEmail.trim())) {
+      setError("Enter a valid email address.");
+      return;
+    }
     if (invalid.length > 0) {
       setPageNumber(invalid[0].page);
       setError(`Complete ${invalid.length} required or invalid field${invalid.length === 1 ? "" : "s"}.`);
@@ -166,7 +176,19 @@ export function RecipientFill(props: { token: string }) {
       const formData = new FormData();
       formData.set("recipientName", recipientName.trim());
       formData.set("recipientEmail", recipientEmail.trim());
-      formData.set("values", JSON.stringify(values));
+      const submissionValues = { ...values };
+      for (const annotation of payload.template.annotations) {
+        if (annotation.type !== "image-placeholder") continue;
+        const imageValue = values[annotation.id];
+        delete submissionValues[annotation.id];
+        if (typeof imageValue === "string" && imageValue.startsWith("data:image/")) {
+          formData.set(
+            `image:${annotation.id}`,
+            dataUrlFile(imageValue, `${annotation.id}.jpg`),
+          );
+        }
+      }
+      formData.set("values", JSON.stringify(submissionValues));
       formData.set(
         "completedPdf",
         new File([completedPdf], `${payload.template.name}-completed.pdf`, { type: "application/pdf" }),
@@ -204,7 +226,7 @@ export function RecipientFill(props: { token: string }) {
           <div className="mx-auto">
             <div className="relative mx-auto overflow-hidden bg-white shadow-2xl" style={{ width: pageSize.width, height: pageSize.height }}>
               <canvas ref={canvasRef} className="absolute inset-0 size-full" />
-              {pageAnnotations.map((annotation) => <FillAnnotation key={annotation.id} annotation={annotation} value={values[annotation.id]} onChange={(value) => updateValue(annotation.id, value)} />)}
+              {pageAnnotations.map((annotation) => <FillAnnotation key={annotation.id} annotation={annotation} value={values[annotation.id]} onChange={(value) => updateValue(annotation.id, value)} onError={setError} />)}
             </div>
             <div className="mt-4 flex items-center justify-center gap-3 text-xs font-semibold text-slate-500">
               <Button type="button" variant="outline" size="icon-sm" disabled={pageNumber === 1} onClick={() => setPageNumber((page) => page - 1)}><ArrowLeft /></Button>
@@ -229,7 +251,7 @@ export function RecipientFill(props: { token: string }) {
   );
 }
 
-function FillAnnotation(props: { annotation: TemplateAnnotation; value: unknown; onChange: (value: unknown) => void }) {
+function FillAnnotation(props: { annotation: TemplateAnnotation; value: unknown; onChange: (value: unknown) => void; onError: (message: string) => void }) {
   const annotation = props.annotation;
   const style = { left: `${annotation.x * 100}%`, top: `${annotation.y * 100}%`, width: `${annotation.width * 100}%`, height: `${annotation.height * 100}%` };
   const fontSize = getNumber(annotation.fontSize, 14);
@@ -247,7 +269,7 @@ function FillAnnotation(props: { annotation: TemplateAnnotation; value: unknown;
     const selected = Array.isArray(props.value) ? props.value.map(String) : [];
     return <fieldset className="absolute overflow-auto rounded-md bg-white/95 p-2" style={style}><legend className="text-xs font-bold text-slate-800">{getString(annotation.label, "Options")}</legend><div className="space-y-1.5">{options.map((option) => { const checked = selected.includes(option.id); return <label key={option.id} className="flex items-center gap-2 text-xs text-slate-700"><input type={annotation.type === "radio-group" ? "radio" : "checkbox"} name={annotation.id} checked={checked} onChange={() => props.onChange(annotation.type === "radio-group" ? [option.id] : checked ? selected.filter((id) => id !== option.id) : [...selected, option.id])} className="accent-blue-600" />{option.label}</label>; })}</div></fieldset>;
   }
-  if (annotation.type === "image-placeholder") return <label className="absolute flex cursor-pointer flex-col items-center justify-center overflow-hidden rounded-lg border-2 border-dashed border-slate-400 bg-slate-50 text-center text-xs font-semibold text-slate-600" style={style}>{typeof props.value === "string" && props.value.startsWith("data:image/") ? <Image src={props.value} alt="Uploaded" fill unoptimized className="object-cover" /> : <><UploadCloud className="size-5" />{getString(annotation.label, "Upload image")}</>}<input type="file" accept="image/png,image/jpeg,image/webp" className="sr-only" onChange={(event) => { const file = event.target.files?.[0]; if (!file) return; const reader = new FileReader(); reader.addEventListener("load", () => props.onChange(reader.result)); reader.readAsDataURL(file); }} /></label>;
+  if (annotation.type === "image-placeholder") return <label className="absolute flex cursor-pointer flex-col items-center justify-center overflow-hidden rounded-lg border-2 border-dashed border-slate-400 bg-slate-50 text-center text-xs font-semibold text-slate-600" style={style}>{typeof props.value === "string" && props.value.startsWith("data:image/") ? <Image src={props.value} alt="Uploaded" fill unoptimized className="object-cover" /> : <><UploadCloud className="size-5" />{getString(annotation.label, "Upload image")}</>}<input type="file" accept="image/png,image/jpeg" className="sr-only" onChange={(event) => { const file = event.target.files?.[0]; if (!file) return; void prepareRecipientImage(file).then(props.onChange).catch(() => { props.onChange(""); props.onError("Choose a valid PNG or JPEG image up to 8 MB."); }); }} /></label>;
   if (annotation.type === "text") return <span className="pointer-events-none absolute whitespace-pre-wrap" style={{ ...style, color: annotation.color, fontSize: getNumber(annotation.fontSize, 16) }}>{getString(annotation.text, "")}</span>;
   if (annotation.type === "highlight") return <span className="pointer-events-none absolute opacity-35" style={{ ...style, backgroundColor: annotation.color }} />;
   if (annotation.type === "rectangle" || annotation.type === "ellipse") return <span className={`pointer-events-none absolute border-2 ${annotation.type === "ellipse" ? "rounded-full" : ""}`} style={{ ...style, borderColor: annotation.color }} />;
@@ -277,7 +299,7 @@ function initialValues(annotations: TemplateAnnotation[]) {
     if (annotation.type === "checkbox-group" || annotation.type === "radio-group") return [annotation.id, getOptions(annotation.options).filter((option) => option.checked).map((option) => option.id)];
     if (annotation.type === "dropdown") return [annotation.id, getOptions(annotation.options).find((option) => option.checked)?.id ?? ""];
     if (annotation.type === "cambodia-address") return [annotation.id, parseCambodiaAddress(annotation.address)];
-    if (annotation.type === "image-placeholder") return [annotation.id, typeof annotation.imageData === "string" ? annotation.imageData : ""];
+    if (annotation.type === "image-placeholder") return [annotation.id, ""];
     return [annotation.id, getString(annotation.text, "")];
   }));
 }
@@ -324,13 +346,12 @@ async function buildCompletedPdf(pdfBytes: Uint8Array<ArrayBuffer>, pageOrder: T
   for (const annotation of annotations) {
     const page = pages[annotation.page - 1];
     if (!page) continue;
-    const { width, height } = page.getSize();
+    const cropBox = page.getCropBox();
+    const rotation = page.getRotation().angle;
     const value = values[annotation.id];
     const color = hexToRgb(annotation.color);
-    const x = annotation.x * width;
-    const y = height - (annotation.y + annotation.height) * height;
-    const boxWidth = annotation.width * width;
-    const boxHeight = annotation.height * height;
+    const box = normalizedRectToPdfBox(annotation, cropBox, rotation);
+    const { x, y, width: boxWidth, height: boxHeight } = box;
     if (["input", "date", "initials"].includes(annotation.type)) {
       const size = Math.max(6, getNumber(annotation.fontSize, 14));
       await drawText({ page, text: String(value ?? ""), x: x + 4, topY: y + Math.max(size + 2, (boxHeight + size) / 2), size, maxWidth: Math.max(4, boxWidth - 8), color: annotation.color });
@@ -369,12 +390,12 @@ async function buildCompletedPdf(pdfBytes: Uint8Array<ArrayBuffer>, pageOrder: T
     } else if (annotation.type === "drawing") {
       const points = getPoints(annotation.points);
       for (let index = 1; index < points.length; index += 1) {
-        page.drawLine({ start: { x: points[index - 1].x * width, y: height - points[index - 1].y * height }, end: { x: points[index].x * width, y: height - points[index].y * height }, thickness: getNumber(annotation.strokeWidth, 2.5), color: rgb(color.r, color.g, color.b) });
+        page.drawLine({ start: normalizedPointToPdf(points[index - 1], cropBox, rotation), end: normalizedPointToPdf(points[index], cropBox, rotation), thickness: getNumber(annotation.strokeWidth, 2.5), color: rgb(color.r, color.g, color.b) });
       }
     } else if (annotation.type === "signature") {
       for (const stroke of getStrokes(annotation.strokes)) {
         for (let index = 1; index < stroke.length; index += 1) {
-          page.drawLine({ start: { x: (annotation.x + stroke[index - 1].x * annotation.width) * width, y: height - (annotation.y + stroke[index - 1].y * annotation.height) * height }, end: { x: (annotation.x + stroke[index].x * annotation.width) * width, y: height - (annotation.y + stroke[index].y * annotation.height) * height }, thickness: 1.8, color: rgb(color.r, color.g, color.b) });
+          page.drawLine({ start: normalizedPointToPdf({ x: annotation.x + stroke[index - 1].x * annotation.width, y: annotation.y + stroke[index - 1].y * annotation.height }, cropBox, rotation), end: normalizedPointToPdf({ x: annotation.x + stroke[index].x * annotation.width, y: annotation.y + stroke[index].y * annotation.height }, cropBox, rotation), thickness: 1.8, color: rgb(color.r, color.g, color.b) });
         }
       }
     } else if (annotation.type === "image" && typeof annotation.imageData === "string") {
@@ -395,6 +416,36 @@ function getPoints(value: unknown): Array<{ x: number; y: number }> { return Arr
 function getStrokes(value: unknown): Array<Array<{ x: number; y: number }>> { return Array.isArray(value) ? value.map(getPoints).filter((stroke) => stroke.length > 1) : []; }
 function hexToRgb(hex: string) { const value = hex.replace("#", ""); return { r: Number.parseInt(value.slice(0, 2), 16) / 255, g: Number.parseInt(value.slice(2, 4), 16) / 255, b: Number.parseInt(value.slice(4, 6), 16) / 255 }; }
 function dataUrlBytes(dataUrl: string) { const binary = atob(dataUrl.split(",")[1] ?? ""); return Uint8Array.from(binary, (character) => character.charCodeAt(0)); }
+
+function dataUrlFile(dataUrl: string, fileName: string) {
+  const bytes = dataUrlBytes(dataUrl);
+  const contentType = dataUrl.slice(5, dataUrl.indexOf(";"));
+  return new File([bytes], fileName, { type: contentType });
+}
+
+async function prepareRecipientImage(file: File) {
+  if (!/image\/(png|jpeg)/u.test(file.type) || file.size > 8 * 1024 * 1024) {
+    throw new Error("Invalid image");
+  }
+  const bitmap = await createImageBitmap(file);
+  const maxDimension = 2048;
+  const scale = Math.min(1, maxDimension / Math.max(bitmap.width, bitmap.height));
+  const width = Math.max(1, Math.round(bitmap.width * scale));
+  const height = Math.max(1, Math.round(bitmap.height * scale));
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const context = canvas.getContext("2d");
+  if (!context) {
+    bitmap.close();
+    throw new Error("Image processing is unavailable");
+  }
+  context.fillStyle = "#ffffff";
+  context.fillRect(0, 0, width, height);
+  context.drawImage(bitmap, 0, 0, width, height);
+  bitmap.close();
+  return canvas.toDataURL("image/jpeg", 0.9);
+}
 
 function containsKhmer(value: string) { return /[\u1780-\u17ff\u19e0-\u19ff]/u.test(value); }
 

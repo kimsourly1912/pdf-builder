@@ -9,6 +9,10 @@ import {
 } from "@/db/schema";
 import { buildSubmissionAnswers } from "@/features/templates/label-binding";
 import {
+  sanitizeImage,
+  inspectPdf,
+} from "@/features/templates/file-validation";
+import {
   recipientLinkAvailability,
   validIdempotencyKey,
 } from "@/features/templates/recipient-link-lifecycle";
@@ -18,6 +22,7 @@ import {
   jsonError,
 } from "@/features/templates/template.server";
 import { isRecipientFieldType } from "@/features/templates/template-fields";
+import { validateSubmissionValues } from "@/features/templates/submission-validation";
 import type {
   TemplateAnnotation,
   TemplateFillPayload,
@@ -25,6 +30,8 @@ import type {
 } from "@/features/templates/template.types";
 
 const MAX_COMPLETED_PDF_SIZE = 35 * 1024 * 1024;
+const MAX_IMAGE_SIZE = 8 * 1024 * 1024;
+const MAX_IMAGE_FIELDS = 20;
 
 export async function GET(
   _request: Request,
@@ -86,6 +93,7 @@ export async function POST(
   context: { params: Promise<{ token: string }> },
 ) {
   let completedFileKey: string | null = null;
+  const uploadedImageKeys: string[] = [];
   try {
     const { token } = await context.params;
     const fillContext = await findFillContext(token);
@@ -138,27 +146,69 @@ export async function POST(
         isRecipientFieldType(annotation.type) &&
         annotation.recipientRoleId === fillContext.link.roleId,
     );
-    const allowedIds = new Set(assignedFields.map((field) => field.id));
-    if (Object.keys(values).some((id) => !allowedIds.has(id))) {
-      return jsonError("The submission contains unknown fields.", 400);
+    const imageFiles = collectImageFiles(formData);
+    if (!imageFiles.ok) return jsonError(imageFiles.message, 400);
+    const validation = validateSubmissionValues({
+      fields: assignedFields,
+      values,
+      imageFieldIds: new Set(imageFiles.files.keys()),
+    });
+    if (!validation.ok) return jsonError(validation.message, 422);
+
+    if (!(completedPdf instanceof File) || completedPdf.size === 0) {
+      return jsonError("A completed PDF is required.", 400);
+    }
+    if (
+      completedPdf.type !== "application/pdf" ||
+      completedPdf.size > MAX_COMPLETED_PDF_SIZE
+    ) {
+      return jsonError("The completed PDF is invalid or too large.", 400);
+    }
+    const completedPdfBytes = new Uint8Array(
+      await completedPdf.arrayBuffer(),
+    ) as Uint8Array<ArrayBuffer>;
+    if (!(await inspectPdf(completedPdfBytes))) {
+      return jsonError("The completed PDF is invalid.", 400);
     }
 
     const submissionId = crypto.randomUUID();
-    if (completedPdf instanceof File && completedPdf.size > 0) {
-      if (
-        completedPdf.type !== "application/pdf" ||
-        completedPdf.size > MAX_COMPLETED_PDF_SIZE
-      ) {
-        return jsonError("The completed PDF is invalid or too large.", 400);
+    const storedValues = { ...validation.values };
+    const preparedImages: Array<{
+      fieldId: string;
+      image: NonNullable<ReturnType<typeof sanitizeImage>>;
+    }> = [];
+    for (const [fieldId, file] of imageFiles.files) {
+      const source = new Uint8Array(await file.arrayBuffer()) as Uint8Array<ArrayBuffer>;
+      const image = sanitizeImage(source, file.type);
+      if (!image) {
+        return jsonError(
+          "Images must be valid PNG or JPEG files up to 8 MB and 4096 pixels per side.",
+          422,
+        );
       }
-      completedFileKey =
-        `submissions/${fillContext.template.id}/${submissionId}/completed.pdf`;
-      await getFilesBucket().put(
-        completedFileKey,
-        await completedPdf.arrayBuffer(),
-        { httpMetadata: { contentType: "application/pdf" } },
-      );
+      preparedImages.push({ fieldId, image });
     }
+    for (const { fieldId, image } of preparedImages) {
+      const storageKey =
+        `submissions/${fillContext.template.id}/${submissionId}/images/${fieldId}.${image.extension}`;
+      await getFilesBucket().put(storageKey, image.bytes.buffer, {
+        httpMetadata: { contentType: image.contentType },
+      });
+      uploadedImageKeys.push(storageKey);
+      storedValues[fieldId] = {
+        kind: "submission-image",
+        storageKey,
+        contentType: image.contentType,
+        width: image.width,
+        height: image.height,
+        size: image.bytes.length,
+      };
+    }
+    completedFileKey =
+      `submissions/${fillContext.template.id}/${submissionId}/completed.pdf`;
+    await getFilesBucket().put(completedFileKey, completedPdfBytes.buffer, {
+      httpMetadata: { contentType: "application/pdf" },
+    });
 
     const now = new Date().toISOString();
     const database = getDatabaseBinding();
@@ -184,7 +234,7 @@ export async function POST(
           idempotencyKey,
           recipientName,
           recipientEmail,
-          JSON.stringify(buildSubmissionAnswers(assignedFields, values)),
+          JSON.stringify(buildSubmissionAnswers(assignedFields, storedValues)),
           completedFileKey,
           now,
           fillContext.link.id,
@@ -215,10 +265,9 @@ export async function POST(
 
     const inserted = Number(results[0]?.meta?.changes ?? 0) > 0;
     if (!inserted) {
-      if (completedFileKey) {
-        await getFilesBucket().delete(completedFileKey).catch(() => undefined);
-        completedFileKey = null;
-      }
+      await deleteUploadedFiles(completedFileKey, uploadedImageKeys);
+      completedFileKey = null;
+      uploadedImageKeys.length = 0;
       const racedSubmission = await findIdempotentSubmission(
         fillContext.link.id,
         idempotencyKey,
@@ -249,12 +298,43 @@ export async function POST(
       { status: 201 },
     );
   } catch (error) {
-    if (completedFileKey) {
-      await getFilesBucket().delete(completedFileKey).catch(() => undefined);
-    }
+    await deleteUploadedFiles(completedFileKey, uploadedImageKeys);
     console.error("Failed to submit fill link", error);
     return jsonError("Your submission could not be saved.", 500);
   }
+}
+
+function collectImageFiles(
+  formData: FormData,
+): { ok: true; files: Map<string, File> } | { ok: false; message: string } {
+  const files = new Map<string, File>();
+  for (const [key, value] of formData.entries()) {
+    if (!key.startsWith("image:")) continue;
+    const fieldId = key.slice("image:".length);
+    if (
+      !/^[A-Za-z0-9_-]{1,120}$/u.test(fieldId) ||
+      !(value instanceof File) ||
+      value.size === 0 ||
+      value.size > MAX_IMAGE_SIZE ||
+      (value.type !== "image/png" && value.type !== "image/jpeg") ||
+      files.has(fieldId) ||
+      files.size >= MAX_IMAGE_FIELDS
+    ) {
+      return { ok: false, message: "The submission contains an invalid image upload." };
+    }
+    files.set(fieldId, value);
+  }
+  return { ok: true, files };
+}
+
+async function deleteUploadedFiles(
+  completedFileKey: string | null,
+  imageKeys: string[],
+) {
+  const keys = completedFileKey ? [completedFileKey, ...imageKeys] : imageKeys;
+  await Promise.all(
+    keys.map((key) => getFilesBucket().delete(key).catch(() => undefined)),
+  );
 }
 
 async function findFillContext(token: string) {

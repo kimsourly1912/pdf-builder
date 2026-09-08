@@ -55,6 +55,10 @@ import khmerFontUrl from "@expo-google-fonts/noto-sans-khmer/400Regular/NotoSans
 import type { RecipientRole } from "@/features/templates/template.types";
 import type { LabelBinding } from "@/features/templates/label-binding";
 import { createFieldKey, duplicateFieldKeys } from "@/features/templates/label-binding";
+import {
+  normalizedPointToPdf,
+  normalizedRectToPdfBox,
+} from "@/features/templates/pdf-coordinates";
 import { Button } from "@/components/ui/button";
 import { PdfExtractionDialog } from "@/features/extraction/pdf-extraction-dialog";
 import { extractPdfContent } from "@/features/extraction/pdf-extraction";
@@ -224,6 +228,7 @@ type PdfTextRun = {
   rect: { x: number; y: number; width: number; height: number };
 };
 type PdfPage = {
+  rotate: number;
   getViewport(options: { scale: number; rotation?: number }): PdfViewport;
   render(options: {
     canvas: HTMLCanvasElement;
@@ -1393,7 +1398,7 @@ function PageThumbnail(props: {
       if (cancelled || !canvasRef.current) return;
       const viewport = page.getViewport({
         scale: 0.2,
-        rotation: props.entry.rotation,
+        rotation: (page.rotate + props.entry.rotation) % 360,
       });
       const canvas = canvasRef.current;
       const context = canvas.getContext("2d");
@@ -1634,13 +1639,14 @@ export function PdfEditor() {
       if (!currentPageEntry) return;
       const page = await document!.getPage(currentPageEntry.sourcePage);
       if (cancelled || !canvasRef.current) return;
+      const rotation = (page.rotate + currentPageEntry.rotation) % 360;
       const baseViewport = page.getViewport({
         scale: 1,
-        rotation: currentPageEntry.rotation,
+        rotation,
       });
       const viewport = page.getViewport({
         scale: zoom,
-        rotation: currentPageEntry.rotation,
+        rotation,
       });
       const textContent = await page.getTextContent();
       if (cancelled) return;
@@ -3091,7 +3097,13 @@ export function PdfEditor() {
       )) {
         const page = pages[annotation.page - 1];
         if (!page) continue;
-        const { width, height } = page.getSize();
+        const cropBox = page.getCropBox();
+        const rotation = page.getRotation().angle;
+        const annotationBox = normalizedRectToPdfBox(
+          annotation,
+          cropBox,
+          rotation,
+        );
         const parsed = hexToRgb(annotation.color);
         const ink = rgb(parsed.r, parsed.g, parsed.b);
 
@@ -3100,9 +3112,9 @@ export function PdfEditor() {
           annotation.type === "radio-group"
         ) {
           const options = annotation.options ?? [];
-          const left = annotation.x * width;
-          const top = height - annotation.y * height;
-          const groupHeight = annotation.height * height;
+          const left = annotationBox.x;
+          const top = annotationBox.y + annotationBox.height;
+          const groupHeight = annotationBox.height;
           const labelSize = 12;
           const rowHeight = Math.max(
             18,
@@ -3116,7 +3128,7 @@ export function PdfEditor() {
             topY: top,
             size: labelSize,
             color: "#0f172a",
-            maxWidth: Math.max(20, annotation.width * width - 8),
+            maxWidth: Math.max(20, annotationBox.width - 8),
           });
 
           const radioField =
@@ -3160,7 +3172,7 @@ export function PdfEditor() {
               topY: controlY + controlSize,
               size: 10,
               color: "#1e293b",
-              maxWidth: Math.max(20, annotation.width * width - controlSize - 16),
+              maxWidth: Math.max(20, annotationBox.width - controlSize - 16),
             });
           }
           if (radioField && selectedOption) radioField.select(selectedOption);
@@ -3170,11 +3182,10 @@ export function PdfEditor() {
 
         if (isInteractivePdfField(annotation.type)) {
           const fieldName = createPdfFieldName(annotation);
-          const fieldX = annotation.x * width;
-          const fieldY =
-            height - (annotation.y + annotation.height) * height;
-          let fieldWidth = annotation.width * width;
-          let fieldHeight = annotation.height * height;
+          const fieldX = annotationBox.x;
+          const fieldY = annotationBox.y;
+          let fieldWidth = annotationBox.width;
+          let fieldHeight = annotationBox.height;
           if (isSquareField(annotation.type)) {
             const size = Math.min(fieldWidth, fieldHeight);
             fieldWidth = size;
@@ -3289,11 +3300,10 @@ export function PdfEditor() {
 
         if (annotation.type === "image-placeholder") {
           const button = form.createButton(createPdfFieldName(annotation));
-          const fieldX = annotation.x * width;
-          const fieldY =
-            height - (annotation.y + annotation.height) * height;
-          const fieldWidth = annotation.width * width;
-          const fieldHeight = annotation.height * height;
+          const fieldX = annotationBox.x;
+          const fieldY = annotationBox.y;
+          const fieldWidth = annotationBox.width;
+          const fieldHeight = annotationBox.height;
           button.addToPage(
             annotation.imageData
               ? ""
@@ -3331,10 +3341,10 @@ export function PdfEditor() {
             dataUrlToBytes(annotation.imageData),
           );
           page.drawImage(embeddedImage, {
-            x: annotation.x * width,
-            y: height - (annotation.y + annotation.height) * height,
-            width: annotation.width * width,
-            height: annotation.height * height,
+            x: annotationBox.x,
+            y: annotationBox.y,
+            width: annotationBox.width,
+            height: annotationBox.height,
           });
           continue;
         }
@@ -3344,43 +3354,40 @@ export function PdfEditor() {
           await drawTextWithKhmerSupport({
             page,
             text: annotation.text || "",
-            x: annotation.x * width,
-            topY: height - annotation.y * height,
+            x: annotationBox.x,
+            topY: annotationBox.y + annotationBox.height,
             size,
             color: annotation.color,
-            maxWidth: Math.max(10, annotation.width * width),
+            maxWidth: Math.max(10, annotationBox.width),
           });
         }
         if (annotation.type === "highlight") {
           page.drawRectangle({
-            x: annotation.x * width,
-            y: height - (annotation.y + annotation.height) * height,
-            width: annotation.width * width,
-            height: annotation.height * height,
+            x: annotationBox.x,
+            y: annotationBox.y,
+            width: annotationBox.width,
+            height: annotationBox.height,
             color: ink,
             opacity: 0.35,
           });
         }
         if (annotation.type === "rectangle") {
           page.drawRectangle({
-            x: annotation.x * width,
-            y: height - (annotation.y + annotation.height) * height,
-            width: annotation.width * width,
-            height: annotation.height * height,
+            x: annotationBox.x,
+            y: annotationBox.y,
+            width: annotationBox.width,
+            height: annotationBox.height,
             borderColor: ink,
             borderWidth: annotation.strokeWidth ?? 2,
             opacity: 0,
           });
         }
         if (annotation.type === "ellipse") {
-          const ellipseWidth = annotation.width * width;
-          const ellipseHeight = annotation.height * height;
+          const ellipseWidth = annotationBox.width;
+          const ellipseHeight = annotationBox.height;
           page.drawEllipse({
-            x: annotation.x * width + ellipseWidth / 2,
-            y:
-              height -
-              annotation.y * height -
-              ellipseHeight / 2,
+            x: annotationBox.x + ellipseWidth / 2,
+            y: annotationBox.y + ellipseHeight / 2,
             xScale: ellipseWidth / 2,
             yScale: ellipseHeight / 2,
             borderColor: ink,
@@ -3388,20 +3395,38 @@ export function PdfEditor() {
           });
         }
         if (annotation.type === "line") {
-          const left = annotation.x * width;
-          const right = (annotation.x + annotation.width) * width;
-          const top = height - annotation.y * height;
-          const bottom =
-            height - (annotation.y + annotation.height) * height;
+          const topLeft = normalizedPointToPdf(
+            { x: annotation.x, y: annotation.y },
+            cropBox,
+            rotation,
+          );
+          const topRight = normalizedPointToPdf(
+            { x: annotation.x + annotation.width, y: annotation.y },
+            cropBox,
+            rotation,
+          );
+          const bottomLeft = normalizedPointToPdf(
+            { x: annotation.x, y: annotation.y + annotation.height },
+            cropBox,
+            rotation,
+          );
+          const bottomRight = normalizedPointToPdf(
+            {
+              x: annotation.x + annotation.width,
+              y: annotation.y + annotation.height,
+            },
+            cropBox,
+            rotation,
+          );
           page.drawLine({
             start:
               annotation.lineDirection === "up"
-                ? { x: left, y: bottom }
-                : { x: left, y: top },
+                ? bottomLeft
+                : topLeft,
             end:
               annotation.lineDirection === "up"
-                ? { x: right, y: top }
-                : { x: right, y: bottom },
+                ? topRight
+                : bottomRight,
             thickness: annotation.strokeWidth ?? 2,
             color: ink,
             lineCap: 1,
@@ -3412,8 +3437,8 @@ export function PdfEditor() {
             const start = annotation.points[index - 1];
             const end = annotation.points[index];
             page.drawLine({
-              start: { x: start.x * width, y: height - start.y * height },
-              end: { x: end.x * width, y: height - end.y * height },
+              start: normalizedPointToPdf(start, cropBox, rotation),
+              end: normalizedPointToPdf(end, cropBox, rotation),
               thickness: annotation.strokeWidth ?? 2.5,
               color: ink,
               lineCap: 1,
@@ -3426,18 +3451,8 @@ export function PdfEditor() {
               const start = stroke[index - 1];
               const end = stroke[index];
               page.drawLine({
-                start: {
-                  x: (annotation.x + start.x * annotation.width) * width,
-                  y:
-                    height -
-                    (annotation.y + start.y * annotation.height) * height,
-                },
-                end: {
-                  x: (annotation.x + end.x * annotation.width) * width,
-                  y:
-                    height -
-                    (annotation.y + end.y * annotation.height) * height,
-                },
+                start: normalizedPointToPdf({ x: annotation.x + start.x * annotation.width, y: annotation.y + start.y * annotation.height }, cropBox, rotation),
+                end: normalizedPointToPdf({ x: annotation.x + end.x * annotation.width, y: annotation.y + end.y * annotation.height }, cropBox, rotation),
                 thickness: 1.8,
                 color: ink,
                 lineCap: 1,
@@ -3481,9 +3496,10 @@ export function PdfEditor() {
         setHtmlProgress(pageIndex);
         const entry = pageOrder[pageIndex - 1];
         const page = await document.getPage(entry.sourcePage);
+        const rotation = (page.rotate + entry.rotation) % 360;
         const baseViewport = page.getViewport({
           scale: 1,
-          rotation: entry.rotation,
+          rotation,
         });
         const renderScale = Math.min(
           1.6,
@@ -3491,7 +3507,7 @@ export function PdfEditor() {
         );
         const renderViewport = page.getViewport({
           scale: renderScale,
-          rotation: entry.rotation,
+          rotation,
         });
         const canvas = window.document.createElement("canvas");
         const context = canvas.getContext("2d");
