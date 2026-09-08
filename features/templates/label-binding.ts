@@ -73,6 +73,23 @@ export function duplicateFieldKeys(annotations: TemplateAnnotation[]) {
   return new Set([...counts].filter(([, count]) => count > 1).map(([key]) => key));
 }
 
+export function createUniqueFieldKey(
+  value: string,
+  annotations: TemplateAnnotation[],
+) {
+  const baseKey = createFieldKey(value);
+  const usedKeys = new Set(annotations.map(annotationFieldKey));
+  if (!usedKeys.has(baseKey)) return baseKey;
+
+  for (let copyNumber = 2; copyNumber <= annotations.length + 2; copyNumber += 1) {
+    const suffix = `_${copyNumber}`;
+    const candidate = `${baseKey.slice(0, 64 - suffix.length)}${suffix}`;
+    if (!usedKeys.has(candidate)) return candidate;
+  }
+
+  return createFieldKey(`field_${crypto.randomUUID()}`);
+}
+
 export function isSubmissionAnswer(value: unknown): value is SubmissionAnswer {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
   const answer = value as Partial<SubmissionAnswer>;

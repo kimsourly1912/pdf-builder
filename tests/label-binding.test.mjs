@@ -55,3 +55,22 @@ test("builds self-describing answers in tab order", () => {
 test("detects duplicate field keys before a template is saved", () => {
   assert.deepEqual([...binding.duplicateFieldKeys([field(), field({ id: "other" })])], ["position"]);
 });
+
+test("creates stable unique keys for duplicated recipient fields", () => {
+  const existing = [
+    field(),
+    field({ id: "second", fieldKey: "position_2" }),
+  ];
+  assert.equal(
+    binding.createUniqueFieldKey("position", existing),
+    "position_3",
+  );
+
+  const longKey = "a".repeat(64);
+  const uniqueLongKey = binding.createUniqueFieldKey(
+    longKey,
+    [field({ fieldKey: longKey })],
+  );
+  assert.equal(uniqueLongKey.length, 64);
+  assert.equal(uniqueLongKey.endsWith("_2"), true);
+});

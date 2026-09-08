@@ -56,7 +56,12 @@ import Image from "next/image";
 import khmerFontUrl from "@expo-google-fonts/noto-sans-khmer/400Regular/NotoSansKhmer_400Regular.ttf?url";
 import type { RecipientRole } from "@/features/templates/template.types";
 import type { LabelBinding } from "@/features/templates/label-binding";
-import { createFieldKey, duplicateFieldKeys } from "@/features/templates/label-binding";
+import {
+  annotationFieldKey,
+  createFieldKey,
+  createUniqueFieldKey,
+  duplicateFieldKeys,
+} from "@/features/templates/label-binding";
 import {
   normalizedPointToPdf,
   normalizedRectToPdfBox,
@@ -73,6 +78,10 @@ import {
   DEFAULT_HIGHLIGHT_COLOR,
   getDefaultElementColor,
 } from "@/features/templates/field-style";
+import {
+  moveEditorAnnotations,
+  reorderEditorAnnotations,
+} from "@/features/templates/editor-shortcuts";
 import { Button } from "@/components/ui/button";
 import { PdfExtractionDialog } from "@/features/extraction/pdf-extraction-dialog";
 import { extractPdfContent } from "@/features/extraction/pdf-extraction";
@@ -220,11 +229,20 @@ type EditorDraft = {
 };
 type Interaction =
   | {
-      mode: "move" | "resize";
+      mode: "move";
+      ids: string[];
+      start: Point;
+      origins: Annotation[];
+      before: Annotation[];
+      changed: boolean;
+    }
+  | {
+      mode: "resize";
       id: string;
       start: Point;
       origin: Annotation;
       before: Annotation[];
+      changed: boolean;
     }
   | {
       mode: "pan";
@@ -233,6 +251,11 @@ type Interaction =
       scrollLeft: number;
       scrollTop: number;
     };
+type AnnotationClipboard = {
+  annotations: Annotation[];
+  mode: "copy" | "cut";
+  pasteCount: number;
+};
 type PdfViewport = {
   width: number;
   height: number;
@@ -325,6 +348,34 @@ const TOOL_SHORTCUT_ITEMS: Array<{
 const TOOL_SHORTCUTS = Object.fromEntries(
   TOOL_SHORTCUT_ITEMS.map((item) => [item.key.toLowerCase(), item.tool]),
 ) as Record<string, Tool>;
+const EDITOR_SHORTCUT_ITEMS = [
+  ["Arrow keys", "Move the selection by 1 px"],
+  ["Shift + Arrow", "Move the selection by 10 px"],
+  ["Shift + click", "Add an item to the selection"],
+  ["Shift + drag", "Lock movement to one axis"],
+  ["Alt/Option + drag", "Duplicate, then move the selection"],
+  ["Ctrl/Cmd + A", "Select every item on the current page"],
+  ["Ctrl/Cmd + C / X", "Copy or cut the selection"],
+  ["Ctrl/Cmd + V", "Paste on the current page"],
+  ["Ctrl/Cmd + D", "Duplicate with a small offset"],
+  ["Delete / Backspace", "Remove the selection"],
+  ["Ctrl/Cmd + [ / ]", "Move backward or forward one layer"],
+  ["Ctrl/Cmd + Shift + [ / ]", "Send to back or bring to front"],
+  ["Page Up / Page Down", "Go to the previous or next page"],
+  ["Ctrl/Cmd + 0", "Fit the page to the editor"],
+  ["Ctrl/Cmd + + / -", "Zoom in or out"],
+  ["Ctrl/Cmd + Z", "Undo the last editor change"],
+  ["Ctrl/Cmd + Shift + Z", "Redo the last editor change"],
+  ["Space + drag", "Temporarily pan the document"],
+  ["Ctrl/Cmd + wheel", "Zoom around the mouse pointer"],
+  ["Esc", "Cancel the active action or clear selection"],
+] as const;
+const BATCH_STYLE_KEYS = new Set([
+  "color",
+  "borderColor",
+  "fontSize",
+  "strokeWidth",
+]);
 
 function isTypingTarget(target: EventTarget | null) {
   if (!(target instanceof HTMLElement)) return false;
@@ -405,6 +456,39 @@ function cloneAnnotations(annotations: Annotation[]) {
       ? { ...annotation.labelBinding, rect: { ...annotation.labelBinding.rect } }
       : undefined,
   }));
+}
+
+function createAnnotationDuplicate(options: {
+  annotation: Annotation;
+  annotations: Annotation[];
+  page: number;
+  fieldNameSuffix?: string;
+}) {
+  const { annotation, annotations, page, fieldNameSuffix = "copy" } = options;
+  const duplicate = cloneAnnotations([annotation])[0];
+  const assignable = isAssignableTemplateField(annotation.type);
+  const existingFields = annotations.filter((item) =>
+    isAssignableTemplateField(item.type),
+  );
+  const maximumTabIndex = existingFields.reduce(
+    (maximum, item) => Math.max(maximum, item.tabIndex ?? 0),
+    0,
+  );
+
+  return {
+    ...duplicate,
+    id: createAnnotationId(),
+    page,
+    fieldName:
+      assignable && annotation.fieldName
+        ? `${annotation.fieldName} ${fieldNameSuffix}`
+        : annotation.fieldName,
+    fieldKey: assignable
+      ? createUniqueFieldKey(annotationFieldKey(annotation), existingFields)
+      : annotation.fieldKey,
+    labelBinding: undefined,
+    tabIndex: assignable ? maximumTabIndex + 1 : annotation.tabIndex,
+  };
 }
 
 function createPageEntry(sourcePage: number): PageEntry {
@@ -1259,43 +1343,17 @@ function ShortcutsDialog(props: {
         </div>
         <div className="rounded-xl border border-blue-100 bg-blue-50 p-4">
           <p className="text-xs font-semibold uppercase tracking-wider text-blue-700">
-            Navigation
+            Navigation and editing
           </p>
           <div className="mt-3 grid gap-3 text-sm sm:grid-cols-2">
-            <div>
-              <p className="font-semibold text-slate-800">Ctrl/Cmd + wheel</p>
-              <p className="mt-0.5 text-xs text-slate-500">
-                Zoom around the mouse pointer
-              </p>
-            </div>
-            <div>
-              <p className="font-semibold text-slate-800">Space + drag</p>
-              <p className="mt-0.5 text-xs text-slate-500">
-                Temporarily pan the document
-              </p>
-            </div>
-            <div>
-              <p className="font-semibold text-slate-800">
-                Delete / Backspace
-              </p>
-              <p className="mt-0.5 text-xs text-slate-500">
-                Remove the selected item
-              </p>
-            </div>
-            <div>
-              <p className="font-semibold text-slate-800">Ctrl/Cmd + Z</p>
-              <p className="mt-0.5 text-xs text-slate-500">
-                Undo the last editor change
-              </p>
-            </div>
-            <div>
-              <p className="font-semibold text-slate-800">
-                Ctrl/Cmd + Shift + Z
-              </p>
-              <p className="mt-0.5 text-xs text-slate-500">
-                Redo the last editor change
-              </p>
-            </div>
+            {EDITOR_SHORTCUT_ITEMS.map(([shortcut, description]) => (
+              <div key={shortcut}>
+                <p className="font-semibold text-slate-800">{shortcut}</p>
+                <p className="mt-0.5 text-xs text-slate-500">
+                  {description}
+                </p>
+              </div>
+            ))}
           </div>
         </div>
         <DialogFooter>
@@ -1544,6 +1602,7 @@ export function PdfEditor() {
   const viewportRef = useRef<HTMLDivElement>(null);
   const drawingRef = useRef<Annotation | null>(null);
   const interactionRef = useRef<Interaction | null>(null);
+  const clipboardRef = useRef<AnnotationClipboard | null>(null);
   const spacePressedRef = useRef(false);
   const touchPointersRef = useRef<Map<number, Point>>(new Map());
   const pinchRef = useRef<PinchGesture | null>(null);
@@ -1578,7 +1637,7 @@ export function PdfEditor() {
   const [annotations, setAnnotations] = useState<Annotation[]>([]);
   const [undoStack, setUndoStack] = useState<Annotation[][]>([]);
   const [redoStack, setRedoStack] = useState<Annotation[][]>([]);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [labelBindingFieldId, setLabelBindingFieldId] = useState<string | null>(null);
   const [pdfTextRuns, setPdfTextRuns] = useState<PdfTextRun[]>([]);
   const [signatureOpen, setSignatureOpen] = useState(false);
@@ -1614,6 +1673,12 @@ export function PdfEditor() {
   });
   const [extractionError, setExtractionError] = useState("");
   const [error, setError] = useState("");
+
+  const selectedId = selectedIds.at(-1) ?? null;
+
+  function setSelectedId(id: string | null) {
+    setSelectedIds(id ? [id] : []);
+  }
 
   const selectedAnnotation =
     annotations.find((annotation) => annotation.id === selectedId) ?? null;
@@ -1669,24 +1734,23 @@ export function PdfEditor() {
     return () => window.clearTimeout(timer);
   }, [annotations, document, fileBytes, fileName, pageOrder]);
 
-  function calculateFitZoom() {
+  const fitToScreen = useCallback(() => {
     const viewport = viewportRef.current;
-    if (!viewport || !basePageSize.width) return DEFAULT_ZOOM;
     const pageGap = window.matchMedia("(min-width: 640px)").matches ? 80 : 24;
-    return clampZoom((viewport.clientWidth - pageGap) / basePageSize.width);
-  }
-
-  function fitToScreen() {
+    const nextZoom =
+      viewport && basePageSize.width
+        ? clampZoom((viewport.clientWidth - pageGap) / basePageSize.width)
+        : DEFAULT_ZOOM;
     setFitMode(true);
     setPinchScale(1);
-    setZoom(calculateFitZoom());
+    setZoom(nextZoom);
     requestAnimationFrame(() => {
-      const viewport = viewportRef.current;
-      if (!viewport) return;
-      viewport.scrollLeft = 0;
-      viewport.scrollTop = 0;
+      const currentViewport = viewportRef.current;
+      if (!currentViewport) return;
+      currentViewport.scrollLeft = 0;
+      currentViewport.scrollTop = 0;
     });
-  }
+  }, [basePageSize.width]);
 
   function setManualZoom(nextZoom: number) {
     setFitMode(false);
@@ -1855,25 +1919,88 @@ export function PdfEditor() {
         return;
       }
 
+      if (event.key === "Escape") {
+        if (labelBindingFieldId) {
+          setLabelBindingFieldId(null);
+          setError("");
+        } else if (tool !== "select") {
+          setPendingSignature(null);
+          selectEditorTool("select");
+        } else if (selectedIds.length > 0) {
+          setSelectedIds([]);
+        }
+        return;
+      }
+
+      if (event.key === "PageUp" || event.key === "PageDown") {
+        event.preventDefault();
+        const direction = event.key === "PageUp" ? -1 : 1;
+        setPageNumber((current) =>
+          Math.min(pageOrder.length, Math.max(1, current + direction)),
+        );
+        setSelectedIds([]);
+        return;
+      }
+
       if (
         (event.key === "Delete" || event.key === "Backspace") &&
-        selectedId
+        selectedIds.length > 0 &&
+        editorMode === "build"
       ) {
         event.preventDefault();
+        const selected = new Set(selectedIds);
         setAnnotations((current) => {
           setUndoStack((history) => [
             ...history.slice(-39),
             cloneAnnotations(current),
           ]);
           setRedoStack([]);
-          return current.filter((annotation) => annotation.id !== selectedId);
+          return current.filter((annotation) => !selected.has(annotation.id));
         });
-        setSelectedId(null);
+        setSelectedIds([]);
+        return;
+      }
+
+      if (
+        editorMode === "build" &&
+        selectedIds.length > 0 &&
+        !event.ctrlKey &&
+        !event.metaKey &&
+        !event.altKey &&
+        ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(
+          event.key,
+        )
+      ) {
+        event.preventDefault();
+        const distance = event.shiftKey ? 10 : 1;
+        const deltaX =
+          event.key === "ArrowLeft"
+            ? -distance / basePageSize.width
+            : event.key === "ArrowRight"
+              ? distance / basePageSize.width
+              : 0;
+        const deltaY =
+          event.key === "ArrowUp"
+            ? -distance / basePageSize.height
+            : event.key === "ArrowDown"
+              ? distance / basePageSize.height
+              : 0;
+        commit(
+          moveEditorAnnotations({
+            annotations,
+            selectedIds,
+            deltaX,
+            deltaY,
+            pageWidth: basePageSize.width,
+            pageHeight: basePageSize.height,
+          }),
+        );
         return;
       }
 
       const commandKey = event.ctrlKey || event.metaKey;
       const normalizedKey = event.key.toLowerCase();
+
       if (commandKey && !event.altKey && normalizedKey === "z") {
         event.preventDefault();
         if (event.shiftKey) {
@@ -1895,7 +2022,7 @@ export function PdfEditor() {
           setAnnotations(cloneAnnotations(previous));
           setUndoStack((history) => history.slice(0, -1));
         }
-        setSelectedId(null);
+        setSelectedIds([]);
         return;
       }
 
@@ -1909,7 +2036,214 @@ export function PdfEditor() {
         ]);
         setAnnotations(cloneAnnotations(next));
         setRedoStack((history) => history.slice(0, -1));
-        setSelectedId(null);
+        setSelectedIds([]);
+        return;
+      }
+
+      if (
+        commandKey &&
+        !event.altKey &&
+        normalizedKey === "a" &&
+        editorMode === "build"
+      ) {
+        event.preventDefault();
+        setSelectedIds(
+          annotations
+            .filter((annotation) => annotation.page === pageNumber)
+            .map((annotation) => annotation.id),
+        );
+        return;
+      }
+
+      if (
+        commandKey &&
+        !event.altKey &&
+        normalizedKey === "c" &&
+        selectedIds.length > 0 &&
+        editorMode === "build"
+      ) {
+        event.preventDefault();
+        const selected = new Set(selectedIds);
+        clipboardRef.current = {
+          annotations: cloneAnnotations(
+            annotations.filter((annotation) => selected.has(annotation.id)),
+          ),
+          mode: "copy",
+          pasteCount: 0,
+        };
+        return;
+      }
+
+      if (
+        commandKey &&
+        !event.altKey &&
+        normalizedKey === "x" &&
+        selectedIds.length > 0 &&
+        editorMode === "build"
+      ) {
+        event.preventDefault();
+        const selected = new Set(selectedIds);
+        const cutAnnotations = annotations.filter((annotation) =>
+          selected.has(annotation.id),
+        );
+        if (cutAnnotations.length === 0) return;
+        clipboardRef.current = {
+          annotations: cloneAnnotations(cutAnnotations),
+          mode: "cut",
+          pasteCount: 0,
+        };
+        setUndoStack((history) => [
+          ...history.slice(-39),
+          cloneAnnotations(annotations),
+        ]);
+        setRedoStack([]);
+        setAnnotations((current) =>
+          current.filter((item) => !selected.has(item.id)),
+        );
+        setSelectedIds([]);
+        return;
+      }
+
+      if (
+        commandKey &&
+        !event.altKey &&
+        normalizedKey === "v" &&
+        clipboardRef.current &&
+        editorMode === "build"
+      ) {
+        event.preventDefault();
+        const clipboard = clipboardRef.current;
+        const firstCutPaste =
+          clipboard.mode === "cut" && clipboard.pasteCount === 0;
+        const pasted: Annotation[] = [];
+        for (const sourceAnnotation of clipboard.annotations) {
+          const workingAnnotations = [...annotations, ...pasted];
+          if (
+            firstCutPaste &&
+            !workingAnnotations.some((item) => item.id === sourceAnnotation.id)
+          ) {
+            const existingFields = workingAnnotations.filter((item) =>
+              isAssignableTemplateField(item.type),
+            );
+            pasted.push({
+              ...cloneAnnotations([sourceAnnotation])[0],
+              page: pageNumber,
+              fieldKey: isAssignableTemplateField(sourceAnnotation.type)
+                ? createUniqueFieldKey(
+                    annotationFieldKey(sourceAnnotation),
+                    existingFields,
+                  )
+                : sourceAnnotation.fieldKey,
+              labelBinding:
+                sourceAnnotation.page === pageNumber
+                  ? sourceAnnotation.labelBinding
+                  : undefined,
+            });
+          } else {
+            pasted.push(
+              createAnnotationDuplicate({
+                annotation: sourceAnnotation,
+                annotations: workingAnnotations,
+                page: pageNumber,
+              }),
+            );
+          }
+        }
+        const pastedIds = pasted.map((annotation) => annotation.id);
+        const offsetPixels = firstCutPaste
+          ? 0
+          : 8 * (clipboard.pasteCount + 1);
+        const withPasted = [...annotations, ...pasted];
+        const nextAnnotations = offsetPixels
+          ? moveEditorAnnotations({
+              annotations: withPasted,
+              selectedIds: pastedIds,
+              deltaX: offsetPixels / basePageSize.width,
+              deltaY: offsetPixels / basePageSize.height,
+              pageWidth: basePageSize.width,
+              pageHeight: basePageSize.height,
+            })
+          : withPasted;
+        commit(nextAnnotations);
+        setSelectedIds(pastedIds);
+        clipboardRef.current = {
+          ...clipboard,
+          mode: "copy",
+          pasteCount: clipboard.pasteCount + 1,
+        };
+        return;
+      }
+
+      if (
+        commandKey &&
+        !event.altKey &&
+        normalizedKey === "d" &&
+        selectedIds.length > 0 &&
+        editorMode === "build"
+      ) {
+        event.preventDefault();
+        const selected = new Set(selectedIds);
+        const duplicates: Annotation[] = [];
+        for (const sourceAnnotation of annotations.filter((annotation) =>
+          selected.has(annotation.id),
+        )) {
+          duplicates.push(
+            createAnnotationDuplicate({
+              annotation: sourceAnnotation,
+              annotations: [...annotations, ...duplicates],
+              page: sourceAnnotation.page,
+            }),
+          );
+        }
+        const duplicateIds = duplicates.map((annotation) => annotation.id);
+        commit(
+          moveEditorAnnotations({
+            annotations: [...annotations, ...duplicates],
+            selectedIds: duplicateIds,
+            deltaX: 8 / basePageSize.width,
+            deltaY: 8 / basePageSize.height,
+            pageWidth: basePageSize.width,
+            pageHeight: basePageSize.height,
+          }),
+        );
+        setSelectedIds(duplicateIds);
+        return;
+      }
+
+      if (
+        commandKey &&
+        !event.altKey &&
+        (event.code === "BracketLeft" || event.code === "BracketRight") &&
+        selectedIds.length > 0 &&
+        editorMode === "build"
+      ) {
+        event.preventDefault();
+        commit(
+          reorderEditorAnnotations({
+            annotations,
+            selectedIds,
+            page: pageNumber,
+            direction:
+              event.code === "BracketRight" ? "forward" : "backward",
+            toEdge: event.shiftKey,
+          }),
+        );
+        return;
+      }
+
+      if (commandKey && !event.altKey && normalizedKey === "0") {
+        event.preventDefault();
+        fitToScreen();
+        return;
+      }
+
+      if (
+        commandKey &&
+        !event.altKey &&
+        (normalizedKey === "+" || normalizedKey === "=" || normalizedKey === "-")
+      ) {
+        event.preventDefault();
+        setManualZoom(zoom + (normalizedKey === "-" ? -0.15 : 0.15));
         return;
       }
 
@@ -1948,14 +2282,24 @@ export function PdfEditor() {
     };
   }, [
     annotations,
+    basePageSize.height,
+    basePageSize.width,
+    commit,
     document,
     editorMode,
+    fitToScreen,
     pendingSignature,
+    pageNumber,
+    pageOrder.length,
     redoStack,
     selectedId,
+    selectedIds,
     shortcutsOpen,
     signatureOpen,
+    labelBindingFieldId,
+    tool,
     undoStack,
+    zoom,
   ]);
 
   async function loadEditorDocument(
@@ -1988,6 +2332,7 @@ export function PdfEditor() {
     setPinchScale(1);
     touchPointersRef.current.clear();
     pinchRef.current = null;
+    clipboardRef.current = null;
     setAnnotations(cloneAnnotations(restoredAnnotations));
     setUndoStack([]);
     setRedoStack([]);
@@ -2691,25 +3036,32 @@ export function PdfEditor() {
       const point = pointFromEvent(event);
       const deltaX = point.x - interaction.start.x;
       const deltaY = point.y - interaction.start.y;
-      let next = interaction.origin;
 
       if (interaction.mode === "move") {
-        if (next.type === "drawing") {
-          next = {
-            ...next,
-            points: next.points?.map((item) => ({
-              x: Math.min(1, Math.max(0, item.x + deltaX)),
-              y: Math.min(1, Math.max(0, item.y + deltaY)),
-            })),
-          };
-        } else {
-          next = {
-            ...next,
-            x: Math.min(1 - next.width, Math.max(0, next.x + deltaX)),
-            y: Math.min(1 - next.height, Math.max(0, next.y + deltaY)),
-          };
-        }
-      } else {
+        interaction.changed = true;
+        setAnnotations((current) => {
+          const originsById = new Map(
+            interaction.origins.map((origin) => [origin.id, origin]),
+          );
+          const resetToOrigins = current.map(
+            (annotation) => originsById.get(annotation.id) ?? annotation,
+          );
+          return moveEditorAnnotations({
+            annotations: resetToOrigins,
+            selectedIds: interaction.ids,
+            deltaX,
+            deltaY,
+            pageWidth: basePageSize.width,
+            pageHeight: basePageSize.height,
+            constrainAxis: event.shiftKey,
+          });
+        });
+        return;
+      }
+
+      let next = interaction.origin;
+      interaction.changed = true;
+      if (interaction.mode === "resize") {
         if (isSquareField(next.type)) {
           const horizontalDelta = deltaX * basePageSize.width;
           const verticalDelta = deltaY * basePageSize.height;
@@ -2798,7 +3150,7 @@ export function PdfEditor() {
     const interaction = interactionRef.current;
     if (interaction) {
       interactionRef.current = null;
-      if (interaction.mode !== "pan") {
+      if (interaction.mode !== "pan" && interaction.changed) {
         setUndoStack((history) => [
           ...history.slice(-39),
           cloneAnnotations(interaction.before),
@@ -2827,18 +3179,60 @@ export function PdfEditor() {
     if (spacePressedRef.current || editorMode === "fill") return;
     if (tool !== "select") return;
     event.stopPropagation();
-    setSelectedId(annotation.id);
     const rect = surfaceRef.current?.getBoundingClientRect();
     if (!rect) return;
+    const start = {
+      x: (event.clientX - rect.left) / rect.width,
+      y: (event.clientY - rect.top) / rect.height,
+    };
+
+    if (mode === "resize") {
+      setSelectedId(annotation.id);
+      interactionRef.current = {
+        mode: "resize",
+        id: annotation.id,
+        start,
+        origin: cloneAnnotations([annotation])[0],
+        before: cloneAnnotations(annotations),
+        changed: false,
+      };
+      surfaceRef.current?.setPointerCapture(event.pointerId);
+      return;
+    }
+
+    const selectedForMove = selectedIds.includes(annotation.id)
+      ? selectedIds
+      : event.shiftKey
+        ? [...selectedIds, annotation.id]
+        : [annotation.id];
+    const originals = annotations.filter((item) =>
+      selectedForMove.includes(item.id),
+    );
+    let interactionAnnotations = originals;
+    if (event.altKey) {
+      event.preventDefault();
+      const duplicates: Annotation[] = [];
+      for (const original of originals) {
+        duplicates.push(
+          createAnnotationDuplicate({
+            annotation: original,
+            annotations: [...annotations, ...duplicates],
+            page: original.page,
+          }),
+        );
+      }
+      interactionAnnotations = duplicates;
+      setAnnotations([...annotations, ...duplicates]);
+    }
+    const interactionIds = interactionAnnotations.map((item) => item.id);
+    setSelectedIds(interactionIds);
     interactionRef.current = {
-      mode,
-      id: annotation.id,
-      start: {
-        x: (event.clientX - rect.left) / rect.width,
-        y: (event.clientY - rect.top) / rect.height,
-      },
-      origin: cloneAnnotations([annotation])[0],
+      mode: "move",
+      ids: interactionIds,
+      start,
+      origins: cloneAnnotations(interactionAnnotations),
       before: cloneAnnotations(annotations),
+      changed: event.altKey,
     };
     surfaceRef.current?.setPointerCapture(event.pointerId);
   }
@@ -2883,9 +3277,15 @@ export function PdfEditor() {
 
   function updateSelected(changes: Partial<Annotation>) {
     if (!selectedId) return;
+    const changeKeys = Object.keys(changes);
+    const appliesToSelection =
+      selectedIds.length > 1 &&
+      changeKeys.length > 0 &&
+      changeKeys.every((key) => BATCH_STYLE_KEYS.has(key));
+    const targetIds = new Set(appliesToSelection ? selectedIds : [selectedId]);
     commit(
       annotations.map((annotation) =>
-        annotation.id === selectedId
+        targetIds.has(annotation.id)
           ? { ...annotation, ...changes }
           : annotation,
       ),
@@ -2893,19 +3293,33 @@ export function PdfEditor() {
   }
 
   function resetSelectedToStandardSize() {
-    if (!selectedAnnotation || !isStandardFieldType(selectedAnnotation.type)) {
-      return;
-    }
-    const size = getNormalizedStandardFieldDimensions(
-      selectedAnnotation.type,
-      basePageSize,
+    const targetIds = new Set(selectedIds);
+    const hasResizableSelection = annotations.some(
+      (annotation) =>
+        targetIds.has(annotation.id) && isStandardFieldType(annotation.type),
     );
-    updateSelected({
-      x: Math.min(selectedAnnotation.x, 1 - size.width),
-      y: Math.min(selectedAnnotation.y, 1 - size.height),
-      width: size.width,
-      height: size.height,
-    });
+    if (!hasResizableSelection) return;
+    commit(
+      annotations.map((annotation) => {
+        if (
+          !targetIds.has(annotation.id) ||
+          !isStandardFieldType(annotation.type)
+        ) {
+          return annotation;
+        }
+        const size = getNormalizedStandardFieldDimensions(
+          annotation.type,
+          basePageSize,
+        );
+        return {
+          ...annotation,
+          x: Math.min(annotation.x, 1 - size.width),
+          y: Math.min(annotation.y, 1 - size.height),
+          width: size.width,
+          height: size.height,
+        };
+      }),
+    );
   }
 
   function startLabelBinding() {
@@ -2950,18 +3364,25 @@ export function PdfEditor() {
   }
 
   function duplicateSelectedAcrossPages() {
-    if (!selectedAnnotation || pageOrder.length < 2) return;
-    const copies = pageOrder
-      .map((_, index) => index + 1)
-      .filter((page) => page !== selectedAnnotation.page)
-      .map((page) => ({
-        ...cloneAnnotations([selectedAnnotation])[0],
-        id: createAnnotationId(),
-        page,
-        fieldName: selectedAnnotation.fieldName
-          ? `${selectedAnnotation.fieldName} ${page}`
-          : undefined,
-      }));
+    if (selectedIds.length === 0 || pageOrder.length < 2) return;
+    const targetIds = new Set(selectedIds);
+    const sources = annotations.filter((annotation) =>
+      targetIds.has(annotation.id),
+    );
+    const copies: Annotation[] = [];
+    for (const source of sources) {
+      for (let page = 1; page <= pageOrder.length; page += 1) {
+        if (page === source.page) continue;
+        copies.push(
+          createAnnotationDuplicate({
+            annotation: source,
+            annotations: [...annotations, ...copies],
+            page,
+            fieldNameSuffix: String(page),
+          }),
+        );
+      }
+    }
     commit([...annotations, ...copies]);
   }
 
@@ -3057,11 +3478,12 @@ export function PdfEditor() {
   }
 
   function deleteSelected() {
-    if (!selectedId) return;
+    if (selectedIds.length === 0) return;
+    const targetIds = new Set(selectedIds);
     commit(
-      annotations.filter((annotation) => annotation.id !== selectedId),
+      annotations.filter((annotation) => !targetIds.has(annotation.id)),
     );
-    setSelectedId(null);
+    setSelectedIds([]);
   }
 
   function undo() {
@@ -4353,7 +4775,9 @@ export function PdfEditor() {
             {selectedAnnotation && (
               <div className="flex shrink-0 items-center gap-2 overflow-x-auto border-b border-slate-200 bg-white px-3 py-2 xl:hidden">
                 <span className="shrink-0 text-xs font-semibold capitalize text-slate-500">
-                  {selectedAnnotation.type}
+                  {selectedIds.length > 1
+                    ? `${selectedIds.length} selected`
+                    : selectedAnnotation.type}
                 </span>
                 {(selectedAnnotation.type === "text" ||
                   selectedAnnotation.type === "input" ||
@@ -4581,7 +5005,8 @@ export function PdfEditor() {
                     />
                   ))}
                   {pageAnnotations.map((annotation) => {
-                    const selected = annotation.id === selectedId;
+                    const selected = selectedIds.includes(annotation.id);
+                    const primarySelected = annotation.id === selectedId;
                     const fieldIconSize = getScaledFieldIconSize(zoom);
                     const mediaIconSize = getScaledFieldIconSize(zoom, "media");
                     const annotationFontSize =
@@ -5157,12 +5582,19 @@ export function PdfEditor() {
                                 </span>
                               </span>
                             )}
-                            {(selected || editorMode === "fill") && (
+                            {(primarySelected || editorMode === "fill") && (
                               <button
                                 type="button"
-                                onPointerDown={(event) => event.stopPropagation()}
+                                onPointerDown={(event) => {
+                                  if (!(editorMode === "build" && event.altKey)) {
+                                    event.stopPropagation();
+                                  }
+                                }}
                                 onClick={(event) => {
                                   event.stopPropagation();
+                                  if (editorMode === "build" && event.altKey) {
+                                    return;
+                                  }
                                   chooseImage(annotation.id);
                                 }}
                                 className="absolute bottom-2 left-1/2 -translate-x-1/2 rounded-md bg-slate-900/90 px-2.5 py-1 text-[11px] font-semibold text-white shadow hover:bg-slate-900"
@@ -5172,7 +5604,7 @@ export function PdfEditor() {
                             )}
                           </span>
                         )}
-                        {selected && editorMode === "build" && (
+                        {primarySelected && editorMode === "build" && (
                           <span
                             role="button"
                             aria-label={`Resize ${annotation.type} annotation`}
@@ -5233,11 +5665,14 @@ export function PdfEditor() {
               <div className="space-y-4 p-4">
                 <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
                   <p className="text-sm font-semibold text-slate-800">
-                    {formatAnnotationTypeLabel(selectedAnnotation.type)}
+                    {selectedIds.length > 1
+                      ? `${selectedIds.length} elements selected`
+                      : formatAnnotationTypeLabel(selectedAnnotation.type)}
                   </p>
                   <p className="mt-1 text-xs leading-5 text-slate-400">
-                    Page {selectedAnnotation.page} · Select another tool to add
-                    more.
+                    Page {selectedAnnotation.page} · {selectedIds.length > 1
+                      ? "Style, move, duplicate, or delete them together."
+                      : "Select another tool to add more."}
                   </p>
                 </div>
                 {(selectedAnnotation.type === "text" ||
@@ -5526,7 +5961,9 @@ export function PdfEditor() {
                   onClick={deleteSelected}
                   className="w-full border-rose-200 text-rose-600 hover:bg-rose-50 hover:text-rose-700"
                 >
-                  <Trash2 className="size-4" /> Delete annotation
+                  <Trash2 className="size-4" /> Delete {selectedIds.length > 1
+                    ? "selected elements"
+                    : "annotation"}
                 </Button>
               </div>
             ) : (
