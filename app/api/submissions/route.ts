@@ -1,7 +1,12 @@
 import { desc, eq } from "drizzle-orm";
 
 import { getDb } from "@/db";
-import { recipientLinks, submissions, templates } from "@/db/schema";
+import {
+  recipientLinks,
+  submissions,
+  templates,
+  templateVersions,
+} from "@/db/schema";
 import {
   isResponse,
   jsonError,
@@ -14,6 +19,7 @@ import {
 } from "@/features/templates/label-binding";
 import type { SubmissionAnswer } from "@/features/templates/label-binding";
 import type { TemplateAnnotation } from "@/features/templates/template.types";
+import { isStoredSubmissionImage } from "@/features/templates/file-validation";
 
 export async function GET(request: Request) {
   try {
@@ -24,7 +30,9 @@ export async function GET(request: Request) {
         id: submissions.id,
         templateId: templates.id,
         templateName: templates.name,
-        annotationsJson: templates.annotationsJson,
+        templateVersionId: submissions.templateVersionId,
+        versionNumber: templateVersions.versionNumber,
+        annotationsJson: templateVersions.annotationsJson,
         roleName: recipientLinks.roleName,
         roleColor: recipientLinks.roleColor,
         recipientName: submissions.recipientName,
@@ -36,6 +44,10 @@ export async function GET(request: Request) {
       .from(submissions)
       .innerJoin(templates, eq(submissions.templateId, templates.id))
       .innerJoin(
+        templateVersions,
+        eq(submissions.templateVersionId, templateVersions.id),
+      )
+      .innerJoin(
         recipientLinks,
         eq(submissions.recipientLinkId, recipientLinks.id),
       )
@@ -45,11 +57,26 @@ export async function GET(request: Request) {
 
     return Response.json({
       submissions: rows.map((row) => {
-        const answers = submissionAnswers(row.valuesJson, row.annotationsJson);
+        const answers = submissionAnswers(row.valuesJson, row.annotationsJson).map(
+          (answer) => ({
+            ...answer,
+            value: isStoredSubmissionImage(answer.value)
+              ? {
+                  kind: "submission-image",
+                  url: `/api/submissions/${row.id}/images/${answer.fieldId}`,
+                  width: answer.value.width,
+                  height: answer.value.height,
+                  size: answer.value.size,
+                }
+              : answer.value,
+          }),
+        );
         return {
           id: row.id,
           templateId: row.templateId,
           templateName: row.templateName,
+          templateVersionId: row.templateVersionId,
+          versionNumber: row.versionNumber,
           roleName: row.roleName,
           roleColor: row.roleColor,
           recipientName: row.recipientName,

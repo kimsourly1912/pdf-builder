@@ -15,6 +15,13 @@
       "when": 1788749573271,
       "tag": "0001_good_thundra",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1788776378006,
+      "tag": "0002_template_link_lifecycle",
+      "breakpoints": true
     }
   ]
 }
