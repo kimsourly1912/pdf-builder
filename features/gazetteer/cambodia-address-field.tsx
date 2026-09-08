@@ -49,6 +49,7 @@ type CambodiaAddressFieldProps = {
   label?: string;
   className?: string;
   style?: CSSProperties;
+  iconSize?: number;
 };
 
 type GazetteerResponse = { data?: GazetteerLocation[]; error?: string };
@@ -153,6 +154,9 @@ export function CambodiaAddressField(props: CambodiaAddressFieldProps) {
     borderColor: props.style?.borderColor,
     fontSize: props.style?.fontSize,
   };
+  const triggerIconStyle: CSSProperties | undefined = props.iconSize
+    ? { width: props.iconSize, height: props.iconSize }
+    : undefined;
 
   if (props.disabled) {
     return (
@@ -164,7 +168,11 @@ export function CambodiaAddressField(props: CambodiaAddressFieldProps) {
         <span className={`min-w-0 flex-1 ${displayValue ? "truncate" : "text-slate-400"}`}>
           {displayValue || props.label || "Cambodia address"}
         </span>
-        <ChevronDown className="ml-1 size-3.5 shrink-0 text-slate-400" />
+        <ChevronDown
+          className="ml-1 shrink-0 text-slate-500"
+          style={triggerIconStyle}
+          strokeWidth={2.25}
+        />
       </div>
     );
   }
@@ -186,7 +194,11 @@ export function CambodiaAddressField(props: CambodiaAddressFieldProps) {
             <span className={`min-w-0 flex-1 truncate ${displayValue ? "" : "text-slate-400"}`}>
               {displayValue || props.label || "Select Cambodia address"}
             </span>
-            <ChevronDown className="ml-1 size-3.5 shrink-0 text-slate-400" />
+            <ChevronDown
+              className="ml-1 shrink-0 text-slate-500"
+              style={triggerIconStyle}
+              strokeWidth={2.25}
+            />
           </button>
         </PopoverTrigger>
         <PopoverContent

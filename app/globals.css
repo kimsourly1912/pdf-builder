@@ -2,6 +2,13 @@
 @import "tw-animate-css";
 @import "../vendor/shadcn-tailwind-4.13.0.css";
 
+.pdf-native-date-field::-webkit-calendar-picker-indicator {
+  width: 2rem;
+  height: 100%;
+  cursor: pointer;
+  opacity: 0;
+}
+
 @utility scrollbar-thin {
   scrollbar-width: thin;
 }

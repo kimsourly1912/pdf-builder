@@ -4,6 +4,8 @@ import {
   ArrowLeft,
   ArrowRight,
   Check,
+  ChevronDown,
+  CalendarDays,
   FileCheck2,
   LoaderCircle,
   LockKeyhole,
@@ -26,6 +28,7 @@ import type {
   TemplateFillPayload,
 } from "@/features/templates/template.types";
 import { isRecipientFieldType } from "@/features/templates/template-fields";
+import { getScaledFieldIconSize } from "@/features/templates/field-layout";
 import {
   normalizedPointToPdf,
   normalizedRectToPdfBox,
@@ -64,6 +67,7 @@ export function RecipientFill(props: { token: string }) {
   const [pdfBytes, setPdfBytes] = useState<Uint8Array<ArrayBuffer> | null>(null);
   const [pageNumber, setPageNumber] = useState(1);
   const [pageSize, setPageSize] = useState<PdfViewport>({ width: 612, height: 792 });
+  const [pageScale, setPageScale] = useState(1);
   const [values, setValues] = useState<Record<string, unknown>>({});
   const [recipientName, setRecipientName] = useState("");
   const [recipientEmail, setRecipientEmail] = useState("");
@@ -131,6 +135,7 @@ export function RecipientFill(props: { token: string }) {
       canvas.width = viewport.width;
       canvas.height = viewport.height;
       setPageSize(viewport);
+      setPageScale(scale);
       renderTask = page.render({ canvas, canvasContext: context, viewport });
       await renderTask.promise;
     }
@@ -226,7 +231,7 @@ export function RecipientFill(props: { token: string }) {
           <div className="mx-auto">
             <div className="relative mx-auto overflow-hidden bg-white shadow-2xl" style={{ width: pageSize.width, height: pageSize.height }}>
               <canvas ref={canvasRef} className="absolute inset-0 size-full" />
-              {pageAnnotations.map((annotation) => <FillAnnotation key={annotation.id} annotation={annotation} value={values[annotation.id]} onChange={(value) => updateValue(annotation.id, value)} onError={setError} />)}
+              {pageAnnotations.map((annotation) => <FillAnnotation key={annotation.id} annotation={annotation} value={values[annotation.id]} scale={pageScale} onChange={(value) => updateValue(annotation.id, value)} onError={setError} />)}
             </div>
             <div className="mt-4 flex items-center justify-center gap-3 text-xs font-semibold text-slate-500">
               <Button type="button" variant="outline" size="icon-sm" disabled={pageNumber === 1} onClick={() => setPageNumber((page) => page - 1)}><ArrowLeft /></Button>
@@ -251,7 +256,7 @@ export function RecipientFill(props: { token: string }) {
   );
 }
 
-function FillAnnotation(props: { annotation: TemplateAnnotation; value: unknown; onChange: (value: unknown) => void; onError: (message: string) => void }) {
+function FillAnnotation(props: { annotation: TemplateAnnotation; value: unknown; scale: number; onChange: (value: unknown) => void; onError: (message: string) => void }) {
   const annotation = props.annotation;
   const style = { left: `${annotation.x * 100}%`, top: `${annotation.y * 100}%`, width: `${annotation.width * 100}%`, height: `${annotation.height * 100}%` };
   const fontSize = getNumber(annotation.fontSize, 14);
@@ -259,17 +264,19 @@ function FillAnnotation(props: { annotation: TemplateAnnotation; value: unknown;
   const required = Boolean(annotation.required);
   const placeholder = getString(annotation.placeholder, getString(annotation.label, "Enter value"));
   const options = getOptions(annotation.options);
+  const fieldIconSize = getScaledFieldIconSize(props.scale);
+  const mediaIconSize = getScaledFieldIconSize(props.scale, "media");
 
   if (annotation.type === "input" || annotation.type === "initials") return <div className="absolute" style={style}>{Boolean(annotation.multiline) ? <textarea value={String(props.value ?? "")} placeholder={placeholder} required={required} onChange={(event) => props.onChange(event.target.value)} className="size-full resize-none rounded border bg-white px-2 py-1 outline-none focus:ring-2 focus:ring-blue-500" style={{ color: annotation.color, borderColor, fontSize }} /> : <input value={String(props.value ?? "")} placeholder={placeholder} required={required} onChange={(event) => props.onChange(event.target.value)} className="size-full rounded border bg-white px-2 outline-none focus:ring-2 focus:ring-blue-500" style={{ color: annotation.color, borderColor, fontSize }} />}</div>;
-  if (annotation.type === "date") return <div className="absolute" style={style}><input type="date" value={String(props.value ?? "")} required={required} onChange={(event) => props.onChange(event.target.value)} className="size-full rounded border bg-white px-2 outline-none focus:ring-2 focus:ring-blue-500" style={{ color: annotation.color, borderColor, fontSize }} /></div>;
-  if (annotation.type === "dropdown") return <div className="absolute" style={style}><select value={String(props.value ?? "")} required={required} onChange={(event) => props.onChange(event.target.value)} className="size-full rounded border bg-white px-2 outline-none focus:ring-2 focus:ring-blue-500" style={{ color: annotation.color, borderColor, fontSize }}><option value="">{getString(annotation.label, "Select an option")}</option>{options.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}</select></div>;
-  if (annotation.type === "cambodia-address") return <div className="absolute" style={style}><CambodiaAddressField value={props.value} language={getGazetteerLanguage(annotation.gazetteerLanguage)} deepestLevel={getGazetteerLevel(annotation.gazetteerLevel)} required={required} label={getString(annotation.label, "Cambodia address")} onChange={props.onChange} style={{ color: annotation.color, borderColor, fontSize }} /></div>;
+  if (annotation.type === "date") return <div className="absolute" style={style}><div className="relative size-full"><input type="date" value={String(props.value ?? "")} required={required} onChange={(event) => props.onChange(event.target.value)} className="pdf-native-date-field size-full rounded border bg-white px-2 outline-none focus:ring-2 focus:ring-blue-500" style={{ color: annotation.color, borderColor, fontSize, paddingRight: fieldIconSize + 12 }} /><CalendarDays aria-hidden="true" className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-slate-500" style={{ width: fieldIconSize, height: fieldIconSize }} strokeWidth={2.25} /></div></div>;
+  if (annotation.type === "dropdown") return <div className="absolute" style={style}><div className="relative size-full"><select value={String(props.value ?? "")} required={required} onChange={(event) => props.onChange(event.target.value)} className="size-full appearance-none rounded border bg-white px-2 outline-none focus:ring-2 focus:ring-blue-500" style={{ color: annotation.color, borderColor, fontSize, paddingRight: fieldIconSize + 12 }}><option value="">{getString(annotation.label, "Select an option")}</option>{options.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}</select><ChevronDown aria-hidden="true" className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-slate-500" style={{ width: fieldIconSize, height: fieldIconSize }} strokeWidth={2.25} /></div></div>;
+  if (annotation.type === "cambodia-address") return <div className="absolute" style={style}><CambodiaAddressField value={props.value} language={getGazetteerLanguage(annotation.gazetteerLanguage)} deepestLevel={getGazetteerLevel(annotation.gazetteerLevel)} required={required} label={getString(annotation.label, "Cambodia address")} onChange={props.onChange} style={{ color: annotation.color, borderColor, fontSize }} iconSize={fieldIconSize} /></div>;
   if (annotation.type === "checkbox" || annotation.type === "radio") return <button type="button" aria-label={getString(annotation.fieldName, annotation.type)} aria-pressed={Boolean(props.value)} onClick={() => props.onChange(!props.value)} className={`absolute flex items-center justify-center border-2 bg-white ${annotation.type === "radio" ? "rounded-full" : "rounded"}`} style={{ ...style, borderColor: annotation.color }}>{Boolean(props.value) && (annotation.type === "radio" ? <span className="size-1/2 rounded-full" style={{ backgroundColor: annotation.color }} /> : <Check className="size-full" style={{ color: annotation.color }} />)}</button>;
   if (annotation.type === "checkbox-group" || annotation.type === "radio-group") {
     const selected = Array.isArray(props.value) ? props.value.map(String) : [];
-    return <fieldset className="absolute overflow-auto rounded-md bg-white/95 p-2" style={style}><legend className="text-xs font-bold text-slate-800">{getString(annotation.label, "Options")}</legend><div className="space-y-1.5">{options.map((option) => { const checked = selected.includes(option.id); return <label key={option.id} className="flex items-center gap-2 text-xs text-slate-700"><input type={annotation.type === "radio-group" ? "radio" : "checkbox"} name={annotation.id} checked={checked} onChange={() => props.onChange(annotation.type === "radio-group" ? [option.id] : checked ? selected.filter((id) => id !== option.id) : [...selected, option.id])} className="accent-blue-600" />{option.label}</label>; })}</div></fieldset>;
+    return <fieldset className="absolute overflow-auto rounded-md bg-white/95 p-2" style={style}><legend className="text-xs font-bold text-slate-800">{getString(annotation.label, "Options")}</legend><div className="space-y-1.5">{options.map((option) => { const checked = selected.includes(option.id); return <label key={option.id} className="flex items-center gap-2 text-xs text-slate-700"><input type={annotation.type === "radio-group" ? "radio" : "checkbox"} name={annotation.id} checked={checked} onChange={() => props.onChange(annotation.type === "radio-group" ? [option.id] : checked ? selected.filter((id) => id !== option.id) : [...selected, option.id])} className="shrink-0 accent-blue-600" style={{ width: fieldIconSize, height: fieldIconSize }} />{option.label}</label>; })}</div></fieldset>;
   }
-  if (annotation.type === "image-placeholder") return <label className="absolute flex cursor-pointer flex-col items-center justify-center overflow-hidden rounded-lg border-2 border-dashed border-slate-400 bg-slate-50 text-center text-xs font-semibold text-slate-600" style={style}>{typeof props.value === "string" && props.value.startsWith("data:image/") ? <Image src={props.value} alt="Uploaded" fill unoptimized className="object-cover" /> : <><UploadCloud className="size-5" />{getString(annotation.label, "Upload image")}</>}<input type="file" accept="image/png,image/jpeg" className="sr-only" onChange={(event) => { const file = event.target.files?.[0]; if (!file) return; void prepareRecipientImage(file).then(props.onChange).catch(() => { props.onChange(""); props.onError("Choose a valid PNG or JPEG image up to 8 MB."); }); }} /></label>;
+  if (annotation.type === "image-placeholder") return <label className="absolute flex cursor-pointer flex-col items-center justify-center overflow-hidden rounded-lg border-2 border-dashed border-slate-400 bg-slate-50 text-center text-xs font-semibold text-slate-600" style={style}>{typeof props.value === "string" && props.value.startsWith("data:image/") ? <Image src={props.value} alt="Uploaded" fill unoptimized className="object-cover" /> : <><UploadCloud style={{ width: mediaIconSize, height: mediaIconSize }} strokeWidth={2.1} />{getString(annotation.label, "Upload image")}</>}<input type="file" accept="image/png,image/jpeg" className="sr-only" onChange={(event) => { const file = event.target.files?.[0]; if (!file) return; void prepareRecipientImage(file).then(props.onChange).catch(() => { props.onChange(""); props.onError("Choose a valid PNG or JPEG image up to 8 MB."); }); }} /></label>;
   if (annotation.type === "text") return <span className="pointer-events-none absolute whitespace-pre-wrap" style={{ ...style, color: annotation.color, fontSize: getNumber(annotation.fontSize, 16) }}>{getString(annotation.text, "")}</span>;
   if (annotation.type === "highlight") return <span className="pointer-events-none absolute opacity-35" style={{ ...style, backgroundColor: annotation.color }} />;
   if (annotation.type === "rectangle" || annotation.type === "ellipse") return <span className={`pointer-events-none absolute border-2 ${annotation.type === "ellipse" ? "rounded-full" : ""}`} style={{ ...style, borderColor: annotation.color }} />;

@@ -8,6 +8,7 @@ import {
   CircleDot,
   Circle,
   Check,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
   Copy,
@@ -59,6 +60,11 @@ import {
   normalizedPointToPdf,
   normalizedRectToPdfBox,
 } from "@/features/templates/pdf-coordinates";
+import {
+  getNormalizedStandardFieldDimensions,
+  getScaledFieldIconSize,
+  isStandardFieldType,
+} from "@/features/templates/field-layout";
 import { Button } from "@/components/ui/button";
 import { PdfExtractionDialog } from "@/features/extraction/pdf-extraction-dialog";
 import { extractPdfContent } from "@/features/extraction/pdf-extraction";
@@ -318,6 +324,13 @@ function clampZoom(value: number) {
 
 function clampFontSize(value: number) {
   return Math.min(MAX_FONT_SIZE, Math.max(MIN_FONT_SIZE, value));
+}
+
+function formatAnnotationTypeLabel(type: AnnotationType) {
+  return type
+    .split("-")
+    .map((part) => `${part.charAt(0).toUpperCase()}${part.slice(1)}`)
+    .join(" ");
 }
 
 function pointDistance(first: Point, second: Point) {
@@ -884,10 +897,10 @@ function ColorControl(props: {
   onChange: (value: string) => void;
 }) {
   const { value, compact, onChange } = props;
-  const sizeClass = compact ? "size-5" : "size-7";
+  const sizeClass = compact ? "size-5" : "size-8";
 
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex flex-wrap items-center gap-2.5">
       {COLORS.map((item) => (
         <button
           key={item}
@@ -897,8 +910,8 @@ function ColorControl(props: {
           onClick={() => onChange(item)}
           className={`${sizeClass} shrink-0 rounded-full border-2 transition ${
             value === item
-              ? "scale-110 border-slate-900"
-              : "border-white ring-1 ring-slate-200"
+              ? "scale-105 border-slate-900 shadow-sm"
+              : "border-white ring-1 ring-slate-300"
           }`}
           style={{ backgroundColor: item }}
         />
@@ -931,7 +944,7 @@ function FontSizeControl(props: {
 
   return (
     <div className={compact ? "w-80 shrink-0" : "w-full"}>
-      <div className="flex flex-wrap items-center gap-1">
+      <div className="grid grid-cols-4 gap-1.5 sm:grid-cols-7 xl:grid-cols-4">
         {FONT_SIZE_PRESETS.map((size) => (
           <button
             key={size}
@@ -939,7 +952,7 @@ function FontSizeControl(props: {
             aria-label={`Set font size to ${size} points`}
             aria-pressed={value === size}
             onClick={() => onChange(size)}
-            className={`h-7 min-w-8 rounded-md border px-1.5 text-[11px] font-semibold transition ${
+            className={`h-8 min-w-0 rounded-md border px-1.5 text-[11px] font-semibold transition ${
               value === size
                 ? "border-blue-600 bg-blue-600 text-white"
                 : "border-slate-200 bg-white text-slate-600 hover:border-blue-300 hover:text-blue-700"
@@ -973,7 +986,7 @@ function FontSizeControl(props: {
               if (!event.target.value) return;
               onChange(clampFontSize(Number(event.target.value)));
             }}
-            className="h-7 w-14 rounded-md border border-slate-200 bg-white px-1.5 text-right text-xs font-semibold tabular-nums text-slate-700 outline-none focus:border-blue-500"
+            className="h-8 w-16 rounded-md border border-slate-200 bg-white px-2 text-right text-xs font-semibold tabular-nums text-slate-700 shadow-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
           />
           pt
         </label>
@@ -1047,7 +1060,7 @@ function GroupFieldEditor(props: {
         value={props.annotation.label ?? ""}
         onChange={(event) => props.onChange({ label: event.target.value })}
         placeholder="Group label"
-        className={`${props.compact ? "h-8 w-40" : "h-9 w-full"} rounded-md border border-slate-200 bg-slate-50 px-2 text-sm outline-none focus:border-blue-500`}
+        className={`${props.compact ? "h-8 w-40 rounded-md px-2" : "h-9 w-full rounded-lg px-3 shadow-sm"} border border-slate-200 bg-white text-sm text-slate-800 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100`}
       />
       <div className={props.compact ? "flex items-center gap-2" : "space-y-2"}>
         {options.map((option) => (
@@ -1056,7 +1069,7 @@ function GroupFieldEditor(props: {
               type="button"
               aria-label={`${option.checked ? "Unselect" : "Select"} ${option.label}`}
               onClick={() => toggleOption(option.id)}
-              className={`flex size-5 shrink-0 items-center justify-center border-2 bg-white ${isRadio ? "rounded-full" : "rounded"}`}
+              className={`flex size-6 shrink-0 items-center justify-center border-2 bg-white transition hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500 ${isRadio ? "rounded-full" : "rounded-md"}`}
               style={{ borderColor: props.annotation.color }}
             >
               {option.checked &&
@@ -1079,21 +1092,27 @@ function GroupFieldEditor(props: {
               onChange={(event) =>
                 updateOption(option.id, { label: event.target.value })
               }
-              className={`${props.compact ? "h-8 w-28" : "h-8 min-w-0 flex-1"} rounded-md border border-slate-200 px-2 text-xs outline-none focus:border-blue-500`}
+              className={`${props.compact ? "h-8 w-28 rounded-md px-2 text-xs" : "h-9 min-w-0 flex-1 rounded-lg px-3 text-sm shadow-sm"} border border-slate-200 bg-white text-slate-800 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100`}
             />
             <button
               type="button"
               aria-label={`Remove ${option.label}`}
               disabled={options.length <= 1}
               onClick={() => removeOption(option.id)}
-              className="flex size-7 shrink-0 items-center justify-center rounded-md text-slate-400 hover:bg-rose-50 hover:text-rose-600 disabled:opacity-30"
+              className="flex size-9 shrink-0 items-center justify-center rounded-lg text-slate-400 transition hover:bg-rose-50 hover:text-rose-600 focus-visible:outline-2 focus-visible:outline-rose-500 disabled:opacity-30"
             >
               <Minus className="size-3.5" />
             </button>
           </div>
         ))}
       </div>
-      <Button type="button" variant="outline" size="sm" onClick={addOption}>
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        onClick={addOption}
+        className={props.compact ? undefined : "w-full"}
+      >
         <Plus className="size-3.5" /> Add option
       </Button>
     </div>
@@ -1114,7 +1133,7 @@ function GazetteerFieldEditor(props: {
           value={props.annotation.label ?? ""}
           onChange={(event) => props.onChange({ label: event.target.value })}
           placeholder="Cambodia address"
-          className={`${props.compact ? "h-8 w-40" : "mt-1 h-8 w-full"} rounded-md border border-slate-200 bg-white px-2 text-xs font-normal text-slate-800 outline-none focus:border-blue-500`}
+          className={`${props.compact ? "h-8 w-40 rounded-md px-2 text-xs" : "mt-1.5 h-9 w-full rounded-lg px-3 text-sm shadow-sm"} border border-slate-200 bg-white font-normal text-slate-800 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100`}
         />
       </label>
       <label className="block text-[11px] font-semibold text-slate-500">
@@ -1132,7 +1151,7 @@ function GazetteerFieldEditor(props: {
               ),
             });
           }}
-          className={`${props.compact ? "h-8 w-32" : "mt-1 h-8 w-full"} rounded-md border border-slate-200 bg-white px-2 text-xs font-normal text-slate-800 outline-none focus:border-blue-500`}
+          className={`${props.compact ? "h-8 w-32 rounded-md px-2 text-xs" : "mt-1.5 h-9 w-full rounded-lg px-3 text-sm shadow-sm"} border border-slate-200 bg-white font-normal text-slate-800 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100`}
         >
           <option value="bilingual">Khmer + English</option>
           <option value="km">Khmer</option>
@@ -1159,7 +1178,7 @@ function GazetteerFieldEditor(props: {
               ),
             });
           }}
-          className={`${props.compact ? "h-8 w-32" : "mt-1 h-8 w-full"} rounded-md border border-slate-200 bg-white px-2 text-xs font-normal text-slate-800 outline-none focus:border-blue-500`}
+          className={`${props.compact ? "h-8 w-32 rounded-md px-2 text-xs" : "mt-1.5 h-9 w-full rounded-lg px-3 text-sm shadow-sm"} border border-slate-200 bg-white font-normal text-slate-800 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100`}
         >
           <option value="province">Province</option>
           <option value="district">District</option>
@@ -2331,14 +2350,19 @@ export function PdfEditor() {
     if (tool === "text" || tool === "date" || tool === "initials") {
       const isDate = tool === "date";
       const isInitials = tool === "initials";
+      const standardSize = isDate
+        ? getNormalizedStandardFieldDimensions("date", basePageSize)
+        : getNormalizedStandardFieldDimensions("initials", basePageSize);
       const annotationWidth = isDate
-        ? Math.min(0.38, 180 / basePageSize.width)
+        ? standardSize.width
         : isInitials
-          ? 0.12
+          ? standardSize.width
           : 0.28;
       const annotationHeight = isDate
-        ? Math.min(0.075, 36 / basePageSize.height)
-        : 0.05;
+        ? standardSize.height
+        : isInitials
+          ? standardSize.height
+          : 0.05;
       const annotation: Annotation = {
         id: createAnnotationId(),
         page: pageNumber,
@@ -2365,16 +2389,18 @@ export function PdfEditor() {
     }
 
     if (tool === "input") {
-      const fieldWidth = Math.min(0.42, 200 / basePageSize.width);
-      const fieldHeight = Math.min(0.08, 32 / basePageSize.height);
+      const fieldSize = getNormalizedStandardFieldDimensions(
+        "input",
+        basePageSize,
+      );
       const annotation: Annotation = {
         id: createAnnotationId(),
         page: pageNumber,
         type: "input",
-        x: Math.min(1 - fieldWidth, point.x),
-        y: Math.min(1 - fieldHeight, point.y),
-        width: fieldWidth,
-        height: fieldHeight,
+        x: Math.min(1 - fieldSize.width, point.x),
+        y: Math.min(1 - fieldSize.height, point.y),
+        width: fieldSize.width,
+        height: fieldSize.height,
         color,
         borderColor: "#64748b",
         text: "",
@@ -2392,15 +2418,18 @@ export function PdfEditor() {
     }
 
     if (tool === "checkbox" || tool === "radio") {
-      const fieldSize = 22;
+      const fieldSize = getNormalizedStandardFieldDimensions(
+        tool,
+        basePageSize,
+      );
       const annotation: Annotation = {
         id: createAnnotationId(),
         page: pageNumber,
         type: tool,
-        x: point.x,
-        y: point.y,
-        width: fieldSize / basePageSize.width,
-        height: fieldSize / basePageSize.height,
+        x: Math.min(1 - fieldSize.width, point.x),
+        y: Math.min(1 - fieldSize.height, point.y),
+        width: fieldSize.width,
+        height: fieldSize.height,
         color,
         checked: true,
         fieldName: tool === "radio" ? "Radio" : "Checkbox",
@@ -2414,17 +2443,19 @@ export function PdfEditor() {
     }
 
     if (tool === "checkbox-group" || tool === "radio-group") {
-      const groupWidth = Math.min(0.48, 250 / basePageSize.width);
-      const groupHeight = Math.min(0.25, 138 / basePageSize.height);
+      const groupSize = getNormalizedStandardFieldDimensions(
+        tool,
+        basePageSize,
+      );
       const isRadioGroup = tool === "radio-group";
       const annotation: Annotation = {
         id: createAnnotationId(),
         page: pageNumber,
         type: tool,
-        x: Math.min(1 - groupWidth, point.x),
-        y: Math.min(1 - groupHeight, point.y),
-        width: groupWidth,
-        height: groupHeight,
+        x: Math.min(1 - groupSize.width, point.x),
+        y: Math.min(1 - groupSize.height, point.y),
+        width: groupSize.width,
+        height: groupSize.height,
         color,
         label: isRadioGroup ? "Choose one" : "Select all that apply",
         options: ["Option 1", "Option 2", "Option 3"].map(
@@ -2445,16 +2476,18 @@ export function PdfEditor() {
     }
 
     if (tool === "dropdown") {
-      const fieldWidth = Math.min(0.42, 210 / basePageSize.width);
-      const fieldHeight = Math.min(0.08, 34 / basePageSize.height);
+      const fieldSize = getNormalizedStandardFieldDimensions(
+        "dropdown",
+        basePageSize,
+      );
       const annotation: Annotation = {
         id: createAnnotationId(),
         page: pageNumber,
         type: "dropdown",
-        x: Math.min(1 - fieldWidth, point.x),
-        y: Math.min(1 - fieldHeight, point.y),
-        width: fieldWidth,
-        height: fieldHeight,
+        x: Math.min(1 - fieldSize.width, point.x),
+        y: Math.min(1 - fieldSize.height, point.y),
+        width: fieldSize.width,
+        height: fieldSize.height,
         color,
         borderColor: "#64748b",
         label: "Select an option",
@@ -2475,16 +2508,18 @@ export function PdfEditor() {
     }
 
     if (tool === "cambodia-address") {
-      const fieldWidth = Math.min(0.62, 340 / basePageSize.width);
-      const fieldHeight = Math.min(0.22, 140 / basePageSize.height);
+      const fieldSize = getNormalizedStandardFieldDimensions(
+        "cambodia-address",
+        basePageSize,
+      );
       const annotation: Annotation = {
         id: createAnnotationId(),
         page: pageNumber,
         type: "cambodia-address",
-        x: Math.min(1 - fieldWidth, point.x),
-        y: Math.min(1 - fieldHeight, point.y),
-        width: fieldWidth,
-        height: fieldHeight,
+        x: Math.min(1 - fieldSize.width, point.x),
+        y: Math.min(1 - fieldSize.height, point.y),
+        width: fieldSize.width,
+        height: fieldSize.height,
         color,
         borderColor: "#64748b",
         label: "Cambodia address",
@@ -2503,16 +2538,18 @@ export function PdfEditor() {
     }
 
     if (tool === "image-placeholder") {
-      const placeholderWidth = Math.min(0.44, 240 / basePageSize.width);
-      const placeholderHeight = Math.min(0.24, 130 / basePageSize.height);
+      const placeholderSize = getNormalizedStandardFieldDimensions(
+        "image-placeholder",
+        basePageSize,
+      );
       const annotation: Annotation = {
         id: createAnnotationId(),
         page: pageNumber,
         type: "image-placeholder",
-        x: Math.min(1 - placeholderWidth, point.x),
-        y: Math.min(1 - placeholderHeight, point.y),
-        width: placeholderWidth,
-        height: placeholderHeight,
+        x: Math.min(1 - placeholderSize.width, point.x),
+        y: Math.min(1 - placeholderSize.height, point.y),
+        width: placeholderSize.width,
+        height: placeholderSize.height,
         color: "#475569",
         label: "Upload image",
       };
@@ -2773,6 +2810,22 @@ export function PdfEditor() {
           : annotation,
       ),
     );
+  }
+
+  function resetSelectedToStandardSize() {
+    if (!selectedAnnotation || !isStandardFieldType(selectedAnnotation.type)) {
+      return;
+    }
+    const size = getNormalizedStandardFieldDimensions(
+      selectedAnnotation.type,
+      basePageSize,
+    );
+    updateSelected({
+      x: Math.min(selectedAnnotation.x, 1 - size.width),
+      y: Math.min(selectedAnnotation.y, 1 - size.height),
+      width: size.width,
+      height: size.height,
+    });
   }
 
   function startLabelBinding() {
@@ -4313,6 +4366,16 @@ export function PdfEditor() {
                   selectedAnnotation.type === "radio-group" ||
                   selectedAnnotation.type === "image-placeholder") && (
                   <>
+                    {isStandardFieldType(selectedAnnotation.type) && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={resetSelectedToStandardSize}
+                      >
+                        <Maximize2 className="size-3.5" /> Standard size
+                      </Button>
+                    )}
                     <label className="flex shrink-0 items-center gap-1.5 text-xs font-semibold text-slate-600">
                       <input type="checkbox" checked={selectedAnnotation.required ?? false} onChange={(event) => updateSelected({ required: event.target.checked })} className="size-4 accent-blue-600" />
                       Required
@@ -4391,6 +4454,8 @@ export function PdfEditor() {
                   ))}
                   {pageAnnotations.map((annotation) => {
                     const selected = annotation.id === selectedId;
+                    const fieldIconSize = getScaledFieldIconSize(zoom);
+                    const mediaIconSize = getScaledFieldIconSize(zoom, "media");
                     if (annotation.type === "drawing") {
                       const points = annotation.points ?? [];
                       return (
@@ -4487,23 +4552,39 @@ export function PdfEditor() {
                         )}
                         {annotation.type === "date" && (
                           editorMode === "fill" ? (
-                            <input
-                              type="date"
-                              value={annotation.text ?? ""}
-                              required={annotation.required}
-                              onPointerDown={(event) => event.stopPropagation()}
-                              onChange={(event) =>
-                                updateAnnotationValue(annotation.id, {
-                                  text: event.target.value,
-                                })
-                              }
-                              className="size-full rounded-md border border-slate-400 bg-white px-2"
-                              style={{ color: annotation.color, fontSize: (annotation.fontSize ?? 14) * zoom }}
-                            />
+                            <span className="relative block size-full">
+                              <input
+                                type="date"
+                                value={annotation.text ?? ""}
+                                required={annotation.required}
+                                onPointerDown={(event) => event.stopPropagation()}
+                                onChange={(event) =>
+                                  updateAnnotationValue(annotation.id, {
+                                    text: event.target.value,
+                                  })
+                                }
+                                className="pdf-native-date-field size-full rounded-md border border-slate-400 bg-white px-2 pr-9"
+                                style={{
+                                  color: annotation.color,
+                                  fontSize: (annotation.fontSize ?? 14) * zoom,
+                                  paddingRight: fieldIconSize + 12,
+                                }}
+                              />
+                              <CalendarDays
+                                aria-hidden="true"
+                                className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-slate-500"
+                                style={{ width: fieldIconSize, height: fieldIconSize }}
+                                strokeWidth={2.25}
+                              />
+                            </span>
                           ) : (
                             <span className="flex size-full items-center gap-2 overflow-hidden rounded-md border border-slate-400 bg-white px-2 leading-none shadow-sm" style={{ color: annotation.color, fontSize: (annotation.fontSize ?? 14) * zoom, borderWidth: Math.max(0.75, zoom) }}>
                               <span className="min-w-0 flex-1 truncate">{formatDateValue(annotation.text)}</span>
-                              <CalendarDays className="size-4 shrink-0 text-slate-500" />
+                              <CalendarDays
+                                className="shrink-0 text-slate-500"
+                                style={{ width: fieldIconSize, height: fieldIconSize }}
+                                strokeWidth={2.25}
+                              />
                             </span>
                           )
                         )}
@@ -4604,24 +4685,42 @@ export function PdfEditor() {
                         )}
                         {annotation.type === "dropdown" && (
                           editorMode === "fill" ? (
-                            <select
-                              value={annotation.options?.find((option) => option.checked)?.id ?? ""}
-                              required={annotation.required}
-                              onPointerDown={(event) => event.stopPropagation()}
-                              onChange={(event) =>
-                                updateAnnotationValue(annotation.id, {
-                                  options: (annotation.options ?? []).map((option) => ({ ...option, checked: option.id === event.target.value })),
-                                })
-                              }
-                              className="size-full rounded-md border bg-white px-2 outline-none"
-                              style={{ color: annotation.color, borderColor: annotation.borderColor ?? "#64748b", fontSize: (annotation.fontSize ?? 14) * zoom }}
-                            >
-                              <option value="">{annotation.label || "Select an option"}</option>
-                              {(annotation.options ?? []).map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}
-                            </select>
+                            <span className="relative block size-full">
+                              <select
+                                value={annotation.options?.find((option) => option.checked)?.id ?? ""}
+                                required={annotation.required}
+                                onPointerDown={(event) => event.stopPropagation()}
+                                onChange={(event) =>
+                                  updateAnnotationValue(annotation.id, {
+                                    options: (annotation.options ?? []).map((option) => ({ ...option, checked: option.id === event.target.value })),
+                                  })
+                                }
+                                className="size-full appearance-none rounded-md border bg-white px-2 pr-9 outline-none"
+                                style={{
+                                  color: annotation.color,
+                                  borderColor: annotation.borderColor ?? "#64748b",
+                                  fontSize: (annotation.fontSize ?? 14) * zoom,
+                                  paddingRight: fieldIconSize + 12,
+                                }}
+                              >
+                                <option value="">{annotation.label || "Select an option"}</option>
+                                {(annotation.options ?? []).map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}
+                              </select>
+                              <ChevronDown
+                                aria-hidden="true"
+                                className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-slate-500"
+                                style={{ width: fieldIconSize, height: fieldIconSize }}
+                                strokeWidth={2.25}
+                              />
+                            </span>
                           ) : (
                             <span className="flex size-full items-center justify-between rounded-md border bg-white px-2" style={{ color: annotation.color, borderColor: annotation.borderColor ?? "#64748b", fontSize: (annotation.fontSize ?? 14) * zoom }}>
-                              <span className="truncate">{annotation.options?.find((option) => option.checked)?.label ?? annotation.label ?? "Select an option"}</span><ChevronRight className="size-3 rotate-90" />
+                              <span className="truncate">{annotation.options?.find((option) => option.checked)?.label ?? annotation.label ?? "Select an option"}</span>
+                              <ChevronDown
+                                className="shrink-0 text-slate-500"
+                                style={{ width: fieldIconSize, height: fieldIconSize }}
+                                strokeWidth={2.25}
+                              />
                             </span>
                           )
                         )}
@@ -4656,6 +4755,7 @@ export function PdfEditor() {
                                   annotation.borderColor ?? "#64748b",
                                 fontSize: (annotation.fontSize ?? 11) * zoom,
                               }}
+                              iconSize={fieldIconSize}
                             />
                           </div>
                         )}
@@ -4769,14 +4869,16 @@ export function PdfEditor() {
                                     {option.checked &&
                                       (annotation.type === "radio-group" ? (
                                         <span
-                                          className="size-2 rounded-full"
+                                          className="rounded-full"
                                           style={{
                                             backgroundColor: annotation.color,
+                                            width: 8 * zoom,
+                                            height: 8 * zoom,
                                           }}
                                         />
                                       ) : (
                                         <Check
-                                          className="size-3.5"
+                                          className="size-full"
                                           style={{ color: annotation.color }}
                                           strokeWidth={3}
                                         />
@@ -4842,7 +4944,10 @@ export function PdfEditor() {
                               />
                             ) : (
                               <span className="flex flex-col items-center gap-1 px-3 text-center">
-                                <UploadCloud className="size-6" />
+                                <UploadCloud
+                                  style={{ width: mediaIconSize, height: mediaIconSize }}
+                                  strokeWidth={2.1}
+                                />
                                 <span className="text-xs font-semibold">
                                   {annotation.label || "Upload image"}
                                 </span>
@@ -4914,17 +5019,17 @@ export function PdfEditor() {
             </div>
           </section>
 
-          <aside className="hidden w-64 shrink-0 border-l border-slate-200 bg-white xl:block">
-            <div className="flex h-12 items-center border-b border-slate-200 px-5">
+          <aside className="scrollbar-thin hidden w-80 shrink-0 overflow-y-auto border-l border-slate-200 bg-white xl:block">
+            <div className="sticky top-0 z-10 flex h-12 items-center border-b border-slate-200 bg-white/95 px-4 backdrop-blur">
               <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">
                 Properties
               </span>
             </div>
             {selectedAnnotation ? (
-              <div className="space-y-6 p-5">
-                <div>
-                  <p className="text-xs font-semibold capitalize text-slate-700">
-                    {selectedAnnotation.type}
+              <div className="space-y-4 p-4">
+                <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                  <p className="text-sm font-semibold text-slate-800">
+                    {formatAnnotationTypeLabel(selectedAnnotation.type)}
                   </p>
                   <p className="mt-1 text-xs leading-5 text-slate-400">
                     Page {selectedAnnotation.page} · Select another tool to add
@@ -4934,7 +5039,7 @@ export function PdfEditor() {
                 {(selectedAnnotation.type === "text" ||
                   selectedAnnotation.type === "input" ||
                   selectedAnnotation.type === "initials") && (
-                  <label className="block text-xs font-semibold text-slate-600">
+                  <label className="block rounded-xl border border-slate-200 bg-slate-50/70 p-3 text-xs font-semibold text-slate-600">
                     {selectedAnnotation.type === "input"
                       ? "Value"
                       : selectedAnnotation.type === "initials"
@@ -4946,12 +5051,12 @@ export function PdfEditor() {
                         updateSelected({ text: event.target.value })
                       }
                       rows={4}
-                      className="mt-2 w-full resize-none rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-normal text-slate-800 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                      className="mt-2 w-full resize-none rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-normal text-slate-800 shadow-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                     />
                   </label>
                 )}
                 {selectedAnnotation.type === "date" && (
-                  <label className="block text-xs font-semibold text-slate-600">
+                  <label className="block rounded-xl border border-slate-200 bg-slate-50/70 p-3 text-xs font-semibold text-slate-600">
                     Date
                     <div className="relative mt-2">
                       <input
@@ -4960,7 +5065,7 @@ export function PdfEditor() {
                         onChange={(event) =>
                           updateSelected({ text: event.target.value })
                         }
-                        className="h-11 w-full rounded-lg border border-slate-200 bg-white px-3 pr-10 text-sm font-normal text-slate-800 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                        className="h-9 w-full rounded-lg border border-slate-200 bg-white px-3 pr-10 text-sm font-normal text-slate-800 shadow-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                       />
                       <CalendarDays className="pointer-events-none absolute right-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
                     </div>
@@ -4974,8 +5079,8 @@ export function PdfEditor() {
                   selectedAnnotation.type === "date" ||
                   selectedAnnotation.type === "initials" ||
                   selectedAnnotation.type === "cambodia-address") && (
-                  <div>
-                    <p className="mb-3 text-xs font-semibold text-slate-600">
+                  <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3">
+                    <p className="mb-3 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
                       Font size
                     </p>
                     <FontSizeControl
@@ -4986,7 +5091,7 @@ export function PdfEditor() {
                 )}
                 {(selectedAnnotation.type === "checkbox" ||
                   selectedAnnotation.type === "radio") && (
-                  <label className="flex items-center justify-between gap-3 text-xs font-semibold text-slate-600">
+                  <label className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50/70 p-3 text-xs font-semibold text-slate-600">
                     Selected
                     <input
                       type="checkbox"
@@ -5002,8 +5107,8 @@ export function PdfEditor() {
                 {(selectedAnnotation.type === "checkbox-group" ||
                   selectedAnnotation.type === "radio-group" ||
                   selectedAnnotation.type === "dropdown") && (
-                  <div>
-                    <p className="mb-3 text-xs font-semibold text-slate-600">
+                  <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3">
+                    <p className="mb-3 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
                       {selectedAnnotation.type === "dropdown"
                         ? "Placeholder and options"
                         : "Group label and options"}
@@ -5015,8 +5120,8 @@ export function PdfEditor() {
                   </div>
                 )}
                 {selectedAnnotation.type === "cambodia-address" && (
-                  <div>
-                    <p className="mb-3 text-xs font-semibold text-slate-600">
+                  <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3">
+                    <p className="mb-3 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
                       Cambodia address
                     </p>
                     <GazetteerFieldEditor
@@ -5029,47 +5134,58 @@ export function PdfEditor() {
                   selectedAnnotation.type === "checkbox-group" ||
                   selectedAnnotation.type === "radio-group" ||
                   selectedAnnotation.type === "image-placeholder") && (
-                  <div className="space-y-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
-                    <p className="text-xs font-semibold text-slate-700">Field settings</p>
-                    <label className="block text-[11px] font-semibold text-slate-500">
+                  <div className="space-y-3 rounded-xl border border-slate-200 bg-slate-50/70 p-3">
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Field settings</p>
+                    {isStandardFieldType(selectedAnnotation.type) && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={resetSelectedToStandardSize}
+                        className="w-full"
+                      >
+                        <Maximize2 className="size-3.5" /> Reset to standard size
+                      </Button>
+                    )}
+                    <label className="block text-xs font-semibold text-slate-600">
                       Recipient
                       <select
                         value={selectedAnnotation.recipientRoleId ?? recipientRoles[0]?.id ?? ""}
                         onChange={(event) => updateSelected({ recipientRoleId: event.target.value })}
-                        className="mt-1 h-8 w-full rounded-md border border-slate-200 bg-white px-2 text-xs font-normal text-slate-800 outline-none focus:border-blue-500"
+                        className="mt-1.5 h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm font-normal text-slate-800 shadow-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                       >
                         {recipientRoles.map((role) => (
                           <option key={role.id} value={role.id}>{role.name}</option>
                         ))}
                       </select>
                     </label>
-                    <label className="block text-[11px] font-semibold text-slate-500">
+                    <label className="block text-xs font-semibold text-slate-600">
                       Field name
                       <input
                         value={selectedAnnotation.fieldName ?? ""}
                         onChange={(event) => updateSelected({ fieldName: event.target.value })}
                         placeholder="Customer name"
-                        className="mt-1 h-8 w-full rounded-md border border-slate-200 bg-white px-2 text-xs font-normal text-slate-800 outline-none focus:border-blue-500"
+                        className="mt-1.5 h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm font-normal text-slate-800 shadow-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                       />
                     </label>
-                    <label className="block text-[11px] font-semibold text-slate-500">
+                    <label className="block text-xs font-semibold text-slate-600">
                       Field key
                       <input
                         value={selectedAnnotation.fieldKey ?? createFieldKey(selectedAnnotation.fieldName || selectedAnnotation.label || selectedAnnotation.type)}
                         onChange={(event) => updateSelected({ fieldKey: createFieldKey(event.target.value) })}
                         placeholder="customer_name"
-                        className="mt-1 h-8 w-full rounded-md border border-slate-200 bg-white px-2 font-mono text-xs font-normal text-slate-800 outline-none focus:border-blue-500"
+                        className="mt-1.5 h-9 w-full rounded-lg border border-slate-200 bg-white px-3 font-mono text-xs font-normal text-slate-800 shadow-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                       />
                     </label>
-                    <div className="rounded-lg border border-slate-200 bg-white p-2">
+                    <div className="rounded-lg border border-slate-200 bg-white p-3 shadow-sm">
                       <div className="flex items-start justify-between gap-2">
                         <div className="min-w-0">
-                          <p className="text-[11px] font-semibold text-slate-600">PDF label</p>
+                          <p className="text-xs font-semibold text-slate-600">PDF label</p>
                           <p className="mt-0.5 truncate text-[11px] text-slate-400">
                             {selectedAnnotation.labelBinding?.text || "No label bound"}
                           </p>
                         </div>
-                        <Button type="button" variant="outline" size="sm" onClick={startLabelBinding}>
+                        <Button type="button" variant="outline" size="sm" onClick={startLabelBinding} className="shrink-0">
                           <MousePointer2 className="size-3.5" />
                           {selectedAnnotation.labelBinding ? "Change" : "Bind"}
                         </Button>
@@ -5081,30 +5197,30 @@ export function PdfEditor() {
                       )}
                     </div>
                     {(selectedAnnotation.type === "input" || selectedAnnotation.type === "initials") && (
-                      <label className="block text-[11px] font-semibold text-slate-500">
+                      <label className="block text-xs font-semibold text-slate-600">
                         Placeholder
                         <input
                           value={selectedAnnotation.placeholder ?? ""}
                           onChange={(event) => updateSelected({ placeholder: event.target.value })}
-                          className="mt-1 h-8 w-full rounded-md border border-slate-200 bg-white px-2 text-xs font-normal text-slate-800 outline-none focus:border-blue-500"
+                          className="mt-1.5 h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm font-normal text-slate-800 shadow-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                         />
                       </label>
                     )}
-                    <div className="grid grid-cols-2 gap-2">
-                      <label className="flex items-center gap-2 text-xs font-medium text-slate-600">
+                    <div className="grid grid-cols-2 items-end gap-3">
+                      <label className="flex h-9 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-xs font-medium text-slate-600 shadow-sm">
                         <input type="checkbox" checked={selectedAnnotation.required ?? false} onChange={(event) => updateSelected({ required: event.target.checked })} className="size-4 accent-blue-600" />
                         Required
                       </label>
-                      <label className="text-[11px] font-semibold text-slate-500">
+                      <label className="text-xs font-semibold text-slate-600">
                         Tab order
-                        <input type="number" min="1" value={selectedAnnotation.tabIndex ?? 1} onChange={(event) => updateSelected({ tabIndex: Math.max(1, Number(event.target.value)) })} className="mt-1 h-8 w-full rounded-md border border-slate-200 bg-white px-2 text-xs font-normal text-slate-800" />
+                        <input type="number" min="1" value={selectedAnnotation.tabIndex ?? 1} onChange={(event) => updateSelected({ tabIndex: Math.max(1, Number(event.target.value)) })} className="mt-1.5 h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm font-normal text-slate-800 shadow-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100" />
                       </label>
                     </div>
                     {selectedAnnotation.type === "input" && (
                       <>
-                        <label className="block text-[11px] font-semibold text-slate-500">
+                        <label className="block text-xs font-semibold text-slate-600">
                           Validation
-                          <select value={selectedAnnotation.validation ?? "none"} onChange={(event) => updateSelected({ validation: event.target.value as Annotation["validation"] })} className="mt-1 h-8 w-full rounded-md border border-slate-200 bg-white px-2 text-xs font-normal text-slate-800">
+                          <select value={selectedAnnotation.validation ?? "none"} onChange={(event) => updateSelected({ validation: event.target.value as Annotation["validation"] })} className="mt-1.5 h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm font-normal text-slate-800 shadow-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100">
                             <option value="none">Any text</option>
                             <option value="email">Email</option>
                             <option value="number">Number</option>
@@ -5117,13 +5233,13 @@ export function PdfEditor() {
                         </label>
                       </>
                     )}
-                    <Button type="button" variant="outline" size="sm" onClick={duplicateSelectedAcrossPages} disabled={pageOrder.length < 2} className="w-full">
-                      <Copy className="size-3.5" /> Duplicate on every page
+                    <Button type="button" variant="outline" size="sm" onClick={duplicateSelectedAcrossPages} disabled={pageOrder.length < 2} className="w-full min-w-0 px-2 text-xs">
+                      <Copy className="size-3.5" /> <span className="truncate">Duplicate on every page</span>
                     </Button>
                   </div>
                 )}
                 {selectedAnnotation.type === "image-placeholder" && (
-                  <div className="space-y-3">
+                  <div className="space-y-3 rounded-xl border border-slate-200 bg-slate-50/70 p-3">
                     <label className="block text-xs font-semibold text-slate-600">
                       Placeholder label
                       <input
@@ -5131,7 +5247,7 @@ export function PdfEditor() {
                         onChange={(event) =>
                           updateSelected({ label: event.target.value })
                         }
-                        className="mt-2 h-9 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm font-normal text-slate-800 outline-none focus:border-blue-500"
+                        className="mt-1.5 h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm font-normal text-slate-800 shadow-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                       />
                     </label>
                     <Button
@@ -5148,8 +5264,8 @@ export function PdfEditor() {
                   </div>
                 )}
                 {selectedAnnotation.type !== "image" && (
-                  <div>
-                    <p className="text-xs font-semibold text-slate-600">
+                  <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3">
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
                       {selectedAnnotation.type === "input"
                         ? "Text color"
                         : "Color"}
@@ -5166,8 +5282,8 @@ export function PdfEditor() {
                 )}
                 {(selectedAnnotation.type === "input" ||
                   selectedAnnotation.type === "cambodia-address") && (
-                  <div>
-                    <p className="text-xs font-semibold text-slate-600">
+                  <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3">
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
                       Border color
                     </p>
                     <div className="mt-3">
@@ -5235,18 +5351,18 @@ export function PdfEditor() {
         onExtract={() => void extractContent()}
       />
       <Dialog open={templateOpen} onOpenChange={setTemplateOpen}>
-        <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>Save reusable template</DialogTitle>
-            <DialogDescription>
+        <DialogContent className="max-h-[90dvh] min-w-0 max-w-[calc(100dvw-1rem)] overflow-x-hidden overflow-y-auto p-4 sm:max-w-xl sm:p-6 md:max-w-2xl">
+          <DialogHeader className="min-w-0 pr-6">
+            <DialogTitle className="leading-6">Save reusable template</DialogTitle>
+            <DialogDescription className="break-words leading-5">
               Name this document, define its recipients, then assign fields from the Properties panel before sharing.
             </DialogDescription>
           </DialogHeader>
           {createdShareLinks.length > 0 ? (
-            <div className="space-y-4">
+            <div className="min-w-0 space-y-4">
               <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4">
                 <p className="flex items-center gap-2 text-sm font-semibold text-emerald-800">
-                  <Check className="size-4" /> Template saved
+                  <Check className="size-4 shrink-0" /> Template saved
                 </p>
                 <p className="mt-1 text-xs leading-5 text-emerald-700">
                   Copy each private link now. For security, the full token is shown only when a link is created or regenerated.
@@ -5254,15 +5370,19 @@ export function PdfEditor() {
               </div>
               <div className="space-y-2">
                 {createdShareLinks.map((link) => (
-                  <div key={link.roleId} className="flex items-center gap-3 rounded-xl border border-slate-200 p-3">
-                    <span className="size-3 shrink-0 rounded-full" style={{ backgroundColor: link.roleColor }} />
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm font-semibold text-slate-800">{link.roleName}</p>
-                      <p className="truncate text-xs text-slate-400">{link.url}</p>
+                  <div key={link.roleId} className="min-w-0 rounded-xl border border-slate-200 p-3">
+                    <div className="flex min-w-0 items-center gap-2">
+                      <span className="size-3 shrink-0 rounded-full" style={{ backgroundColor: link.roleColor }} />
+                      <p className="min-w-0 truncate text-sm font-semibold text-slate-800">{link.roleName}</p>
                     </div>
-                    <Button type="button" variant="outline" size="sm" onClick={() => void navigator.clipboard.writeText(link.url)}>
-                      <Link2 className="size-3.5" /> Copy
-                    </Button>
+                    <div className="mt-2 flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center">
+                      <p title={link.url} className="min-w-0 flex-1 truncate rounded-lg bg-slate-50 px-3 py-2 font-mono text-xs text-slate-500">
+                        {link.url}
+                      </p>
+                      <Button type="button" variant="outline" size="sm" className="w-full shrink-0 sm:w-auto" aria-label={`Copy private link for ${link.roleName}`} onClick={() => void navigator.clipboard.writeText(link.url)}>
+                        <Link2 className="size-3.5" /> Copy link
+                      </Button>
+                    </div>
                   </div>
                 ))}
               </div>
