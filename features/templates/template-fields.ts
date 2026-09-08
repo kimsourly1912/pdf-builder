@@ -1,5 +1,6 @@
 const RECIPIENT_FIELD_TYPES = new Set([
   "input",
+  "textarea",
   "dropdown",
   "cambodia-address",
   "checkbox",

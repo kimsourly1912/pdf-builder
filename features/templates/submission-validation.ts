@@ -26,6 +26,7 @@ const TEMPLATE_ANNOTATION_TYPES = new Set([
   "drawing",
   "rectangle",
   "input",
+  "textarea",
   "dropdown",
   "cambodia-address",
   "checkbox",
@@ -215,7 +216,11 @@ function validateFieldValue(
     if (date && !validDate(date)) return { ok: false, message: "must use YYYY-MM-DD." };
     return { ok: true, value: date };
   }
-  if (field.type === "input" || field.type === "initials") {
+  if (
+    field.type === "input" ||
+    field.type === "textarea" ||
+    field.type === "initials"
+  ) {
     if (typeof value !== "string") return { ok: false, message: "must be text." };
     const text = value.trim();
     const maxLength = validMaxLength(field.maxLength);

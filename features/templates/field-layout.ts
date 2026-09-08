@@ -1,5 +1,6 @@
 export type StandardFieldType =
   | "input"
+  | "textarea"
   | "dropdown"
   | "cambodia-address"
   | "date"
@@ -18,6 +19,7 @@ export type FieldDimensions = {
 export type FieldIconVariant = "control" | "media";
 
 const SINGLE_LINE_CONTROL = { width: 200, height: 34 } as const;
+const TEXTAREA_CONTROL = { width: 200, height: 100 } as const;
 const INITIALS_CONTROL = { width: 80, height: 34 } as const;
 const TOGGLE_CONTROL = { width: 22, height: 22 } as const;
 const OPTION_GROUP = { width: 200, height: 104 } as const;
@@ -28,6 +30,7 @@ const STANDARD_FIELD_DIMENSIONS: Record<
   FieldDimensions
 > = {
   input: SINGLE_LINE_CONTROL,
+  textarea: TEXTAREA_CONTROL,
   dropdown: SINGLE_LINE_CONTROL,
   "cambodia-address": SINGLE_LINE_CONTROL,
   date: SINGLE_LINE_CONTROL,

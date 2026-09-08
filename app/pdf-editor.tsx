@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  AlignLeft,
   ArrowDown,
   ArrowUp,
   CalendarDays,
@@ -65,6 +66,13 @@ import {
   getScaledFieldIconSize,
   isStandardFieldType,
 } from "@/features/templates/field-layout";
+import {
+  DEFAULT_ELEMENT_BORDER_COLOR,
+  DEFAULT_ELEMENT_FONT_SIZE,
+  DEFAULT_ELEMENT_TEXT_COLOR,
+  DEFAULT_HIGHLIGHT_COLOR,
+  getDefaultElementColor,
+} from "@/features/templates/field-style";
 import { Button } from "@/components/ui/button";
 import { PdfExtractionDialog } from "@/features/extraction/pdf-extraction-dialog";
 import { extractPdfContent } from "@/features/extraction/pdf-extraction";
@@ -126,6 +134,7 @@ type Tool =
   | "pen"
   | "rectangle"
   | "input"
+  | "textarea"
   | "dropdown"
   | "cambodia-address"
   | "checkbox"
@@ -147,6 +156,7 @@ type AnnotationType =
   | "drawing"
   | "rectangle"
   | "input"
+  | "textarea"
   | "dropdown"
   | "cambodia-address"
   | "checkbox"
@@ -265,7 +275,14 @@ type PinchGesture = {
   centerOffsetY: number;
 };
 
-const COLORS = ["#1d4ed8", "#e11d48", "#0f766e", "#facc15", "#111827"];
+const COLORS = [
+  DEFAULT_ELEMENT_TEXT_COLOR,
+  "#1d4ed8",
+  "#e11d48",
+  "#0f766e",
+  DEFAULT_HIGHLIGHT_COLOR,
+  "#111827",
+];
 const RECIPIENT_COLORS = ["#2563eb", "#e11d48", "#0f766e", "#9333ea", "#ea580c"];
 const KHMER_FONT_FAMILY = "PDF Studio Khmer";
 const KHMER_REGRESSION_SAMPLES = ["សួស្តីបង", "រាត្រីសួស្តី"] as const;
@@ -290,6 +307,7 @@ const TOOL_SHORTCUT_ITEMS: Array<{
   { key: "P", label: "Draw", tool: "pen" },
   { key: "R", label: "Rectangle", tool: "rectangle" },
   { key: "I", label: "Text input", tool: "input" },
+  { key: "X", label: "Textarea", tool: "textarea" },
   { key: "V", label: "Dropdown", tool: "dropdown" },
   { key: "K", label: "Cambodia address", tool: "cambodia-address" },
   { key: "C", label: "Checkbox", tool: "checkbox" },
@@ -344,6 +362,7 @@ function isSquareField(type: AnnotationType) {
 function isInteractivePdfField(type: AnnotationType) {
   return (
     type === "input" ||
+    type === "textarea" ||
     type === "dropdown" ||
     type === "cambodia-address" ||
     type === "date" ||
@@ -514,7 +533,7 @@ function fieldValueIsValid(annotation: Annotation) {
       return false;
     }
     if (
-      ["input", "date", "initials"].includes(annotation.type) &&
+      ["input", "textarea", "date", "initials"].includes(annotation.type) &&
       !value
     ) {
       return false;
@@ -725,14 +744,18 @@ function annotationToSvg(
   }
 
   if (annotation.type === "image-placeholder") {
-    return `<rect x="${x}" y="${y}" width="${width}" height="${height}" rx="8" fill="#f8fafc" stroke="#94a3b8" stroke-width="1.5" stroke-dasharray="7 5"/><text x="${x + width / 2}" y="${y + height / 2}" text-anchor="middle" dominant-baseline="middle" fill="#475569" font-family="PDF Studio Khmer, Arial, sans-serif" font-size="14">${escapeHtml(annotation.label ?? "Upload image")}</text>`;
+    const fontSize = annotation.fontSize ?? DEFAULT_ELEMENT_FONT_SIZE;
+    const borderColor = escapeHtml(
+      annotation.borderColor ?? DEFAULT_ELEMENT_BORDER_COLOR,
+    );
+    return `<rect x="${x}" y="${y}" width="${width}" height="${height}" rx="8" fill="#f8fafc" stroke="${borderColor}" stroke-width="1.5" stroke-dasharray="7 5"/><text x="${x + width / 2}" y="${y + height / 2}" text-anchor="middle" dominant-baseline="middle" fill="${color}" font-family="PDF Studio Khmer, Arial, sans-serif" font-size="${fontSize}">${escapeHtml(annotation.label ?? "Upload image")}</text>`;
   }
 
   if (
     annotation.type === "text" ||
     annotation.type === "initials"
   ) {
-    const fontSize = annotation.fontSize ?? 16;
+    const fontSize = annotation.fontSize ?? DEFAULT_ELEMENT_FONT_SIZE;
     const lines = (annotation.text ?? "").split("\n");
     return `<text x="${x}" y="${y + fontSize}" fill="${color}" font-family="PDF Studio Khmer, Arial, sans-serif" font-size="${fontSize}">${lines
       .map(
@@ -742,23 +765,35 @@ function annotationToSvg(
       .join("")}</text>`;
   }
   if (annotation.type === "date") {
-    const fontSize = annotation.fontSize ?? 14;
-    return `<rect x="${x}" y="${y}" width="${width}" height="${height}" rx="4" fill="white" stroke="#94a3b8"/><text x="${x + 9}" y="${y + height / 2}" dominant-baseline="middle" fill="${color}" font-family="PDF Studio Khmer, Arial, sans-serif" font-size="${fontSize}">${escapeHtml(formatDateValue(annotation.text))}</text><text x="${x + width - 20}" y="${y + height / 2}" dominant-baseline="middle" fill="#64748b" font-family="PDF Studio Khmer, Arial, sans-serif" font-size="13">▣</text>`;
+    const fontSize = annotation.fontSize ?? DEFAULT_ELEMENT_FONT_SIZE;
+    const borderColor = escapeHtml(
+      annotation.borderColor ?? DEFAULT_ELEMENT_BORDER_COLOR,
+    );
+    return `<rect x="${x}" y="${y}" width="${width}" height="${height}" rx="4" fill="white" stroke="${borderColor}"/><text x="${x + 9}" y="${y + height / 2}" dominant-baseline="middle" fill="${color}" font-family="PDF Studio Khmer, Arial, sans-serif" font-size="${fontSize}">${escapeHtml(formatDateValue(annotation.text))}</text><text x="${x + width - 20}" y="${y + height / 2}" dominant-baseline="middle" fill="${borderColor}" font-family="PDF Studio Khmer, Arial, sans-serif" font-size="${fontSize}">▣</text>`;
   }
-  if (annotation.type === "input") {
-    const fontSize = annotation.fontSize ?? 14;
-    const borderColor = escapeHtml(annotation.borderColor ?? "#64748b");
-    return `<rect x="${x}" y="${y}" width="${width}" height="${height}" fill="white" stroke="${borderColor}"/><text x="${x + 5}" y="${y + height / 2}" dominant-baseline="middle" fill="${color}" font-family="PDF Studio Khmer, Arial, sans-serif" font-size="${fontSize}">${escapeHtml(annotation.text ?? "")}</text>`;
+  if (annotation.type === "input" || annotation.type === "textarea") {
+    const fontSize = annotation.fontSize ?? DEFAULT_ELEMENT_FONT_SIZE;
+    const borderColor = escapeHtml(
+      annotation.borderColor ?? DEFAULT_ELEMENT_BORDER_COLOR,
+    );
+    const textY = annotation.type === "textarea" ? y + fontSize + 5 : y + height / 2;
+    const baseline = annotation.type === "textarea" ? "auto" : "middle";
+    const lines = (annotation.text ?? "").split("\n");
+    return `<rect x="${x}" y="${y}" width="${width}" height="${height}" fill="white" stroke="${borderColor}"/><text x="${x + 5}" y="${textY}" dominant-baseline="${baseline}" fill="${color}" font-family="PDF Studio Khmer, Arial, sans-serif" font-size="${fontSize}">${lines.map((line, index) => `<tspan x="${x + 5}" dy="${index === 0 ? 0 : fontSize * 1.35}">${escapeHtml(line)}</tspan>`).join("")}</text>`;
   }
   if (annotation.type === "dropdown") {
-    const fontSize = annotation.fontSize ?? 14;
-    const borderColor = escapeHtml(annotation.borderColor ?? "#64748b");
+    const fontSize = annotation.fontSize ?? DEFAULT_ELEMENT_FONT_SIZE;
+    const borderColor = escapeHtml(
+      annotation.borderColor ?? DEFAULT_ELEMENT_BORDER_COLOR,
+    );
     const selected = annotation.options?.find((option) => option.checked)?.label;
-    return `<rect x="${x}" y="${y}" width="${width}" height="${height}" rx="4" fill="white" stroke="${borderColor}"/><text x="${x + 7}" y="${y + height / 2}" dominant-baseline="middle" fill="${color}" font-family="PDF Studio Khmer, Arial, sans-serif" font-size="${fontSize}">${escapeHtml(selected ?? annotation.label ?? "Select an option")}</text><text x="${x + width - 16}" y="${y + height / 2}" dominant-baseline="middle" fill="#64748b" font-size="12">▼</text>`;
+    return `<rect x="${x}" y="${y}" width="${width}" height="${height}" rx="4" fill="white" stroke="${borderColor}"/><text x="${x + 7}" y="${y + height / 2}" dominant-baseline="middle" fill="${color}" font-family="PDF Studio Khmer, Arial, sans-serif" font-size="${fontSize}">${escapeHtml(selected ?? annotation.label ?? "Select an option")}</text><text x="${x + width - 16}" y="${y + height / 2}" dominant-baseline="middle" fill="${DEFAULT_ELEMENT_BORDER_COLOR}" font-size="${fontSize}">▼</text>`;
   }
   if (annotation.type === "cambodia-address") {
-    const fontSize = annotation.fontSize ?? 11;
-    const borderColor = escapeHtml(annotation.borderColor ?? "#64748b");
+    const fontSize = annotation.fontSize ?? DEFAULT_ELEMENT_FONT_SIZE;
+    const borderColor = escapeHtml(
+      annotation.borderColor ?? DEFAULT_ELEMENT_BORDER_COLOR,
+    );
     const address = formatCambodiaAddress(
       annotation.address,
       annotation.gazetteerLanguage ?? "bilingual",
@@ -806,7 +841,8 @@ function annotationToSvg(
     annotation.type === "radio-group"
   ) {
     const options = annotation.options ?? [];
-    const labelSize = Math.max(12, Math.min(16, height * 0.16));
+    const fontSize = annotation.fontSize ?? DEFAULT_ELEMENT_FONT_SIZE;
+    const labelSize = fontSize;
     const rowHeight = Math.max(18, (height - labelSize - 8) / Math.max(1, options.length));
     const controlSize = Math.min(14, rowHeight * 0.58);
     const rows = options
@@ -822,10 +858,10 @@ function annotationToSvg(
         const control = annotation.type === "radio-group"
           ? `<circle cx="${controlX + controlSize / 2}" cy="${centerY}" r="${controlSize / 2}" fill="white" stroke="${color}"/>`
           : `<rect x="${controlX}" y="${controlY}" width="${controlSize}" height="${controlSize}" fill="white" stroke="${color}"/>`;
-        return `${control}${mark}<text x="${controlX + controlSize + 7}" y="${centerY}" dominant-baseline="middle" fill="#1e293b" font-family="PDF Studio Khmer, Arial, sans-serif" font-size="13">${escapeHtml(option.label)}</text>`;
+        return `${control}${mark}<text x="${controlX + controlSize + 7}" y="${centerY}" dominant-baseline="middle" fill="${color}" font-family="PDF Studio Khmer, Arial, sans-serif" font-size="${fontSize}">${escapeHtml(option.label)}</text>`;
       })
       .join("");
-    return `<text x="${x + 5}" y="${y + labelSize}" fill="#0f172a" font-family="PDF Studio Khmer, Arial, sans-serif" font-size="${labelSize}" font-weight="600">${escapeHtml(annotation.label ?? "Options")}</text>${rows}`;
+    return `<text x="${x + 5}" y="${y + labelSize}" fill="${color}" font-family="PDF Studio Khmer, Arial, sans-serif" font-size="${labelSize}" font-weight="600">${escapeHtml(annotation.label ?? "Options")}</text>${rows}`;
   }
   if (annotation.type === "signature") {
     return (annotation.strokes ?? [])
@@ -1538,7 +1574,7 @@ export function PdfEditor() {
   const [fitMode, setFitMode] = useState(true);
   const [tool, setTool] = useState<Tool>("select");
   const [isSpacePressed, setIsSpacePressed] = useState(false);
-  const [color, setColor] = useState(COLORS[0]);
+  const [color, setColor] = useState(DEFAULT_ELEMENT_TEXT_COLOR);
   const [annotations, setAnnotations] = useState<Annotation[]>([]);
   const [undoStack, setUndoStack] = useState<Annotation[][]>([]);
   const [redoStack, setRedoStack] = useState<Annotation[][]>([]);
@@ -1596,6 +1632,13 @@ export function PdfEditor() {
       return next;
     });
   }, []);
+
+  function selectEditorTool(nextTool: Tool) {
+    if (nextTool !== "select" && nextTool !== "pan") {
+      setColor(getDefaultElementColor(nextTool));
+    }
+    setTool(nextTool);
+  }
 
   useEffect(() => {
     void loadKhmerBrowserFont().catch(() => {
@@ -1887,7 +1930,7 @@ export function PdfEditor() {
         setSignatureOpen(true);
         return;
       }
-      setTool(nextTool);
+      selectEditorTool(nextTool);
     }
 
     function handleShortcutKeyUp(event: KeyboardEvent) {
@@ -2372,12 +2415,13 @@ export function PdfEditor() {
         width: annotationWidth,
         height: annotationHeight,
         color,
+        borderColor: isDate ? DEFAULT_ELEMENT_BORDER_COLOR : undefined,
         text: isDate
           ? currentDateValue()
           : isInitials
             ? "AB"
             : "Type your text",
-        fontSize: isInitials ? 18 : isDate ? 14 : 16,
+        fontSize: DEFAULT_ELEMENT_FONT_SIZE,
         fieldName: isDate ? "Date" : isInitials ? "Initials" : undefined,
         required: false,
         tabIndex: annotations.length + 1,
@@ -2402,13 +2446,43 @@ export function PdfEditor() {
         width: fieldSize.width,
         height: fieldSize.height,
         color,
-        borderColor: "#64748b",
+        borderColor: DEFAULT_ELEMENT_BORDER_COLOR,
         text: "",
-        fontSize: 14,
+        fontSize: DEFAULT_ELEMENT_FONT_SIZE,
         fieldName: "Text field",
         placeholder: "Enter value",
         required: false,
         validation: "none",
+        tabIndex: annotations.length + 1,
+      };
+      commit([...annotations, annotation]);
+      setSelectedId(annotation.id);
+      setTool("select");
+      return;
+    }
+
+    if (tool === "textarea") {
+      const fieldSize = getNormalizedStandardFieldDimensions(
+        "textarea",
+        basePageSize,
+      );
+      const annotation: Annotation = {
+        id: createAnnotationId(),
+        page: pageNumber,
+        type: "textarea",
+        x: Math.min(1 - fieldSize.width, point.x),
+        y: Math.min(1 - fieldSize.height, point.y),
+        width: fieldSize.width,
+        height: fieldSize.height,
+        color,
+        borderColor: DEFAULT_ELEMENT_BORDER_COLOR,
+        text: "",
+        fontSize: DEFAULT_ELEMENT_FONT_SIZE,
+        fieldName: "Paragraph",
+        placeholder: "Enter paragraph",
+        required: false,
+        validation: "none",
+        multiline: true,
         tabIndex: annotations.length + 1,
       };
       commit([...annotations, annotation]);
@@ -2466,6 +2540,7 @@ export function PdfEditor() {
           }),
         ),
         fieldName: isRadioGroup ? "Radio group" : "Checkbox group",
+        fontSize: DEFAULT_ELEMENT_FONT_SIZE,
         required: false,
         tabIndex: annotations.length + 1,
       };
@@ -2489,14 +2564,14 @@ export function PdfEditor() {
         width: fieldSize.width,
         height: fieldSize.height,
         color,
-        borderColor: "#64748b",
+        borderColor: DEFAULT_ELEMENT_BORDER_COLOR,
         label: "Select an option",
         options: ["Option 1", "Option 2", "Option 3"].map((label) => ({
           id: createAnnotationId(),
           label,
           checked: false,
         })),
-        fontSize: 14,
+        fontSize: DEFAULT_ELEMENT_FONT_SIZE,
         fieldName: "Dropdown",
         required: false,
         tabIndex: annotations.length + 1,
@@ -2521,12 +2596,12 @@ export function PdfEditor() {
         width: fieldSize.width,
         height: fieldSize.height,
         color,
-        borderColor: "#64748b",
+        borderColor: DEFAULT_ELEMENT_BORDER_COLOR,
         label: "Cambodia address",
         address: parseCambodiaAddress(null),
         gazetteerLanguage: "bilingual",
         gazetteerLevel: "village",
-        fontSize: 11,
+        fontSize: DEFAULT_ELEMENT_FONT_SIZE,
         fieldName: "Cambodia address",
         required: false,
         tabIndex: annotations.length + 1,
@@ -2550,8 +2625,10 @@ export function PdfEditor() {
         y: Math.min(1 - placeholderSize.height, point.y),
         width: placeholderSize.width,
         height: placeholderSize.height,
-        color: "#475569",
+        color: DEFAULT_ELEMENT_TEXT_COLOR,
+        borderColor: DEFAULT_ELEMENT_BORDER_COLOR,
         label: "Upload image",
+        fontSize: DEFAULT_ELEMENT_FONT_SIZE,
       };
       commit([...annotations, annotation]);
       setSelectedId(annotation.id);
@@ -2568,7 +2645,7 @@ export function PdfEditor() {
         y: point.y,
         width: 0.3,
         height: 0.1,
-        color: "#111827",
+        color: DEFAULT_ELEMENT_TEXT_COLOR,
         strokes: pendingSignature.map((stroke) =>
           stroke.map((signaturePoint) => ({ ...signaturePoint })),
         ),
@@ -2770,11 +2847,14 @@ export function PdfEditor() {
     if (
       annotation.type === "text" ||
       annotation.type === "input" ||
+      annotation.type === "textarea" ||
       annotation.type === "initials"
     ) {
       const nextText = window.prompt(
         annotation.type === "input"
           ? "Input value"
+          : annotation.type === "textarea"
+            ? "Paragraph text"
           : annotation.type === "initials"
               ? "Edit initials"
               : "Edit text",
@@ -3245,10 +3325,11 @@ export function PdfEditor() {
             fieldHeight = size;
           }
           const fieldBorder =
-            annotation.type === "input" ||
-            annotation.type === "cambodia-address"
-              ? hexToRgb(annotation.borderColor ?? "#64748b")
-              : parsed;
+            annotation.type === "checkbox" || annotation.type === "radio"
+              ? parsed
+              : hexToRgb(
+                  annotation.borderColor ?? DEFAULT_ELEMENT_BORDER_COLOR,
+                );
           const appearance = {
             x: fieldX,
             y: fieldY,
@@ -3267,13 +3348,18 @@ export function PdfEditor() {
 
           if (
             annotation.type === "input" ||
+            annotation.type === "textarea" ||
             annotation.type === "date" ||
             annotation.type === "initials" ||
             annotation.type === "cambodia-address"
           ) {
             const field = form.createTextField(fieldName);
             configureField(field, annotation);
-            if (annotation.multiline || annotation.type === "cambodia-address") {
+            if (
+              annotation.multiline ||
+              annotation.type === "textarea" ||
+              annotation.type === "cambodia-address"
+            ) {
               field.enableMultiline();
             }
             const value =
@@ -3286,7 +3372,8 @@ export function PdfEditor() {
                     annotation.text === "Text input"
                   ? ""
                   : annotation.text ?? "";
-            const fieldFontSize = annotation.fontSize ?? 14;
+            const fieldFontSize =
+              annotation.fontSize ?? DEFAULT_ELEMENT_FONT_SIZE;
             if (containsKhmer(value)) {
               field.addToPage(page, {
                 ...appearance,
@@ -3345,7 +3432,9 @@ export function PdfEditor() {
               (option) => option.checked,
             )?.label;
             if (selectedOption) field.select(selectedOption);
-            field.setFontSize(annotation.fontSize ?? 14);
+            field.setFontSize(
+              annotation.fontSize ?? DEFAULT_ELEMENT_FONT_SIZE,
+            );
             field.updateAppearances(font);
           }
           continue;
@@ -3357,6 +3446,9 @@ export function PdfEditor() {
           const fieldY = annotationBox.y;
           const fieldWidth = annotationBox.width;
           const fieldHeight = annotationBox.height;
+          const fieldBorder = hexToRgb(
+            annotation.borderColor ?? DEFAULT_ELEMENT_BORDER_COLOR,
+          );
           button.addToPage(
             annotation.imageData
               ? ""
@@ -3369,14 +3461,20 @@ export function PdfEditor() {
               y: fieldY,
               width: fieldWidth,
               height: fieldHeight,
-              textColor: rgb(0.28, 0.35, 0.44),
+              textColor: ink,
               backgroundColor: rgb(0.97, 0.98, 0.99),
-              borderColor: rgb(0.58, 0.64, 0.72),
+              borderColor: rgb(
+                fieldBorder.r,
+                fieldBorder.g,
+                fieldBorder.b,
+              ),
               borderWidth: 1.5,
               font,
             },
           );
-          button.setFontSize(12);
+          button.setFontSize(
+            annotation.fontSize ?? DEFAULT_ELEMENT_FONT_SIZE,
+          );
           if (annotation.imageData) {
             const embeddedImage = await pdf.embedPng(
               dataUrlToBytes(annotation.imageData),
@@ -3403,7 +3501,7 @@ export function PdfEditor() {
         }
 
         if (annotation.type === "text") {
-          const size = annotation.fontSize ?? 16;
+          const size = annotation.fontSize ?? DEFAULT_ELEMENT_FONT_SIZE;
           await drawTextWithKhmerSupport({
             page,
             text: annotation.text || "",
@@ -3988,7 +4086,7 @@ export function PdfEditor() {
                   label="Select"
                   shortcut="A"
                   active={tool === "select"}
-                  onClick={() => setTool("select")}
+                  onClick={() => selectEditorTool("select")}
                 >
                   <MousePointer2 />
                 </ToolButton>
@@ -3996,7 +4094,7 @@ export function PdfEditor() {
                   label="Pan document"
                   shortcut="H"
                   active={tool === "pan"}
-                  onClick={() => setTool("pan")}
+                  onClick={() => selectEditorTool("pan")}
                 >
                   <Hand />
                 </ToolButton>
@@ -4004,7 +4102,7 @@ export function PdfEditor() {
                   label="Add text"
                   shortcut="T"
                   active={tool === "text"}
-                  onClick={() => setTool("text")}
+                  onClick={() => selectEditorTool("text")}
                 >
                   <Type />
                 </ToolButton>
@@ -4012,10 +4110,7 @@ export function PdfEditor() {
                   label="Highlight"
                   shortcut="G"
                   active={tool === "highlight"}
-                  onClick={() => {
-                    setColor("#facc15");
-                    setTool("highlight");
-                  }}
+                  onClick={() => selectEditorTool("highlight")}
                 >
                   <Highlighter />
                 </ToolButton>
@@ -4023,7 +4118,7 @@ export function PdfEditor() {
                   label="Draw"
                   shortcut="P"
                   active={tool === "pen"}
-                  onClick={() => setTool("pen")}
+                  onClick={() => selectEditorTool("pen")}
                 >
                   <PenLine />
                 </ToolButton>
@@ -4031,7 +4126,7 @@ export function PdfEditor() {
                   label="Rectangle"
                   shortcut="R"
                   active={tool === "rectangle"}
-                  onClick={() => setTool("rectangle")}
+                  onClick={() => selectEditorTool("rectangle")}
                 >
                   <Square />
                 </ToolButton>
@@ -4039,15 +4134,23 @@ export function PdfEditor() {
                   label="Text input"
                   shortcut="I"
                   active={tool === "input"}
-                  onClick={() => setTool("input")}
+                  onClick={() => selectEditorTool("input")}
                 >
                   <TextCursorInput />
+                </ToolButton>
+                <ToolButton
+                  label="Textarea"
+                  shortcut="X"
+                  active={tool === "textarea"}
+                  onClick={() => selectEditorTool("textarea")}
+                >
+                  <AlignLeft />
                 </ToolButton>
                 <ToolButton
                   label="Dropdown"
                   shortcut="V"
                   active={tool === "dropdown"}
-                  onClick={() => setTool("dropdown")}
+                  onClick={() => selectEditorTool("dropdown")}
                 >
                   <ListFilter />
                 </ToolButton>
@@ -4055,7 +4158,7 @@ export function PdfEditor() {
                   label="Cambodia address"
                   shortcut="K"
                   active={tool === "cambodia-address"}
-                  onClick={() => setTool("cambodia-address")}
+                  onClick={() => selectEditorTool("cambodia-address")}
                 >
                   <MapPinned />
                 </ToolButton>
@@ -4063,7 +4166,7 @@ export function PdfEditor() {
                   label="Checkbox"
                   shortcut="C"
                   active={tool === "checkbox"}
-                  onClick={() => setTool("checkbox")}
+                  onClick={() => selectEditorTool("checkbox")}
                 >
                   <CheckSquare2 />
                 </ToolButton>
@@ -4071,7 +4174,7 @@ export function PdfEditor() {
                   label="Radio button"
                   shortcut="O"
                   active={tool === "radio"}
-                  onClick={() => setTool("radio")}
+                  onClick={() => selectEditorTool("radio")}
                 >
                   <CircleDot />
                 </ToolButton>
@@ -4079,7 +4182,7 @@ export function PdfEditor() {
                   label="Checkbox group"
                   shortcut="B"
                   active={tool === "checkbox-group"}
-                  onClick={() => setTool("checkbox-group")}
+                  onClick={() => selectEditorTool("checkbox-group")}
                 >
                   <CheckSquare2 />
                 </ToolButton>
@@ -4087,7 +4190,7 @@ export function PdfEditor() {
                   label="Radio group"
                   shortcut="Q"
                   active={tool === "radio-group"}
-                  onClick={() => setTool("radio-group")}
+                  onClick={() => selectEditorTool("radio-group")}
                 >
                   <CircleDot />
                 </ToolButton>
@@ -4105,7 +4208,7 @@ export function PdfEditor() {
                   label="Add date"
                   shortcut="D"
                   active={tool === "date"}
-                  onClick={() => setTool("date")}
+                  onClick={() => selectEditorTool("date")}
                 >
                   <CalendarDays />
                 </ToolButton>
@@ -4113,7 +4216,7 @@ export function PdfEditor() {
                   label="Add initials"
                   shortcut="N"
                   active={tool === "initials"}
-                  onClick={() => setTool("initials")}
+                  onClick={() => selectEditorTool("initials")}
                 >
                   <Type />
                 </ToolButton>
@@ -4121,7 +4224,7 @@ export function PdfEditor() {
                   label="Ellipse"
                   shortcut="E"
                   active={tool === "ellipse"}
-                  onClick={() => setTool("ellipse")}
+                  onClick={() => selectEditorTool("ellipse")}
                 >
                   <Circle />
                 </ToolButton>
@@ -4129,7 +4232,7 @@ export function PdfEditor() {
                   label="Line"
                   shortcut="L"
                   active={tool === "line"}
-                  onClick={() => setTool("line")}
+                  onClick={() => selectEditorTool("line")}
                 >
                   <Minus />
                 </ToolButton>
@@ -4149,7 +4252,7 @@ export function PdfEditor() {
                   label="Image placeholder"
                   shortcut="M"
                   active={tool === "image-placeholder"}
-                  onClick={() => setTool("image-placeholder")}
+                  onClick={() => selectEditorTool("image-placeholder")}
                 >
                   <UploadCloud />
                 </ToolButton>
@@ -4254,34 +4357,54 @@ export function PdfEditor() {
                 </span>
                 {(selectedAnnotation.type === "text" ||
                   selectedAnnotation.type === "input" ||
+                  selectedAnnotation.type === "textarea" ||
+                  selectedAnnotation.type === "dropdown" ||
+                  selectedAnnotation.type === "checkbox-group" ||
+                  selectedAnnotation.type === "radio-group" ||
+                  selectedAnnotation.type === "image-placeholder" ||
                   selectedAnnotation.type === "date" ||
                   selectedAnnotation.type === "initials") && (
-                  <input
-                    type={selectedAnnotation.type === "date" ? "date" : "text"}
-                    aria-label={
-                      selectedAnnotation.type === "input"
-                        ? "Input value"
-                        : selectedAnnotation.type === "date"
-                          ? "Date value"
-                          : selectedAnnotation.type === "initials"
-                            ? "Initials value"
-                            : "Annotation text"
-                    }
-                    value={selectedAnnotation.text}
-                    onChange={(event) =>
-                      updateSelected({ text: event.target.value })
-                    }
-                    className="h-8 min-w-40 flex-1 rounded-md border border-slate-200 bg-slate-50 px-2 text-sm outline-none focus:border-blue-500"
-                  />
+                  selectedAnnotation.type === "textarea" ? (
+                    <textarea
+                      aria-label="Textarea value"
+                      value={selectedAnnotation.text}
+                      onChange={(event) =>
+                        updateSelected({ text: event.target.value })
+                      }
+                      rows={2}
+                      className="h-14 min-w-56 flex-1 resize-none rounded-md border border-slate-200 bg-slate-50 px-2 py-1.5 text-sm outline-none focus:border-blue-500"
+                    />
+                  ) : (
+                    <input
+                      type={selectedAnnotation.type === "date" ? "date" : "text"}
+                      aria-label={
+                        selectedAnnotation.type === "input"
+                          ? "Input value"
+                          : selectedAnnotation.type === "date"
+                            ? "Date value"
+                            : selectedAnnotation.type === "initials"
+                              ? "Initials value"
+                              : "Annotation text"
+                      }
+                      value={selectedAnnotation.text}
+                      onChange={(event) =>
+                        updateSelected({ text: event.target.value })
+                      }
+                      className="h-8 min-w-40 flex-1 rounded-md border border-slate-200 bg-slate-50 px-2 text-sm outline-none focus:border-blue-500"
+                    />
+                  )
                 )}
                 {(selectedAnnotation.type === "text" ||
                   selectedAnnotation.type === "input" ||
+                  selectedAnnotation.type === "textarea" ||
                   selectedAnnotation.type === "date" ||
                   selectedAnnotation.type === "initials" ||
                   selectedAnnotation.type === "cambodia-address") && (
                   <FontSizeControl
                     compact
-                    value={selectedAnnotation.fontSize ?? 16}
+                    value={
+                      selectedAnnotation.fontSize ?? DEFAULT_ELEMENT_FONT_SIZE
+                    }
                     onChange={(fontSize) => updateSelected({ fontSize })}
                   />
                 )}
@@ -4345,6 +4468,10 @@ export function PdfEditor() {
                   />
                 )}
                 {(selectedAnnotation.type === "input" ||
+                  selectedAnnotation.type === "textarea" ||
+                  selectedAnnotation.type === "dropdown" ||
+                  selectedAnnotation.type === "date" ||
+                  selectedAnnotation.type === "image-placeholder" ||
                   selectedAnnotation.type === "cambodia-address") && (
                   <div className="flex shrink-0 items-center gap-2">
                     <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">
@@ -4353,7 +4480,8 @@ export function PdfEditor() {
                     <ColorControl
                       compact
                       value={
-                        selectedAnnotation.borderColor ?? "#64748b"
+                        selectedAnnotation.borderColor ??
+                        DEFAULT_ELEMENT_BORDER_COLOR
                       }
                       onChange={(borderColor) =>
                         updateSelected({ borderColor })
@@ -4456,6 +4584,8 @@ export function PdfEditor() {
                     const selected = annotation.id === selectedId;
                     const fieldIconSize = getScaledFieldIconSize(zoom);
                     const mediaIconSize = getScaledFieldIconSize(zoom, "media");
+                    const annotationFontSize =
+                      annotation.fontSize ?? DEFAULT_ELEMENT_FONT_SIZE;
                     if (annotation.type === "drawing") {
                       const points = annotation.points ?? [];
                       return (
@@ -4530,7 +4660,7 @@ export function PdfEditor() {
                               onPointerDown={(event) => event.stopPropagation()}
                               onChange={(event) => updateAnnotationValue(annotation.id, { text: event.target.value })}
                               className="size-full border-0 bg-transparent outline-none"
-                              style={{ color: annotation.color, fontSize: (annotation.fontSize ?? 16) * zoom }}
+                              style={{ color: annotation.color, fontSize: annotationFontSize * zoom }}
                             />
                           ) : (
                           <span
@@ -4540,7 +4670,7 @@ export function PdfEditor() {
                             className="block whitespace-pre-wrap leading-tight"
                             style={{
                               color: annotation.color,
-                              fontSize: (annotation.fontSize ?? 16) * zoom,
+                              fontSize: annotationFontSize * zoom,
                               lineHeight: containsKhmer(annotation.text)
                                 ? 1.55
                                 : 1.25,
@@ -4566,7 +4696,10 @@ export function PdfEditor() {
                                 className="pdf-native-date-field size-full rounded-md border border-slate-400 bg-white px-2 pr-9"
                                 style={{
                                   color: annotation.color,
-                                  fontSize: (annotation.fontSize ?? 14) * zoom,
+                                  borderColor:
+                                    annotation.borderColor ??
+                                    DEFAULT_ELEMENT_BORDER_COLOR,
+                                  fontSize: annotationFontSize * zoom,
                                   paddingRight: fieldIconSize + 12,
                                 }}
                               />
@@ -4578,7 +4711,7 @@ export function PdfEditor() {
                               />
                             </span>
                           ) : (
-                            <span className="flex size-full items-center gap-2 overflow-hidden rounded-md border border-slate-400 bg-white px-2 leading-none shadow-sm" style={{ color: annotation.color, fontSize: (annotation.fontSize ?? 14) * zoom, borderWidth: Math.max(0.75, zoom) }}>
+                            <span className="flex size-full items-center gap-2 overflow-hidden rounded-md border bg-white px-2 leading-none shadow-sm" style={{ color: annotation.color, borderColor: annotation.borderColor ?? DEFAULT_ELEMENT_BORDER_COLOR, fontSize: annotationFontSize * zoom, borderWidth: Math.max(0.75, zoom) }}>
                               <span className="min-w-0 flex-1 truncate">{formatDateValue(annotation.text)}</span>
                               <CalendarDays
                                 className="shrink-0 text-slate-500"
@@ -4646,7 +4779,7 @@ export function PdfEditor() {
                                 onPointerDown={(event) => event.stopPropagation()}
                                 onChange={(event) => updateAnnotationValue(annotation.id, { text: event.target.value })}
                                 className="size-full resize-none rounded-sm border bg-white px-1.5 py-1 outline-none"
-                                style={{ color: annotation.color, fontSize: (annotation.fontSize ?? 14) * zoom, borderColor: annotation.borderColor ?? "#64748b" }}
+                                style={{ color: annotation.color, fontSize: annotationFontSize * zoom, borderColor: annotation.borderColor ?? DEFAULT_ELEMENT_BORDER_COLOR }}
                               />
                             ) : (
                               <input
@@ -4657,7 +4790,7 @@ export function PdfEditor() {
                                 onPointerDown={(event) => event.stopPropagation()}
                                 onChange={(event) => updateAnnotationValue(annotation.id, { text: event.target.value })}
                                 className="size-full rounded-sm border bg-white px-1.5 outline-none"
-                                style={{ color: annotation.color, fontSize: (annotation.fontSize ?? 14) * zoom, borderColor: annotation.borderColor ?? "#64748b" }}
+                                style={{ color: annotation.color, fontSize: annotationFontSize * zoom, borderColor: annotation.borderColor ?? DEFAULT_ELEMENT_BORDER_COLOR }}
                               />
                             )
                           ) : (
@@ -4668,9 +4801,9 @@ export function PdfEditor() {
                             className="flex size-full items-center overflow-hidden rounded-sm border border-slate-400 bg-white px-1.5 leading-none"
                             style={{
                               color: annotation.color,
-                              fontSize: (annotation.fontSize ?? 14) * zoom,
+                              fontSize: annotationFontSize * zoom,
                               borderColor:
-                                annotation.borderColor ?? "#64748b",
+                                annotation.borderColor ?? DEFAULT_ELEMENT_BORDER_COLOR,
                               borderWidth: Math.max(0.75, zoom),
                               lineHeight: containsKhmer(annotation.text)
                                 ? 1.55
@@ -4681,6 +4814,51 @@ export function PdfEditor() {
                               {annotation.text || "Text input"}
                             </span>
                           </span>
+                          )
+                        )}
+                        {annotation.type === "textarea" && (
+                          editorMode === "fill" ? (
+                            <textarea
+                              value={annotation.text ?? ""}
+                              placeholder={annotation.placeholder}
+                              required={annotation.required}
+                              onPointerDown={(event) => event.stopPropagation()}
+                              onChange={(event) =>
+                                updateAnnotationValue(annotation.id, {
+                                  text: event.target.value,
+                                })
+                              }
+                              className="size-full resize-none rounded-sm border bg-white px-2 py-1.5 outline-none"
+                              style={{
+                                color: annotation.color,
+                                fontSize: annotationFontSize * zoom,
+                                borderColor:
+                                  annotation.borderColor ?? DEFAULT_ELEMENT_BORDER_COLOR,
+                              }}
+                            />
+                          ) : (
+                            <span
+                              lang={
+                                containsKhmer(annotation.text)
+                                  ? "km"
+                                  : undefined
+                              }
+                              className="block size-full overflow-hidden whitespace-pre-wrap rounded-sm border bg-white px-2 py-1.5"
+                              style={{
+                                color: annotation.color,
+                                fontSize: annotationFontSize * zoom,
+                                borderColor:
+                                  annotation.borderColor ?? DEFAULT_ELEMENT_BORDER_COLOR,
+                                borderWidth: Math.max(0.75, zoom),
+                                lineHeight: containsKhmer(annotation.text)
+                                  ? 1.55
+                                  : 1.35,
+                              }}
+                            >
+                              {annotation.text ||
+                                annotation.placeholder ||
+                                "Enter paragraph"}
+                            </span>
                           )
                         )}
                         {annotation.type === "dropdown" && (
@@ -4698,8 +4876,8 @@ export function PdfEditor() {
                                 className="size-full appearance-none rounded-md border bg-white px-2 pr-9 outline-none"
                                 style={{
                                   color: annotation.color,
-                                  borderColor: annotation.borderColor ?? "#64748b",
-                                  fontSize: (annotation.fontSize ?? 14) * zoom,
+                                  borderColor: annotation.borderColor ?? DEFAULT_ELEMENT_BORDER_COLOR,
+                                  fontSize: annotationFontSize * zoom,
                                   paddingRight: fieldIconSize + 12,
                                 }}
                               >
@@ -4714,7 +4892,7 @@ export function PdfEditor() {
                               />
                             </span>
                           ) : (
-                            <span className="flex size-full items-center justify-between rounded-md border bg-white px-2" style={{ color: annotation.color, borderColor: annotation.borderColor ?? "#64748b", fontSize: (annotation.fontSize ?? 14) * zoom }}>
+                            <span className="flex size-full items-center justify-between rounded-md border bg-white px-2" style={{ color: annotation.color, borderColor: annotation.borderColor ?? DEFAULT_ELEMENT_BORDER_COLOR, fontSize: annotationFontSize * zoom }}>
                               <span className="truncate">{annotation.options?.find((option) => option.checked)?.label ?? annotation.label ?? "Select an option"}</span>
                               <ChevronDown
                                 className="shrink-0 text-slate-500"
@@ -4752,8 +4930,8 @@ export function PdfEditor() {
                               style={{
                                 color: annotation.color,
                                 borderColor:
-                                  annotation.borderColor ?? "#64748b",
-                                fontSize: (annotation.fontSize ?? 11) * zoom,
+                                  annotation.borderColor ?? DEFAULT_ELEMENT_BORDER_COLOR,
+                                fontSize: annotationFontSize * zoom,
                               }}
                               iconSize={fieldIconSize}
                             />
@@ -4763,9 +4941,13 @@ export function PdfEditor() {
                           <button
                             type="button"
                             disabled={editorMode !== "fill"}
-                            onPointerDown={(event) => event.stopPropagation()}
+                            onPointerDown={
+                              editorMode === "fill"
+                                ? (event) => event.stopPropagation()
+                                : undefined
+                            }
                             onClick={() => updateAnnotationValue(annotation.id, { checked: !annotation.checked })}
-                            className="flex size-full items-center justify-center rounded-[2px] bg-white"
+                            className={`flex size-full items-center justify-center rounded-[2px] bg-white ${editorMode === "build" ? "pointer-events-none" : ""}`}
                             style={{
                               borderColor: annotation.color,
                               borderWidth: Math.max(1, 1.5 * zoom),
@@ -4785,9 +4967,13 @@ export function PdfEditor() {
                           <button
                             type="button"
                             disabled={editorMode !== "fill"}
-                            onPointerDown={(event) => event.stopPropagation()}
+                            onPointerDown={
+                              editorMode === "fill"
+                                ? (event) => event.stopPropagation()
+                                : undefined
+                            }
                             onClick={() => updateAnnotationValue(annotation.id, { checked: !annotation.checked })}
-                            className="flex size-full items-center justify-center rounded-full bg-white"
+                            className={`flex size-full items-center justify-center rounded-full bg-white ${editorMode === "build" ? "pointer-events-none" : ""}`}
                             style={{
                               borderColor: annotation.color,
                               borderWidth: Math.max(1, 1.5 * zoom),
@@ -4805,8 +4991,11 @@ export function PdfEditor() {
                         {(annotation.type === "checkbox-group" ||
                           annotation.type === "radio-group") && (
                           <span
-                            className="flex size-full flex-col overflow-hidden rounded-md bg-white/95 text-slate-800"
-                            style={{ padding: 6 * zoom }}
+                            className="flex size-full flex-col overflow-hidden rounded-md bg-white/95"
+                            style={{
+                              color: annotation.color,
+                              padding: 6 * zoom,
+                            }}
                           >
                             <span
                               lang={
@@ -4816,7 +5005,7 @@ export function PdfEditor() {
                               }
                               className="truncate font-semibold leading-tight"
                               style={{
-                                fontSize: 14 * zoom,
+                                fontSize: annotationFontSize * zoom,
                                 lineHeight: containsKhmer(annotation.label)
                                   ? 1.55
                                   : 1.25,
@@ -4832,7 +5021,11 @@ export function PdfEditor() {
                                 <button
                                   type="button"
                                   disabled={editorMode !== "fill"}
-                                  onPointerDown={(event) => event.stopPropagation()}
+                                  onPointerDown={
+                                    editorMode === "fill"
+                                      ? (event) => event.stopPropagation()
+                                      : undefined
+                                  }
                                   onClick={() => updateAnnotationValue(annotation.id, {
                                     options: (annotation.options ?? []).map((item) => ({
                                       ...item,
@@ -4847,10 +5040,10 @@ export function PdfEditor() {
                                       ? "km"
                                       : undefined
                                   }
-                                  className="flex min-w-0 items-center leading-none"
+                                  className={`flex min-w-0 items-center leading-none ${editorMode === "build" ? "pointer-events-none" : ""}`}
                                   style={{
                                     gap: 6 * zoom,
-                                    fontSize: 12 * zoom,
+                                    fontSize: annotationFontSize * zoom,
                                     lineHeight: containsKhmer(option.label)
                                       ? 1.55
                                       : 1,
@@ -4932,7 +5125,15 @@ export function PdfEditor() {
                             />
                           )}
                         {annotation.type === "image-placeholder" && (
-                          <span className="relative flex size-full items-center justify-center overflow-hidden rounded-lg border-2 border-dashed border-slate-400 bg-slate-50 text-slate-600">
+                          <span
+                            className="relative flex size-full items-center justify-center overflow-hidden rounded-lg border-2 border-dashed bg-slate-50"
+                            style={{
+                              color: annotation.color,
+                              borderColor:
+                                annotation.borderColor ??
+                                DEFAULT_ELEMENT_BORDER_COLOR,
+                            }}
+                          >
                             {annotation.imageData ? (
                               <Image
                                 src={annotation.imageData}
@@ -4948,7 +5149,10 @@ export function PdfEditor() {
                                   style={{ width: mediaIconSize, height: mediaIconSize }}
                                   strokeWidth={2.1}
                                 />
-                                <span className="text-xs font-semibold">
+                                <span
+                                  className="font-semibold"
+                                  style={{ fontSize: annotationFontSize * zoom }}
+                                >
                                   {annotation.label || "Upload image"}
                                 </span>
                               </span>
@@ -5038,10 +5242,13 @@ export function PdfEditor() {
                 </div>
                 {(selectedAnnotation.type === "text" ||
                   selectedAnnotation.type === "input" ||
+                  selectedAnnotation.type === "textarea" ||
                   selectedAnnotation.type === "initials") && (
                   <label className="block rounded-xl border border-slate-200 bg-slate-50/70 p-3 text-xs font-semibold text-slate-600">
                     {selectedAnnotation.type === "input"
                       ? "Value"
+                      : selectedAnnotation.type === "textarea"
+                        ? "Paragraph"
                       : selectedAnnotation.type === "initials"
                           ? "Initials"
                           : "Text"}
@@ -5050,7 +5257,7 @@ export function PdfEditor() {
                       onChange={(event) =>
                         updateSelected({ text: event.target.value })
                       }
-                      rows={4}
+                      rows={selectedAnnotation.type === "textarea" ? 6 : 4}
                       className="mt-2 w-full resize-none rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-normal text-slate-800 shadow-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                     />
                   </label>
@@ -5076,6 +5283,11 @@ export function PdfEditor() {
                 )}
                 {(selectedAnnotation.type === "text" ||
                   selectedAnnotation.type === "input" ||
+                  selectedAnnotation.type === "textarea" ||
+                  selectedAnnotation.type === "dropdown" ||
+                  selectedAnnotation.type === "checkbox-group" ||
+                  selectedAnnotation.type === "radio-group" ||
+                  selectedAnnotation.type === "image-placeholder" ||
                   selectedAnnotation.type === "date" ||
                   selectedAnnotation.type === "initials" ||
                   selectedAnnotation.type === "cambodia-address") && (
@@ -5084,7 +5296,9 @@ export function PdfEditor() {
                       Font size
                     </p>
                     <FontSizeControl
-                      value={selectedAnnotation.fontSize ?? 16}
+                      value={
+                        selectedAnnotation.fontSize ?? DEFAULT_ELEMENT_FONT_SIZE
+                      }
                       onChange={(fontSize) => updateSelected({ fontSize })}
                     />
                   </div>
@@ -5196,7 +5410,9 @@ export function PdfEditor() {
                         </Button>
                       )}
                     </div>
-                    {(selectedAnnotation.type === "input" || selectedAnnotation.type === "initials") && (
+                    {(selectedAnnotation.type === "input" ||
+                      selectedAnnotation.type === "textarea" ||
+                      selectedAnnotation.type === "initials") && (
                       <label className="block text-xs font-semibold text-slate-600">
                         Placeholder
                         <input
@@ -5266,7 +5482,8 @@ export function PdfEditor() {
                 {selectedAnnotation.type !== "image" && (
                   <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3">
                     <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                      {selectedAnnotation.type === "input"
+                      {selectedAnnotation.type === "input" ||
+                      selectedAnnotation.type === "textarea"
                         ? "Text color"
                         : "Color"}
                     </p>
@@ -5281,6 +5498,10 @@ export function PdfEditor() {
                   </div>
                 )}
                 {(selectedAnnotation.type === "input" ||
+                  selectedAnnotation.type === "textarea" ||
+                  selectedAnnotation.type === "dropdown" ||
+                  selectedAnnotation.type === "date" ||
+                  selectedAnnotation.type === "image-placeholder" ||
                   selectedAnnotation.type === "cambodia-address") && (
                   <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3">
                     <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
@@ -5289,7 +5510,8 @@ export function PdfEditor() {
                     <div className="mt-3">
                       <ColorControl
                         value={
-                          selectedAnnotation.borderColor ?? "#64748b"
+                          selectedAnnotation.borderColor ??
+                          DEFAULT_ELEMENT_BORDER_COLOR
                         }
                         onChange={(borderColor) =>
                           updateSelected({ borderColor })
@@ -5334,7 +5556,7 @@ export function PdfEditor() {
             ),
           );
           setSignatureOpen(false);
-          setTool("signature");
+          selectEditorTool("signature");
         }}
       />
       <ShortcutsDialog

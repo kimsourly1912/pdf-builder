@@ -30,6 +30,10 @@ import type {
 import { isRecipientFieldType } from "@/features/templates/template-fields";
 import { getScaledFieldIconSize } from "@/features/templates/field-layout";
 import {
+  DEFAULT_ELEMENT_BORDER_COLOR,
+  DEFAULT_ELEMENT_FONT_SIZE,
+} from "@/features/templates/field-style";
+import {
   normalizedPointToPdf,
   normalizedRectToPdfBox,
 } from "@/features/templates/pdf-coordinates";
@@ -259,25 +263,28 @@ export function RecipientFill(props: { token: string }) {
 function FillAnnotation(props: { annotation: TemplateAnnotation; value: unknown; scale: number; onChange: (value: unknown) => void; onError: (message: string) => void }) {
   const annotation = props.annotation;
   const style = { left: `${annotation.x * 100}%`, top: `${annotation.y * 100}%`, width: `${annotation.width * 100}%`, height: `${annotation.height * 100}%` };
-  const fontSize = getNumber(annotation.fontSize, 14);
-  const borderColor = getString(annotation.borderColor, "#64748b");
+  const fontSize = getNumber(annotation.fontSize, DEFAULT_ELEMENT_FONT_SIZE);
+  const borderColor = getString(
+    annotation.borderColor,
+    DEFAULT_ELEMENT_BORDER_COLOR,
+  );
   const required = Boolean(annotation.required);
   const placeholder = getString(annotation.placeholder, getString(annotation.label, "Enter value"));
   const options = getOptions(annotation.options);
   const fieldIconSize = getScaledFieldIconSize(props.scale);
   const mediaIconSize = getScaledFieldIconSize(props.scale, "media");
 
-  if (annotation.type === "input" || annotation.type === "initials") return <div className="absolute" style={style}>{Boolean(annotation.multiline) ? <textarea value={String(props.value ?? "")} placeholder={placeholder} required={required} onChange={(event) => props.onChange(event.target.value)} className="size-full resize-none rounded border bg-white px-2 py-1 outline-none focus:ring-2 focus:ring-blue-500" style={{ color: annotation.color, borderColor, fontSize }} /> : <input value={String(props.value ?? "")} placeholder={placeholder} required={required} onChange={(event) => props.onChange(event.target.value)} className="size-full rounded border bg-white px-2 outline-none focus:ring-2 focus:ring-blue-500" style={{ color: annotation.color, borderColor, fontSize }} />}</div>;
+  if (annotation.type === "input" || annotation.type === "textarea" || annotation.type === "initials") return <div className="absolute" style={style}>{annotation.type === "textarea" || Boolean(annotation.multiline) ? <textarea value={String(props.value ?? "")} placeholder={placeholder} required={required} onChange={(event) => props.onChange(event.target.value)} className="size-full resize-none rounded border bg-white px-2 py-1 outline-none focus:ring-2 focus:ring-blue-500" style={{ color: annotation.color, borderColor, fontSize }} /> : <input value={String(props.value ?? "")} placeholder={placeholder} required={required} onChange={(event) => props.onChange(event.target.value)} className="size-full rounded border bg-white px-2 outline-none focus:ring-2 focus:ring-blue-500" style={{ color: annotation.color, borderColor, fontSize }} />}</div>;
   if (annotation.type === "date") return <div className="absolute" style={style}><div className="relative size-full"><input type="date" value={String(props.value ?? "")} required={required} onChange={(event) => props.onChange(event.target.value)} className="pdf-native-date-field size-full rounded border bg-white px-2 outline-none focus:ring-2 focus:ring-blue-500" style={{ color: annotation.color, borderColor, fontSize, paddingRight: fieldIconSize + 12 }} /><CalendarDays aria-hidden="true" className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-slate-500" style={{ width: fieldIconSize, height: fieldIconSize }} strokeWidth={2.25} /></div></div>;
   if (annotation.type === "dropdown") return <div className="absolute" style={style}><div className="relative size-full"><select value={String(props.value ?? "")} required={required} onChange={(event) => props.onChange(event.target.value)} className="size-full appearance-none rounded border bg-white px-2 outline-none focus:ring-2 focus:ring-blue-500" style={{ color: annotation.color, borderColor, fontSize, paddingRight: fieldIconSize + 12 }}><option value="">{getString(annotation.label, "Select an option")}</option>{options.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}</select><ChevronDown aria-hidden="true" className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-slate-500" style={{ width: fieldIconSize, height: fieldIconSize }} strokeWidth={2.25} /></div></div>;
   if (annotation.type === "cambodia-address") return <div className="absolute" style={style}><CambodiaAddressField value={props.value} language={getGazetteerLanguage(annotation.gazetteerLanguage)} deepestLevel={getGazetteerLevel(annotation.gazetteerLevel)} required={required} label={getString(annotation.label, "Cambodia address")} onChange={props.onChange} style={{ color: annotation.color, borderColor, fontSize }} iconSize={fieldIconSize} /></div>;
   if (annotation.type === "checkbox" || annotation.type === "radio") return <button type="button" aria-label={getString(annotation.fieldName, annotation.type)} aria-pressed={Boolean(props.value)} onClick={() => props.onChange(!props.value)} className={`absolute flex items-center justify-center border-2 bg-white ${annotation.type === "radio" ? "rounded-full" : "rounded"}`} style={{ ...style, borderColor: annotation.color }}>{Boolean(props.value) && (annotation.type === "radio" ? <span className="size-1/2 rounded-full" style={{ backgroundColor: annotation.color }} /> : <Check className="size-full" style={{ color: annotation.color }} />)}</button>;
   if (annotation.type === "checkbox-group" || annotation.type === "radio-group") {
     const selected = Array.isArray(props.value) ? props.value.map(String) : [];
-    return <fieldset className="absolute overflow-auto rounded-md bg-white/95 p-2" style={style}><legend className="text-xs font-bold text-slate-800">{getString(annotation.label, "Options")}</legend><div className="space-y-1.5">{options.map((option) => { const checked = selected.includes(option.id); return <label key={option.id} className="flex items-center gap-2 text-xs text-slate-700"><input type={annotation.type === "radio-group" ? "radio" : "checkbox"} name={annotation.id} checked={checked} onChange={() => props.onChange(annotation.type === "radio-group" ? [option.id] : checked ? selected.filter((id) => id !== option.id) : [...selected, option.id])} className="shrink-0 accent-blue-600" style={{ width: fieldIconSize, height: fieldIconSize }} />{option.label}</label>; })}</div></fieldset>;
+    return <fieldset className="absolute overflow-auto rounded-md bg-white/95 p-2" style={{ ...style, color: annotation.color, fontSize }}><legend className="font-bold">{getString(annotation.label, "Options")}</legend><div className="space-y-1.5">{options.map((option) => { const checked = selected.includes(option.id); return <label key={option.id} className="flex items-center gap-2"><input type={annotation.type === "radio-group" ? "radio" : "checkbox"} name={annotation.id} checked={checked} onChange={() => props.onChange(annotation.type === "radio-group" ? [option.id] : checked ? selected.filter((id) => id !== option.id) : [...selected, option.id])} className="shrink-0" style={{ width: fieldIconSize, height: fieldIconSize, accentColor: annotation.color }} />{option.label}</label>; })}</div></fieldset>;
   }
-  if (annotation.type === "image-placeholder") return <label className="absolute flex cursor-pointer flex-col items-center justify-center overflow-hidden rounded-lg border-2 border-dashed border-slate-400 bg-slate-50 text-center text-xs font-semibold text-slate-600" style={style}>{typeof props.value === "string" && props.value.startsWith("data:image/") ? <Image src={props.value} alt="Uploaded" fill unoptimized className="object-cover" /> : <><UploadCloud style={{ width: mediaIconSize, height: mediaIconSize }} strokeWidth={2.1} />{getString(annotation.label, "Upload image")}</>}<input type="file" accept="image/png,image/jpeg" className="sr-only" onChange={(event) => { const file = event.target.files?.[0]; if (!file) return; void prepareRecipientImage(file).then(props.onChange).catch(() => { props.onChange(""); props.onError("Choose a valid PNG or JPEG image up to 8 MB."); }); }} /></label>;
-  if (annotation.type === "text") return <span className="pointer-events-none absolute whitespace-pre-wrap" style={{ ...style, color: annotation.color, fontSize: getNumber(annotation.fontSize, 16) }}>{getString(annotation.text, "")}</span>;
+  if (annotation.type === "image-placeholder") return <label className="absolute flex cursor-pointer flex-col items-center justify-center overflow-hidden rounded-lg border-2 border-dashed bg-slate-50 text-center font-semibold" style={{ ...style, color: annotation.color, borderColor, fontSize }}>{typeof props.value === "string" && props.value.startsWith("data:image/") ? <Image src={props.value} alt="Uploaded" fill unoptimized className="object-cover" /> : <><UploadCloud style={{ width: mediaIconSize, height: mediaIconSize }} strokeWidth={2.1} />{getString(annotation.label, "Upload image")}</>}<input type="file" accept="image/png,image/jpeg" className="sr-only" onChange={(event) => { const file = event.target.files?.[0]; if (!file) return; void prepareRecipientImage(file).then(props.onChange).catch(() => { props.onChange(""); props.onError("Choose a valid PNG or JPEG image up to 8 MB."); }); }} /></label>;
+  if (annotation.type === "text") return <span className="pointer-events-none absolute whitespace-pre-wrap" style={{ ...style, color: annotation.color, fontSize: getNumber(annotation.fontSize, DEFAULT_ELEMENT_FONT_SIZE) }}>{getString(annotation.text, "")}</span>;
   if (annotation.type === "highlight") return <span className="pointer-events-none absolute opacity-35" style={{ ...style, backgroundColor: annotation.color }} />;
   if (annotation.type === "rectangle" || annotation.type === "ellipse") return <span className={`pointer-events-none absolute border-2 ${annotation.type === "ellipse" ? "rounded-full" : ""}`} style={{ ...style, borderColor: annotation.color }} />;
   if (annotation.type === "line") {
@@ -359,15 +366,28 @@ async function buildCompletedPdf(pdfBytes: Uint8Array<ArrayBuffer>, pageOrder: T
     const color = hexToRgb(annotation.color);
     const box = normalizedRectToPdfBox(annotation, cropBox, rotation);
     const { x, y, width: boxWidth, height: boxHeight } = box;
-    if (["input", "date", "initials"].includes(annotation.type)) {
-      const size = Math.max(6, getNumber(annotation.fontSize, 14));
-      await drawText({ page, text: String(value ?? ""), x: x + 4, topY: y + Math.max(size + 2, (boxHeight + size) / 2), size, maxWidth: Math.max(4, boxWidth - 8), color: annotation.color });
+    if (["input", "textarea", "date", "initials"].includes(annotation.type)) {
+      const size = Math.max(
+        6,
+        getNumber(annotation.fontSize, DEFAULT_ELEMENT_FONT_SIZE),
+      );
+      const topY = annotation.type === "textarea"
+        ? y + boxHeight - 4
+        : y + Math.max(size + 2, (boxHeight + size) / 2);
+      await drawText({ page, text: String(value ?? ""), x: x + 4, topY, size, maxWidth: Math.max(4, boxWidth - 8), color: annotation.color });
     } else if (annotation.type === "dropdown") {
       const label = getOptions(annotation.options).find((option) => option.id === value)?.label ?? "";
-      await drawText({ page, text: label, x: x + 4, topY: y + Math.max(14, (boxHeight + 12) / 2), size: 12, maxWidth: Math.max(4, boxWidth - 8), color: annotation.color });
+      const size = Math.max(
+        6,
+        getNumber(annotation.fontSize, DEFAULT_ELEMENT_FONT_SIZE),
+      );
+      await drawText({ page, text: label, x: x + 4, topY: y + Math.max(size + 2, (boxHeight + size) / 2), size, maxWidth: Math.max(4, boxWidth - 8), color: annotation.color });
     } else if (annotation.type === "cambodia-address") {
       const address = formatCambodiaAddress(value, getGazetteerLanguage(annotation.gazetteerLanguage));
-      const size = Math.max(6, getNumber(annotation.fontSize, 10));
+      const size = Math.max(
+        6,
+        getNumber(annotation.fontSize, DEFAULT_ELEMENT_FONT_SIZE),
+      );
       await drawText({ page, text: address, x: x + 4, topY: y + boxHeight - 4, size, maxWidth: Math.max(4, boxWidth - 8), color: annotation.color });
     } else if ((annotation.type === "checkbox" || annotation.type === "radio") && value) {
       if (annotation.type === "radio") page.drawCircle({ x: x + boxWidth / 2, y: y + boxHeight / 2, size: Math.min(boxWidth, boxHeight) * 0.28, color: rgb(color.r, color.g, color.b) });
@@ -377,13 +397,20 @@ async function buildCompletedPdf(pdfBytes: Uint8Array<ArrayBuffer>, pageOrder: T
       }
     } else if ((annotation.type === "checkbox-group" || annotation.type === "radio-group") && Array.isArray(value)) {
       const labels = getOptions(annotation.options).filter((option) => value.includes(option.id)).map((option) => option.label).join(", ");
-      await drawText({ page, text: labels, x: x + 4, topY: y + Math.max(12, boxHeight - 4), size: 10, maxWidth: Math.max(4, boxWidth - 8), color: annotation.color });
+      const size = Math.max(
+        6,
+        getNumber(annotation.fontSize, DEFAULT_ELEMENT_FONT_SIZE),
+      );
+      await drawText({ page, text: labels, x: x + 4, topY: y + Math.max(size + 2, boxHeight - 4), size, maxWidth: Math.max(4, boxWidth - 8), color: annotation.color });
     } else if (annotation.type === "image-placeholder" && typeof value === "string" && value.startsWith("data:image/")) {
       const bytes = dataUrlBytes(value);
       const image = value.startsWith("data:image/jpeg") ? await output.embedJpg(bytes) : await output.embedPng(bytes);
       page.drawImage(image, { x, y, width: boxWidth, height: boxHeight });
     } else if (annotation.type === "text") {
-      const size = Math.max(6, getNumber(annotation.fontSize, 16));
+      const size = Math.max(
+        6,
+        getNumber(annotation.fontSize, DEFAULT_ELEMENT_FONT_SIZE),
+      );
       await drawText({ page, text: getString(annotation.text, ""), x, topY: y + boxHeight, size, maxWidth: Math.max(4, boxWidth), color: annotation.color });
     } else if (annotation.type === "highlight") {
       page.drawRectangle({ x, y, width: boxWidth, height: boxHeight, color: rgb(color.r, color.g, color.b), opacity: 0.35 });

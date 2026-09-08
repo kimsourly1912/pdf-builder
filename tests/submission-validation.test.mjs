@@ -114,3 +114,37 @@ test("requires image files and rejects forged image values", () => {
     true,
   );
 });
+
+test("accepts textarea fields and enforces their required text", () => {
+  const paragraph = field({
+    id: "paragraph",
+    fieldName: "Paragraph",
+    fieldKey: "paragraph",
+    type: "textarea",
+    validation: "none",
+  });
+  assert.equal(
+    validation.validateTemplateDefinition({
+      annotations: [paragraph],
+      pageOrder: [page],
+      roles: [role],
+      sourcePageCount: 1,
+    }),
+    null,
+  );
+  assert.equal(
+    validation.validateSubmissionValues({
+      fields: [paragraph],
+      values: { paragraph: "   " },
+      imageFieldIds: new Set(),
+    }).ok,
+    false,
+  );
+  const valid = validation.validateSubmissionValues({
+    fields: [paragraph],
+    values: { paragraph: " First line\nSecond line " },
+    imageFieldIds: new Set(),
+  });
+  assert.equal(valid.ok, true);
+  assert.equal(valid.values.paragraph, "First line\nSecond line");
+});

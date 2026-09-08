@@ -22,6 +22,7 @@ const templateFields = await vite.ssrLoadModule(
 );
 
 test("recipient field types stay synchronized across client and server", () => {
+  assert.equal(templateFields.isRecipientFieldType("textarea"), true);
   assert.equal(templateFields.isRecipientFieldType("cambodia-address"), true);
   assert.equal(templateFields.isRecipientFieldType("image-placeholder"), true);
   assert.equal(templateFields.isRecipientFieldType("text"), false);

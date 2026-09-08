@@ -31,6 +31,10 @@ test("single-line recipient controls use one consistent default size", () => {
 });
 
 test("larger field types stay compact while preserving their purpose", () => {
+  assert.deepEqual(fieldLayout.getStandardFieldDimensions("textarea"), {
+    width: 200,
+    height: 100,
+  });
   assert.deepEqual(
     fieldLayout.getStandardFieldDimensions("image-placeholder"),
     { width: 200, height: 100 },
