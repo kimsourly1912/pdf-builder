@@ -149,6 +149,7 @@ test("creates one bulk Excel row per submission with dynamic field columns", () 
   const sheetXml = new TextDecoder().decode(entries.get("xl/worksheets/sheet1.xml"));
   assert.match(sheetXml, /name="Submissions"|Employee details submissions/u);
   assert.match(sheetXml, /Department/u);
+  assert.match(sheetXml, /Template/u);
   assert.match(sheetXml, /Comment/u);
   assert.match(sheetXml, /Engineering/u);
   assert.match(sheetXml, /=2\+2/u);
@@ -175,6 +176,7 @@ test("creates formula-safe RFC 4180 CSV output", () => {
     }],
   });
   assert.ok(csv.startsWith("\uFEFF"));
+  assert.match(csv, /"Template"/u);
   assert.match(csv, /"'=DANGEROUS"/u);
   assert.match(csv, /"Hello, ""world"""/u);
 });

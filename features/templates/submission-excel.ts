@@ -75,6 +75,7 @@ export function createBulkSubmissionsCsv(data: BulkSubmissionExcelData) {
   const columns = bulkAnswerColumns(data.rows);
   const headers = [
     "Submitted at",
+    "Template",
     "Recipient",
     "Email",
     "Role",
@@ -97,6 +98,7 @@ export function createBulkSubmissionsCsv(data: BulkSubmissionExcelData) {
     const submittedAt = parseUtcTimestamp(row.submittedAt);
     return [
       submittedAt ? formatter.format(submittedAt) : row.submittedAt,
+      row.templateName,
       row.recipientName,
       row.recipientEmail,
       row.roleName,
@@ -344,6 +346,7 @@ function bulkWorksheetXml(data: BulkSubmissionExcelData, createdAt: Date) {
   const columns = bulkAnswerColumns(data.rows);
   const headers = [
     "Submitted at",
+    "Template",
     "Recipient",
     "Email",
     "Role",
@@ -363,17 +366,18 @@ function bulkWorksheetXml(data: BulkSubmissionExcelData, createdAt: Date) {
       submittedAt
         ? numberCell(`A${rowNumber}`, excelDateSerial(submittedAt, timeZone), 6)
         : inlineStringCell(`A${rowNumber}`, row.submittedAt, 5),
-      inlineStringCell(`B${rowNumber}`, row.recipientName, 5),
-      inlineStringCell(`C${rowNumber}`, row.recipientEmail, 5),
-      inlineStringCell(`D${rowNumber}`, row.roleName, 5),
-      numberCell(`E${rowNumber}`, row.versionNumber, 5),
-      inlineStringCell(`F${rowNumber}`, row.id, 5),
+      inlineStringCell(`B${rowNumber}`, row.templateName, 5),
+      inlineStringCell(`C${rowNumber}`, row.recipientName, 5),
+      inlineStringCell(`D${rowNumber}`, row.recipientEmail, 5),
+      inlineStringCell(`E${rowNumber}`, row.roleName, 5),
+      numberCell(`F${rowNumber}`, row.versionNumber, 5),
+      inlineStringCell(`G${rowNumber}`, row.id, 5),
       ...columns.map((column, index) => {
         const answer = answers.get(column.key);
         const value = answer
           ? formatSubmissionExportValue(answer, row.annotations)
           : "";
-        return inlineStringCell(`${columnName(index + 7)}${rowNumber}`, value, 4);
+        return inlineStringCell(`${columnName(index + 8)}${rowNumber}`, value, 4);
       }),
     ];
     return `<row r="${rowNumber}">${cells.join("")}</row>`;
@@ -385,7 +389,7 @@ function bulkWorksheetXml(data: BulkSubmissionExcelData, createdAt: Date) {
   <dimension ref="A1:${lastColumn}${lastRow}"/>
   <sheetViews><sheetView workbookViewId="0"><pane ySplit="4" topLeftCell="A5" activePane="bottomLeft" state="frozen"/><selection pane="bottomLeft" activeCell="A5" sqref="A5"/></sheetView></sheetViews>
   <sheetFormatPr defaultRowHeight="18"/>
-  <cols><col min="1" max="1" width="20" customWidth="1"/><col min="2" max="4" width="22" customWidth="1"/><col min="5" max="5" width="16" customWidth="1"/><col min="6" max="6" width="38" customWidth="1"/><col min="7" max="${headers.length}" width="28" customWidth="1"/></cols>
+  <cols><col min="1" max="1" width="20" customWidth="1"/><col min="2" max="2" width="28" customWidth="1"/><col min="3" max="5" width="22" customWidth="1"/><col min="6" max="6" width="16" customWidth="1"/><col min="7" max="7" width="38" customWidth="1"/><col min="8" max="${headers.length}" width="28" customWidth="1"/></cols>
   <sheetData>
     <row r="1" ht="24" customHeight="1">${inlineStringCell("A1", `${data.templateName} submissions`, 1)}</row>
     <row r="2">${inlineStringCell("A2", `Timezone: ${timeZone}`, 0)}${inlineStringCell("D2", "Exported at", 2)}${numberCell("E2", exportTime, 6)}</row>

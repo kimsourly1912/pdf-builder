@@ -364,22 +364,22 @@ function SubmissionFilterPanel(props: {
     : uniqueRoles(props.templates);
   const exportParams = submissionFilterParams(props.applied);
   exportParams.set("timeZone", props.localTimeZone);
-  const canExport = Boolean(props.applied.templateId && props.total > 0);
+  const canExport = props.total > 0;
 
   function update(changes: Partial<DashboardFilters>) {
     props.onDraftChange({ ...props.draft, ...changes });
   }
 
   return (
-    <section className="mt-5 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+    <section className="mt-5 min-w-0 overflow-hidden rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
       <form
-        className="grid gap-3 lg:grid-cols-[minmax(12rem,1.4fr)_minmax(10rem,1fr)_minmax(9rem,1fr)_9rem_9rem_auto]"
+        className="grid min-w-0 gap-3 sm:grid-cols-2 xl:grid-cols-6"
         onSubmit={(event) => {
           event.preventDefault();
           props.onApply();
         }}
       >
-        <label className="relative text-xs font-semibold text-slate-600">
+        <label className="relative min-w-0 text-xs font-semibold text-slate-600 sm:col-span-2 xl:col-span-2">
           Search
           <Search className="pointer-events-none absolute bottom-2.5 left-3 size-4 text-slate-400" />
           <input
@@ -389,7 +389,7 @@ function SubmissionFilterPanel(props: {
             className="mt-1.5 h-10 w-full rounded-lg border border-slate-200 pl-9 pr-3 text-sm font-normal outline-none focus:border-blue-500"
           />
         </label>
-        <label className="text-xs font-semibold text-slate-600">
+        <label className="min-w-0 text-xs font-semibold text-slate-600">
           Template
           <select
             value={props.draft.templateId}
@@ -400,7 +400,7 @@ function SubmissionFilterPanel(props: {
             {props.templates.map((template) => <option key={template.id} value={template.id}>{template.name}</option>)}
           </select>
         </label>
-        <label className="text-xs font-semibold text-slate-600">
+        <label className="min-w-0 text-xs font-semibold text-slate-600">
           Recipient role
           <select
             value={props.draft.roleId}
@@ -411,27 +411,26 @@ function SubmissionFilterPanel(props: {
             {roles.map((role) => <option key={role.roleId} value={role.roleId}>{role.roleName}</option>)}
           </select>
         </label>
-        <label className="text-xs font-semibold text-slate-600">
+        <label className="min-w-0 text-xs font-semibold text-slate-600">
           From
           <input type="date" value={props.draft.fromDate} onChange={(event) => update({ fromDate: event.target.value })} className="mt-1.5 h-10 w-full rounded-lg border border-slate-200 px-3 text-sm font-normal outline-none focus:border-blue-500" />
         </label>
-        <label className="text-xs font-semibold text-slate-600">
+        <label className="min-w-0 text-xs font-semibold text-slate-600">
           To
           <input type="date" value={props.draft.toDate} onChange={(event) => update({ toDate: event.target.value })} className="mt-1.5 h-10 w-full rounded-lg border border-slate-200 px-3 text-sm font-normal outline-none focus:border-blue-500" />
         </label>
-        <div className="flex items-end gap-2">
-          <Button type="submit" size="sm" className="h-10">Apply</Button>
-          <Button type="button" variant="ghost" size="sm" className="h-10" onClick={props.onClear}>Clear</Button>
+        <div className="flex min-w-0 justify-end gap-2 sm:col-span-2 xl:col-span-6">
+          <Button type="submit" size="sm" className="h-10 min-w-24">Apply filters</Button>
+          <Button type="button" variant="ghost" size="sm" className="h-10 min-w-20" onClick={props.onClear}>Clear</Button>
         </div>
       </form>
-      <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-4">
+      <div className="mt-4 flex min-w-0 flex-col gap-3 border-t border-slate-100 pt-4 sm:flex-row sm:items-center sm:justify-between">
         <p className="text-xs text-slate-500">{props.total} matching submission{props.total === 1 ? "" : "s"}</p>
-        <div className="flex flex-wrap items-center gap-2">
-          {!props.applied.templateId && <span className="text-xs text-slate-400">Choose and apply a template to export all rows.</span>}
-          <Button asChild={canExport} disabled={!canExport} variant="outline" size="sm">
+        <div className="grid min-w-0 grid-cols-2 gap-2 sm:flex sm:items-center">
+          <Button asChild={canExport} disabled={!canExport} variant="outline" size="sm" className="min-w-0">
             {canExport ? <a href={`/api/submissions/export?${withFormat(exportParams, "xlsx")}`}><FileSpreadsheet className="size-3.5" /> Export Excel</a> : <span><FileSpreadsheet className="size-3.5" /> Export Excel</span>}
           </Button>
-          <Button asChild={canExport} disabled={!canExport} variant="outline" size="sm">
+          <Button asChild={canExport} disabled={!canExport} variant="outline" size="sm" className="min-w-0">
             {canExport ? <a href={`/api/submissions/export?${withFormat(exportParams, "csv")}`}><Download className="size-3.5" /> Export CSV</a> : <span><Download className="size-3.5" /> Export CSV</span>}
           </Button>
         </div>
