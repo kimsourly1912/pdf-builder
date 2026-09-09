@@ -1,4 +1,4 @@
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq, isNull } from "drizzle-orm";
 
 import { getDb } from "@/db";
 import {
@@ -63,7 +63,12 @@ export async function GET(request: Request) {
               templateVersionId: recipientLinks.templateVersionId,
             })
             .from(recipientLinks)
-            .where(eq(recipientLinks.templateId, template.id)),
+            .where(
+              and(
+                eq(recipientLinks.templateId, template.id),
+                isNull(recipientLinks.assignedUserId),
+              ),
+            ),
           db
             .select({ id: submissions.id })
             .from(submissions)
@@ -83,9 +88,8 @@ export async function GET(request: Request) {
             .orderBy(desc(templateVersions.versionNumber)),
         ]);
         const version = currentVersion[0];
-        const currentRoleIds = new Set(
-          parseVersionRoles(version?.rolesJson ?? "[]").map((role) => role.id),
-        );
+        const currentRoles = parseVersionRoles(version?.rolesJson ?? "[]");
+        const currentRoleIds = new Set(currentRoles.map((role) => role.id));
         return {
           id: template.id,
           name: template.name,
@@ -94,6 +98,7 @@ export async function GET(request: Request) {
           createdAt: toUtcIsoString(template.createdAt) ?? template.createdAt,
           updatedAt: toUtcIsoString(template.updatedAt) ?? template.updatedAt,
           versionNumber: version?.versionNumber ?? 1,
+          currentRoles,
           filterRoles: uniqueVersionRoles(versionRows.map((row) => row.rolesJson)),
           recipients: links.filter((link) => currentRoleIds.has(link.roleId)).map((link) => {
             const normalizedLink = {

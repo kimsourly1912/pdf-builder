@@ -6,15 +6,17 @@ import {
   templates,
   templateVersions,
 } from "@/db/schema";
+import { authorizeAssignedRecipient } from "@/features/accounts/account.server";
 import { recipientLinkAvailability } from "@/features/templates/recipient-link-lifecycle";
 import {
   getFilesBucket,
   hashRecipientToken,
+  isResponse,
   jsonError,
 } from "@/features/templates/template.server";
 
 export async function GET(
-  _request: Request,
+  request: Request,
   context: { params: Promise<{ token: string }> },
 ) {
   try {
@@ -37,6 +39,7 @@ export async function GET(
       .where(eq(recipientLinks.tokenHash, await hashRecipientToken(token)))
       .limit(1);
     if (!row) return jsonError("Fill link not found.", 404);
+    await authorizeAssignedRecipient(request.headers, row.link.assignedUserId);
 
     const availability = recipientLinkAvailability(row.link);
     if (!availability.available) {
@@ -53,8 +56,8 @@ export async function GET(
       },
     });
   } catch (error) {
+    if (isResponse(error)) return error;
     console.error("Failed to load recipient PDF", error);
     return jsonError("The PDF could not be loaded.", 500);
   }
 }
-

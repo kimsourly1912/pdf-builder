@@ -4,6 +4,7 @@ import { env } from "cloudflare:workers";
 import { drizzleAdapter } from "@better-auth/drizzle-adapter";
 import { APIError, createAuthMiddleware } from "better-auth/api";
 import { betterAuth } from "better-auth/minimal";
+import { admin } from "better-auth/plugins";
 
 import { getDb } from "@/db";
 import * as schema from "@/db/schema";
@@ -48,6 +49,7 @@ function createAuth() {
     provider: "sqlite",
     schema,
   }),
+  plugins: [admin()],
   emailAndPassword: {
     enabled: true,
     disableSignUp: false,
@@ -112,13 +114,20 @@ export type OwnerSession = NonNullable<
   Awaited<ReturnType<ReturnType<typeof createAuth>["api"]["getSession"]>>
 >;
 
+export type AuthSession = OwnerSession;
+
+export async function getAuthSession(
+  requestHeaders: Headers,
+): Promise<AuthSession | null> {
+  const cookie = requestHeaders.get("cookie") ?? "";
+  if (!cookie.includes("pdf_builder.session_token=")) return null;
+  return getAuth().api.getSession({ headers: requestHeaders });
+}
+
 export async function getOwnerSession(
   requestHeaders: Headers,
 ): Promise<OwnerSession | null> {
-  const cookie = requestHeaders.get("cookie") ?? "";
-  if (!cookie.includes("pdf_builder.session_token=")) return null;
-
-  const session = await getAuth().api.getSession({ headers: requestHeaders });
+  const session = await getAuthSession(requestHeaders);
   if (!session) return null;
   if (session.user.email.trim().toLowerCase() !== managementEmail) return null;
   return session;

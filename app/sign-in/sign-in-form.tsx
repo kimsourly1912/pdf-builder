@@ -10,11 +10,10 @@ import { Label } from "@/components/ui/label";
 import { authClient } from "@/lib/auth-client";
 
 export function SignInForm(props: {
-  ownerEmail: string;
   returnTo: string;
 }) {
   const router = useRouter();
-  const [email, setEmail] = useState(props.ownerEmail);
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -35,7 +34,13 @@ export function SignInForm(props: {
       return;
     }
 
-    router.replace(props.returnTo);
+    const sessionResponse = await fetch("/api/session", { cache: "no-store" });
+    const session = (await sessionResponse.json().catch(() => ({}))) as {
+      homePath?: string;
+    };
+    const destination =
+      props.returnTo !== "/" ? props.returnTo : session.homePath ?? "/";
+    router.replace(destination);
     router.refresh();
   }
 

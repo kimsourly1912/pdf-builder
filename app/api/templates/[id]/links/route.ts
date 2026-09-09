@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 
 import { getDb } from "@/db";
 import { recipientLinks, templates, templateVersions } from "@/db/schema";
@@ -145,6 +145,7 @@ async function findOwnedLink(
         eq(templates.id, templateId),
         eq(templates.ownerEmail, ownerEmail),
         eq(recipientLinks.roleId, roleId),
+        isNull(recipientLinks.assignedUserId),
       ),
     )
     .limit(1);

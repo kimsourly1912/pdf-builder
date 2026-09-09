@@ -89,6 +89,16 @@ export function RecipientFill(props: { token: string }) {
           fetch(`/api/fill/${props.token}`, { cache: "no-store" }),
           fetch(`/api/fill/${props.token}/pdf`, { cache: "no-store" }),
         ]);
+        if (metadataResponse.status === 401) {
+          window.location.assign(
+            `/sign-in?return_to=${encodeURIComponent(`/fill/${props.token}`)}`,
+          );
+          return;
+        }
+        if (metadataResponse.status === 428) {
+          window.location.assign("/change-password");
+          return;
+        }
         if (!metadataResponse.ok || !pdfResponse.ok) {
           const metadata = (await metadataResponse.json().catch(() => ({}))) as { error?: string };
           throw new Error(metadata.error || "This fill link is unavailable.");
@@ -104,6 +114,10 @@ export function RecipientFill(props: { token: string }) {
           return;
         }
         setPayload(nextPayload);
+        if (nextPayload.identity) {
+          setRecipientName(nextPayload.identity.name);
+          setRecipientEmail(nextPayload.identity.email);
+        }
         setPdfBytes(bytes);
         setPdfDocument(document);
         setValues(initialValues(nextPayload.template.annotations));
@@ -217,7 +231,7 @@ export function RecipientFill(props: { token: string }) {
     }
   }
 
-  if (loading) return <CenteredState icon={<LoaderCircle className="animate-spin" />} title="Opening document…" description="Loading the private recipient form." />;
+  if (loading) return <CenteredState icon={<LoaderCircle className="animate-spin" />} title="Opening document…" description="Loading your recipient form." />;
   if (!payload || !pdfDocument || error && !pdfBytes) return <CenteredState icon={<LockKeyhole />} title="Document unavailable" description={error || "This fill link is invalid or expired."} />;
   if (completed) return <CenteredState icon={<FileCheck2 />} title="Submission completed" description="Your information and completed PDF were securely sent to the document owner." success />;
 
@@ -227,7 +241,7 @@ export function RecipientFill(props: { token: string }) {
       <header className="sticky top-0 z-30 border-b border-slate-200 bg-white/95 backdrop-blur">
         <div className="mx-auto flex min-h-16 max-w-7xl items-center justify-between gap-3 px-3 py-2 sm:px-6">
           <div className="min-w-0"><p className="truncate text-sm font-bold">{payload.template.name}</p><p className="truncate text-xs text-slate-400">Complete as {payload.recipient.name}</p></div>
-          <div className="flex items-center gap-2 text-xs font-medium text-emerald-700"><LockKeyhole className="size-3.5" /><span className="hidden sm:inline">Private recipient link</span></div>
+          <div className="flex items-center gap-2 text-xs font-medium text-emerald-700"><LockKeyhole className="size-3.5" /><span className="hidden sm:inline">{payload.identity ? "Assigned to your account" : "Private recipient link"}</span></div>
         </div>
       </header>
       <div className="mx-auto grid max-w-7xl gap-5 px-3 py-5 lg:grid-cols-[1fr_320px] lg:px-6">
@@ -248,8 +262,8 @@ export function RecipientFill(props: { token: string }) {
           <p className="text-sm font-bold text-slate-900">Finish submission</p>
           {payload.template.description && <p className="mt-2 text-xs leading-5 text-slate-500">{payload.template.description}</p>}
           <div className="mt-5 space-y-3">
-            <label className="block text-xs font-semibold text-slate-600">Your name<input value={recipientName} onChange={(event) => setRecipientName(event.target.value)} className="mt-1.5 h-10 w-full rounded-lg border border-slate-200 px-3 text-sm font-normal outline-none focus:border-blue-500" /></label>
-            <label className="block text-xs font-semibold text-slate-600">Email <span className="font-normal text-slate-400">(optional)</span><input type="email" value={recipientEmail} onChange={(event) => setRecipientEmail(event.target.value)} className="mt-1.5 h-10 w-full rounded-lg border border-slate-200 px-3 text-sm font-normal outline-none focus:border-blue-500" /></label>
+            <label className="block text-xs font-semibold text-slate-600">Your name<input value={recipientName} readOnly={Boolean(payload.identity)} onChange={(event) => setRecipientName(event.target.value)} className="mt-1.5 h-10 w-full rounded-lg border border-slate-200 px-3 text-sm font-normal outline-none focus:border-blue-500 read-only:bg-slate-50 read-only:text-slate-500" /></label>
+            <label className="block text-xs font-semibold text-slate-600">Email {!payload.identity && <span className="font-normal text-slate-400">(optional)</span>}<input type="email" value={recipientEmail} readOnly={Boolean(payload.identity)} onChange={(event) => setRecipientEmail(event.target.value)} className="mt-1.5 h-10 w-full rounded-lg border border-slate-200 px-3 text-sm font-normal outline-none focus:border-blue-500 read-only:bg-slate-50 read-only:text-slate-500" /></label>
           </div>
           {error && <p role="alert" className="mt-4 rounded-lg border border-rose-200 bg-rose-50 p-3 text-xs font-medium text-rose-700">{error}</p>}
           <Button type="button" onClick={() => void submit()} disabled={submitting} className="mt-5 h-11 w-full bg-blue-600 hover:bg-blue-700">{submitting ? <LoaderCircle className="size-4 animate-spin" /> : <Check className="size-4" />} Submit completed PDF</Button>

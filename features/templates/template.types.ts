@@ -42,4 +42,9 @@ export type TemplateFillPayload = {
     maxSubmissions: number;
     submissionCount: number;
   };
+  identity?: {
+    name: string;
+    email: string;
+    accountType: "candidate" | "employee";
+  };
 };

@@ -5,6 +5,7 @@ import {
   text,
   uniqueIndex,
 } from "drizzle-orm/sqlite-core";
+import { sql } from "drizzle-orm";
 
 export const user = sqliteTable(
   "user",
@@ -16,6 +17,10 @@ export const user = sqliteTable(
       .notNull()
       .default(false),
     image: text("image"),
+    role: text("role").notNull().default("user"),
+    banned: integer("banned", { mode: "boolean" }).notNull().default(false),
+    banReason: text("ban_reason"),
+    banExpires: integer("ban_expires", { mode: "timestamp" }),
     createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
     updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
   },
@@ -32,6 +37,7 @@ export const session = sqliteTable(
     updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
     ipAddress: text("ip_address"),
     userAgent: text("user_agent"),
+    impersonatedBy: text("impersonated_by"),
     userId: text("user_id")
       .notNull()
       .references(() => user.id, { onDelete: "cascade" }),
@@ -147,6 +153,9 @@ export const recipientLinks = sqliteTable(
     roleId: text("role_id").notNull(),
     roleName: text("role_name").notNull(),
     roleColor: text("role_color").notNull(),
+    assignedUserId: text("assigned_user_id").references(() => user.id, {
+      onDelete: "cascade",
+    }),
     tokenHash: text("token_hash").notNull(),
     status: text("status").notNull().default("active"),
     expiresAt: text("expires_at"),
@@ -159,11 +168,65 @@ export const recipientLinks = sqliteTable(
   },
   (table) => [
     uniqueIndex("recipient_links_token_hash_unique").on(table.tokenHash),
-    uniqueIndex("recipient_links_template_role_unique").on(
-      table.templateId,
+    uniqueIndex("recipient_links_template_role_public_unique")
+      .on(table.templateId, table.roleId)
+      .where(sql`${table.assignedUserId} IS NULL`),
+    index("recipient_links_template_idx").on(table.templateId),
+    index("recipient_links_assigned_user_idx").on(table.assignedUserId),
+  ],
+);
+
+export const recipientProfiles = sqliteTable(
+  "recipient_profiles",
+  {
+    userId: text("user_id")
+      .primaryKey()
+      .references(() => user.id, { onDelete: "cascade" }),
+    accountType: text("account_type").notNull(),
+    mustChangePassword: integer("must_change_password", { mode: "boolean" })
+      .notNull()
+      .default(true),
+    createdByEmail: text("created_by_email").notNull(),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (table) => [index("recipient_profiles_type_idx").on(table.accountType)],
+);
+
+export const formAssignments = sqliteTable(
+  "form_assignments",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    templateId: text("template_id")
+      .notNull()
+      .references(() => templates.id, { onDelete: "cascade" }),
+    templateVersionId: text("template_version_id")
+      .notNull()
+      .references(() => templateVersions.id, { onDelete: "restrict" }),
+    recipientLinkId: text("recipient_link_id")
+      .notNull()
+      .references(() => recipientLinks.id, { onDelete: "restrict" }),
+    roleId: text("role_id").notNull(),
+    roleName: text("role_name").notNull(),
+    roleColor: text("role_color").notNull(),
+    accessToken: text("access_token").notNull(),
+    status: text("status").notNull().default("assigned"),
+    assignedAt: text("assigned_at").notNull(),
+    completedAt: text("completed_at"),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("form_assignments_link_unique").on(table.recipientLinkId),
+    uniqueIndex("form_assignments_user_version_role_unique").on(
+      table.userId,
+      table.templateVersionId,
       table.roleId,
     ),
-    index("recipient_links_template_idx").on(table.templateId),
+    index("form_assignments_user_status_idx").on(table.userId, table.status),
+    index("form_assignments_template_idx").on(table.templateId),
   ],
 );
 

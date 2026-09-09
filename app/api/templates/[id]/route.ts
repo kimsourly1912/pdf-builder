@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 
 import { getDb } from "@/db";
 import { recipientLinks, templates, templateVersions } from "@/db/schema";
@@ -120,7 +120,12 @@ export async function PUT(
     const existingLinks = await db
       .select()
       .from(recipientLinks)
-      .where(eq(recipientLinks.templateId, id));
+      .where(
+        and(
+          eq(recipientLinks.templateId, id),
+          isNull(recipientLinks.assignedUserId),
+        ),
+      );
     const existingByRole = new Map(
       existingLinks.map((link) => [link.roleId, link]),
     );

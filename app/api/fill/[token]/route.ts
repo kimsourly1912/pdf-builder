@@ -7,6 +7,7 @@ import {
   templates,
   templateVersions,
 } from "@/db/schema";
+import { authorizeAssignedRecipient } from "@/features/accounts/account.server";
 import { buildSubmissionAnswers } from "@/features/templates/label-binding";
 import { toUtcIsoString } from "@/features/templates/date-time";
 import {
@@ -20,6 +21,7 @@ import {
 import {
   getFilesBucket,
   hashRecipientToken,
+  isResponse,
   jsonError,
 } from "@/features/templates/template.server";
 import { isRecipientFieldType } from "@/features/templates/template-fields";
@@ -35,13 +37,17 @@ const MAX_IMAGE_SIZE = 8 * 1024 * 1024;
 const MAX_IMAGE_FIELDS = 20;
 
 export async function GET(
-  _request: Request,
+  request: Request,
   context: { params: Promise<{ token: string }> },
 ) {
   try {
     const { token } = await context.params;
     const fillContext = await findFillContext(token);
     if (!fillContext) return jsonError("This fill link is invalid.", 404);
+    const assignedAccount = await authorizeAssignedRecipient(
+      request.headers,
+      fillContext.link.assignedUserId,
+    );
 
     const availability = recipientLinkAvailability(fillContext.link);
     if (!availability.available) {
@@ -79,11 +85,21 @@ export async function GET(
         maxSubmissions: fillContext.link.maxSubmissions,
         submissionCount: fillContext.link.submissionCount,
       },
+      identity: assignedAccount
+        ? {
+            name:
+              assignedAccount.session.user.name ||
+              assignedAccount.session.user.email,
+            email: assignedAccount.session.user.email,
+            accountType: assignedAccount.profile.accountType,
+          }
+        : undefined,
     };
     return Response.json(payload, {
       headers: { "Cache-Control": "no-store" },
     });
   } catch (error) {
+    if (isResponse(error)) return error;
     console.error("Failed to load fill link", error);
     return jsonError("This document could not be loaded.", 500);
   }
@@ -99,6 +115,10 @@ export async function POST(
     const { token } = await context.params;
     const fillContext = await findFillContext(token);
     if (!fillContext) return jsonError("This fill link is invalid.", 404);
+    const assignedAccount = await authorizeAssignedRecipient(
+      request.headers,
+      fillContext.link.assignedUserId,
+    );
 
     const idempotencyKey = request.headers.get("Idempotency-Key");
     if (!validIdempotencyKey(idempotencyKey)) {
@@ -125,13 +145,17 @@ export async function POST(
     }
 
     const formData = await request.formData();
-    const recipientName = String(formData.get("recipientName") ?? "")
-      .trim()
-      .slice(0, 120);
-    const recipientEmail = String(formData.get("recipientEmail") ?? "")
-      .trim()
-      .toLowerCase()
-      .slice(0, 254);
+    const recipientName = assignedAccount
+      ? (assignedAccount.session.user.name || assignedAccount.session.user.email)
+          .trim()
+          .slice(0, 120)
+      : String(formData.get("recipientName") ?? "").trim().slice(0, 120);
+    const recipientEmail = assignedAccount
+      ? assignedAccount.session.user.email.trim().toLowerCase().slice(0, 254)
+      : String(formData.get("recipientEmail") ?? "")
+          .trim()
+          .toLowerCase()
+          .slice(0, 254);
     const values = parseValues(formData.get("values"));
     const completedPdf = formData.get("completedPdf");
     if (!recipientName) return jsonError("Your name is required.", 400);
@@ -262,6 +286,14 @@ export async function POST(
             AND EXISTS (SELECT 1 FROM submissions WHERE id = ?)`,
         )
         .bind(now, now, fillContext.link.id, submissionId),
+      database
+        .prepare(
+          `UPDATE form_assignments
+          SET status = 'completed', completed_at = ?, updated_at = ?
+          WHERE recipient_link_id = ?
+            AND EXISTS (SELECT 1 FROM submissions WHERE id = ?)`,
+        )
+        .bind(now, now, fillContext.link.id, submissionId),
     ]);
 
     const inserted = Number(results[0]?.meta?.changes ?? 0) > 0;
@@ -300,6 +332,7 @@ export async function POST(
     );
   } catch (error) {
     await deleteUploadedFiles(completedFileKey, uploadedImageKeys);
+    if (isResponse(error)) return error;
     console.error("Failed to submit fill link", error);
     return jsonError("Your submission could not be saved.", 500);
   }
