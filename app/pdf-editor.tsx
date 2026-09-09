@@ -354,8 +354,7 @@ const EDITOR_SHORTCUT_ITEMS = [
   ["Arrow keys", "Move the selection by 1 px"],
   ["Shift + Arrow", "Move the selection by 10 px"],
   ["Shift + click", "Add an item to the selection"],
-  ["Shift + drag", "Lock movement to one axis"],
-  ["Shift + right drag", "Resize an element proportionally"],
+  ["Shift + left drag", "Resize an element proportionally"],
   ["Alt/Option + drag", "Duplicate, then move the selection"],
   ["Ctrl/Cmd + A", "Select every item on the current page"],
   ["Ctrl/Cmd + C / X", "Copy or cut the selection"],
@@ -3189,9 +3188,8 @@ export function PdfEditor() {
   ) {
     if (spacePressedRef.current || editorMode === "fill") return;
     if (tool !== "select") return;
-    const proportionalResize = event.button === 2 && event.shiftKey;
-    if (event.button !== 0 && !proportionalResize) return;
-    if (proportionalResize) event.preventDefault();
+    const proportionalResize = event.button === 0 && event.shiftKey;
+    if (event.button !== 0) return;
     event.stopPropagation();
     const rect = surfaceRef.current?.getBoundingClientRect();
     if (!rect) return;
@@ -3201,7 +3199,13 @@ export function PdfEditor() {
     };
 
     if (mode === "resize" || proportionalResize) {
-      setSelectedId(annotation.id);
+      if (mode === "move" && proportionalResize) {
+        if (!selectedIds.includes(annotation.id)) {
+          setSelectedIds([...selectedIds, annotation.id]);
+        }
+      } else {
+        setSelectedId(annotation.id);
+      }
       interactionRef.current = {
         mode: "resize",
         id: annotation.id,
@@ -5057,9 +5061,6 @@ export function PdfEditor() {
                                 "move",
                               )
                             }
-                            onContextMenu={(event) => {
-                              if (event.shiftKey) event.preventDefault();
-                            }}
                             className={`pointer-events-auto cursor-move ${
                               selected
                                 ? "drop-shadow-[0_0_2px_rgba(37,99,235,.7)]"
@@ -5078,9 +5079,6 @@ export function PdfEditor() {
                         onPointerDown={(event) =>
                           startAnnotationInteraction(event, annotation, "move")
                         }
-                        onContextMenu={(event) => {
-                          if (event.shiftKey) event.preventDefault();
-                        }}
                         onDoubleClick={() => activateAnnotation(annotation)}
                         className={`absolute block text-left ${
                           editorMode === "build" ? "cursor-move" : "cursor-default"
