@@ -126,6 +126,72 @@ export function reorderEditorAnnotations<T extends PositionedAnnotation>(options
   return result;
 }
 
+export function resizeEditorAnnotationProportionally<
+  T extends PositionedAnnotation,
+>(options: {
+  annotation: T;
+  deltaX: number;
+  deltaY: number;
+  pageWidth: number;
+  pageHeight: number;
+  minimumSizePixels?: number;
+}) {
+  const {
+    annotation,
+    deltaX,
+    deltaY,
+    pageWidth,
+    pageHeight,
+    minimumSizePixels = 14,
+  } = options;
+  const bounds = annotationBounds(annotation);
+  const width = bounds.right - bounds.left;
+  const height = bounds.bottom - bounds.top;
+  const widthPixels = width * pageWidth;
+  const heightPixels = height * pageHeight;
+  const dominantSize = Math.max(widthPixels, heightPixels);
+  if (dominantSize <= 0) return annotation;
+
+  const horizontalDelta = deltaX * pageWidth;
+  const verticalDelta = deltaY * pageHeight;
+  const scaleDelta =
+    Math.abs(horizontalDelta) >= Math.abs(verticalDelta)
+      ? horizontalDelta
+      : verticalDelta;
+  const minimumScale = Math.min(1, minimumSizePixels / dominantSize);
+  const maximumWidthScale =
+    width > 0 ? (1 - bounds.left) / width : Number.POSITIVE_INFINITY;
+  const maximumHeightScale =
+    height > 0 ? (1 - bounds.top) / height : Number.POSITIVE_INFINITY;
+  const maximumScale = Math.min(maximumWidthScale, maximumHeightScale);
+  const scale = Math.min(
+    maximumScale,
+    Math.max(minimumScale, 1 + scaleDelta / dominantSize),
+  );
+
+  if (annotation.type === "drawing" && annotation.points?.length) {
+    return {
+      ...annotation,
+      x: bounds.left,
+      y: bounds.top,
+      width: width * scale,
+      height: height * scale,
+      points: annotation.points.map((point) => ({
+        x: bounds.left + (point.x - bounds.left) * scale,
+        y: bounds.top + (point.y - bounds.top) * scale,
+      })),
+    };
+  }
+
+  return {
+    ...annotation,
+    x: bounds.left,
+    y: bounds.top,
+    width: width * scale,
+    height: height * scale,
+  };
+}
+
 function annotationBounds(annotation: PositionedAnnotation) {
   if (annotation.type === "drawing" && annotation.points?.length) {
     const xs = annotation.points.map((point) => point.x);

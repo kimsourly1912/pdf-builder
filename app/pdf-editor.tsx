@@ -81,6 +81,7 @@ import {
 import {
   moveEditorAnnotations,
   reorderEditorAnnotations,
+  resizeEditorAnnotationProportionally,
 } from "@/features/templates/editor-shortcuts";
 import { Button } from "@/components/ui/button";
 import { PdfExtractionDialog } from "@/features/extraction/pdf-extraction-dialog";
@@ -243,6 +244,7 @@ type Interaction =
       origin: Annotation;
       before: Annotation[];
       changed: boolean;
+      proportional: boolean;
     }
   | {
       mode: "pan";
@@ -353,6 +355,7 @@ const EDITOR_SHORTCUT_ITEMS = [
   ["Shift + Arrow", "Move the selection by 10 px"],
   ["Shift + click", "Add an item to the selection"],
   ["Shift + drag", "Lock movement to one axis"],
+  ["Shift + right drag", "Resize an element proportionally"],
   ["Alt/Option + drag", "Duplicate, then move the selection"],
   ["Ctrl/Cmd + A", "Select every item on the current page"],
   ["Ctrl/Cmd + C / X", "Copy or cut the selection"],
@@ -3062,7 +3065,15 @@ export function PdfEditor() {
       let next = interaction.origin;
       interaction.changed = true;
       if (interaction.mode === "resize") {
-        if (isSquareField(next.type)) {
+        if (interaction.proportional) {
+          next = resizeEditorAnnotationProportionally({
+            annotation: next,
+            deltaX,
+            deltaY,
+            pageWidth: basePageSize.width,
+            pageHeight: basePageSize.height,
+          });
+        } else if (isSquareField(next.type)) {
           const horizontalDelta = deltaX * basePageSize.width;
           const verticalDelta = deltaY * basePageSize.height;
           const dominantDelta =
@@ -3178,6 +3189,9 @@ export function PdfEditor() {
   ) {
     if (spacePressedRef.current || editorMode === "fill") return;
     if (tool !== "select") return;
+    const proportionalResize = event.button === 2 && event.shiftKey;
+    if (event.button !== 0 && !proportionalResize) return;
+    if (proportionalResize) event.preventDefault();
     event.stopPropagation();
     const rect = surfaceRef.current?.getBoundingClientRect();
     if (!rect) return;
@@ -3186,7 +3200,7 @@ export function PdfEditor() {
       y: (event.clientY - rect.top) / rect.height,
     };
 
-    if (mode === "resize") {
+    if (mode === "resize" || proportionalResize) {
       setSelectedId(annotation.id);
       interactionRef.current = {
         mode: "resize",
@@ -3195,6 +3209,7 @@ export function PdfEditor() {
         origin: cloneAnnotations([annotation])[0],
         before: cloneAnnotations(annotations),
         changed: false,
+        proportional: proportionalResize,
       };
       surfaceRef.current?.setPointerCapture(event.pointerId);
       return;
@@ -5042,6 +5057,9 @@ export function PdfEditor() {
                                 "move",
                               )
                             }
+                            onContextMenu={(event) => {
+                              if (event.shiftKey) event.preventDefault();
+                            }}
                             className={`pointer-events-auto cursor-move ${
                               selected
                                 ? "drop-shadow-[0_0_2px_rgba(37,99,235,.7)]"
@@ -5060,6 +5078,9 @@ export function PdfEditor() {
                         onPointerDown={(event) =>
                           startAnnotationInteraction(event, annotation, "move")
                         }
+                        onContextMenu={(event) => {
+                          if (event.shiftKey) event.preventDefault();
+                        }}
                         onDoubleClick={() => activateAnnotation(annotation)}
                         className={`absolute block text-left ${
                           editorMode === "build" ? "cursor-move" : "cursor-default"
