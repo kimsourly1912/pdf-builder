@@ -148,3 +148,44 @@ textarea {
   outline: 2px solid #2563eb;
   outline-offset: 3px;
 }
+
+@keyframes page-thumbnail-settle {
+  0% {
+    transform: scale(0.96);
+  }
+  55% {
+    transform: scale(1.035);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+@keyframes copy-link-success {
+  0% {
+    transform: scale(0.94);
+  }
+  60% {
+    transform: scale(1.05);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+.page-thumbnail-settle {
+  animation: page-thumbnail-settle 420ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.copy-link-success {
+  animation: copy-link-success 320ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-page-thumbnail-id],
+  .page-thumbnail-settle,
+  .copy-link-success {
+    animation: none;
+    transition-duration: 0.01ms !important;
+  }
+}

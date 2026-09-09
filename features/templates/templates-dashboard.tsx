@@ -18,7 +18,7 @@ import {
   Search,
   UsersRound,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 
@@ -96,6 +96,7 @@ const EMPTY_FILTERS: DashboardFilters = {
 };
 
 export function TemplatesDashboard(props: { displayName: string }) {
+  const copyLinkTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [templates, setTemplates] = useState<TemplateSummary[]>([]);
   const [submissions, setSubmissions] = useState<SubmissionSummary[]>([]);
   const [submissionTotal, setSubmissionTotal] = useState(0);
@@ -108,6 +109,7 @@ export function TemplatesDashboard(props: { displayName: string }) {
     {},
   );
   const [linkActionKey, setLinkActionKey] = useState<string | null>(null);
+  const [copiedLinkKey, setCopiedLinkKey] = useState<string | null>(null);
   const [localTimeZone, setLocalTimeZone] = useState("UTC");
   const [filterDraft, setFilterDraft] = useState<DashboardFilters>(EMPTY_FILTERS);
   const [appliedFilters, setAppliedFilters] = useState<DashboardFilters>(EMPTY_FILTERS);
@@ -158,6 +160,12 @@ export function TemplatesDashboard(props: { displayName: string }) {
       0,
     );
     return () => window.clearTimeout(timer);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (copyLinkTimerRef.current) clearTimeout(copyLinkTimerRef.current);
+    };
   }, []);
 
   const totalRecipients = useMemo(
@@ -232,6 +240,21 @@ export function TemplatesDashboard(props: { displayName: string }) {
     }
   }
 
+  async function copyGeneratedLink(key: string, url: string) {
+    try {
+      await navigator.clipboard.writeText(url);
+      setError("");
+      setCopiedLinkKey(key);
+      if (copyLinkTimerRef.current) clearTimeout(copyLinkTimerRef.current);
+      copyLinkTimerRef.current = setTimeout(
+        () => setCopiedLinkKey(null),
+        1800,
+      );
+    } catch {
+      setError("Clipboard access was blocked. Select and copy the link manually.");
+    }
+  }
+
   function updateRecipientLink(
     templateId: string,
     roleId: string,
@@ -297,7 +320,7 @@ export function TemplatesDashboard(props: { displayName: string }) {
         {loading ? (
           <div className="flex min-h-72 items-center justify-center text-slate-400"><LoaderCircle className="size-6 animate-spin" /></div>
         ) : activeView === "templates" ? (
-          <TemplateGrid templates={templates} generatedLinks={generatedLinks} linkActionKey={linkActionKey} localTimeZone={localTimeZone} onRegenerate={regenerateLink} onRevoke={revokeLink} />
+          <TemplateGrid templates={templates} generatedLinks={generatedLinks} linkActionKey={linkActionKey} copiedLinkKey={copiedLinkKey} localTimeZone={localTimeZone} onRegenerate={regenerateLink} onRevoke={revokeLink} onCopy={copyGeneratedLink} />
         ) : (
           <div>
             <SubmissionFilterPanel
@@ -329,9 +352,11 @@ function TemplateGrid(props: {
   templates: TemplateSummary[];
   generatedLinks: Record<string, string>;
   linkActionKey: string | null;
+  copiedLinkKey: string | null;
   localTimeZone: string;
   onRegenerate: (templateId: string, roleId: string) => Promise<void>;
   onRevoke: (templateId: string, roleId: string) => Promise<void>;
+  onCopy: (key: string, url: string) => Promise<void>;
 }) {
   if (props.templates.length === 0) return <EmptyState title="No templates yet" description="Open the editor, add fields, and choose Save template." />;
   return <div className="mt-5 grid gap-4 lg:grid-cols-2">{props.templates.map((template) => (
@@ -343,7 +368,8 @@ function TemplateGrid(props: {
           const key = `${template.id}:${recipient.roleId}`;
           const url = props.generatedLinks[key];
           const busy = props.linkActionKey === key;
-          return <div key={recipient.id} className="rounded-xl bg-slate-50 p-3"><div className="flex flex-wrap items-center gap-2"><span className="size-2.5 rounded-full" style={{ backgroundColor: recipient.roleColor }} /><span className="min-w-0 flex-1 truncate text-sm font-semibold text-slate-700">{recipient.roleName}</span><span className="rounded-full bg-white px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-slate-500">{recipient.status}</span><Button type="button" variant="ghost" size="sm" disabled={busy} onClick={() => void props.onRegenerate(template.id, recipient.roleId)}>{busy ? <LoaderCircle className="size-3.5 animate-spin" /> : <RefreshCw className="size-3.5" />} {url ? "Regenerate" : "Create link"}</Button>{recipient.status === "active" && <Button type="button" variant="ghost" size="sm" disabled={busy} className="text-rose-600 hover:text-rose-700" onClick={() => void props.onRevoke(template.id, recipient.roleId)}><Ban className="size-3.5" /> Revoke</Button>}</div><p className="mt-1 text-[11px] text-slate-400">{recipient.submissionCount}/{recipient.maxSubmissions} submissions · {recipient.expiresAt ? `expires ${formatLocalDateTime(recipient.expiresAt, { timeZone: props.localTimeZone })}` : "no expiry"}</p>{url && <div className="mt-2 flex gap-2"><input readOnly value={url} className="h-8 min-w-0 flex-1 rounded-md border border-slate-200 bg-white px-2 text-xs text-slate-500" /><Button type="button" variant="outline" size="icon-sm" aria-label={`Copy ${recipient.roleName} link`} onClick={() => void navigator.clipboard.writeText(url)}><Copy /></Button><Button asChild variant="outline" size="icon-sm"><a href={url} target="_blank" rel="noreferrer" aria-label={`Open ${recipient.roleName} link`}><ExternalLink /></a></Button></div>}</div>;
+          const copied = props.copiedLinkKey === key;
+          return <div key={recipient.id} className={`rounded-xl p-3 transition-[background-color,box-shadow] duration-300 ${copied ? "bg-emerald-50 shadow-sm shadow-emerald-100" : "bg-slate-50"}`}><div className="flex flex-wrap items-center gap-2"><span className="size-2.5 rounded-full" style={{ backgroundColor: recipient.roleColor }} /><span className="min-w-0 flex-1 truncate text-sm font-semibold text-slate-700">{recipient.roleName}</span><span className="rounded-full bg-white px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-slate-500">{recipient.status}</span><Button type="button" variant="ghost" size="sm" disabled={busy} onClick={() => void props.onRegenerate(template.id, recipient.roleId)}>{busy ? <LoaderCircle className="size-3.5 animate-spin" /> : <RefreshCw className="size-3.5" />} {url ? "Regenerate" : "Create link"}</Button>{recipient.status === "active" && <Button type="button" variant="ghost" size="sm" disabled={busy} className="text-rose-600 hover:text-rose-700" onClick={() => void props.onRevoke(template.id, recipient.roleId)}><Ban className="size-3.5" /> Revoke</Button>}</div><p className="mt-1 text-[11px] text-slate-400">{recipient.submissionCount}/{recipient.maxSubmissions} submissions · {recipient.expiresAt ? `expires ${formatLocalDateTime(recipient.expiresAt, { timeZone: props.localTimeZone })}` : "no expiry"}</p>{url && <div className="mt-2 flex gap-2"><input readOnly value={url} className={`h-8 min-w-0 flex-1 rounded-md border bg-white px-2 text-xs transition-colors duration-300 ${copied ? "border-emerald-200 text-emerald-700" : "border-slate-200 text-slate-500"}`} /><Button type="button" variant="outline" size="icon-sm" className={copied ? "copy-link-success border-emerald-300 bg-emerald-100 text-emerald-700 hover:bg-emerald-100 hover:text-emerald-700" : ""} aria-label={copied ? `Copied ${recipient.roleName} link` : `Copy ${recipient.roleName} link`} title={copied ? "Copied!" : "Copy link"} onClick={() => void props.onCopy(key, url)}>{copied ? <Check /> : <Copy />}<span aria-live="polite" className="sr-only">{copied ? "Link copied" : ""}</span></Button><Button asChild variant="outline" size="icon-sm"><a href={url} target="_blank" rel="noreferrer" aria-label={`Open ${recipient.roleName} link`}><ExternalLink /></a></Button></div>}</div>;
         })}
       </div>
     </article>

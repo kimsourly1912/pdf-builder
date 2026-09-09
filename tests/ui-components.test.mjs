@@ -46,6 +46,8 @@ test("emits the catalog's animation and scrolling utilities", async () => {
   assert.match(css, /mask-image:/);
   assert.match(css, /tw-shimmer/);
   assert.match(css, /prefers-reduced-motion:\s*reduce/);
+  assert.match(css, /page-thumbnail-settle/);
+  assert.match(css, /copy-link-success/);
 });
 
 test("forwards progress semantics to the primitive", async () => {

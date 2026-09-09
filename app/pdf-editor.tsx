@@ -19,6 +19,7 @@ import {
   FileText,
   Eye,
   FolderOpen,
+  GripVertical,
   Hand,
   Highlighter,
   ImagePlus,
@@ -51,7 +52,13 @@ import {
   ZoomIn,
   ZoomOut,
 } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import Image from "next/image";
 import khmerFontUrl from "@expo-google-fonts/noto-sans-khmer/400Regular/NotoSansKhmer_400Regular.ttf?url";
 import type { RecipientRole } from "@/features/templates/template.types";
@@ -1506,7 +1513,13 @@ function PageThumbnail(props: {
   onRotate: () => void;
   onDuplicate: () => void;
   onDelete: () => void;
-  onDropPage: (draggedId: string) => void;
+  dragging: boolean;
+  dropPosition: "before" | "after" | null;
+  recentlyDropped: boolean;
+  onDragPageStart: () => void;
+  onDragPageOver: (position: "before" | "after") => void;
+  onDragPageEnd: () => void;
+  onDropPage: (draggedId: string, position: "before" | "after") => void;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
@@ -1540,27 +1553,63 @@ function PageThumbnail(props: {
   return (
     <div
       draggable
+      role="listitem"
+      data-page-thumbnail-id={props.entry.id}
+      aria-grabbed={props.dragging}
       onDragStart={(event) => {
         event.dataTransfer.effectAllowed = "move";
         event.dataTransfer.setData("application/x-pdf-studio-page", props.entry.id);
+        event.dataTransfer.setData("text/plain", props.entry.id);
+        props.onDragPageStart();
       }}
       onDragOver={(event) => {
         event.preventDefault();
         event.dataTransfer.dropEffect = "move";
+        props.onDragPageOver(pageDropPosition(event));
       }}
       onDrop={(event) => {
         event.preventDefault();
         const draggedId = event.dataTransfer.getData(
           "application/x-pdf-studio-page",
-        );
-        if (draggedId) props.onDropPage(draggedId);
+        ) || event.dataTransfer.getData("text/plain");
+        if (draggedId) props.onDropPage(draggedId, pageDropPosition(event));
+        props.onDragPageEnd();
       }}
-      className={`group w-full rounded-xl border p-2 transition ${
+      onDragEnd={props.onDragPageEnd}
+      className={`group relative w-full cursor-grab rounded-xl border p-2 transition-[transform,opacity,border-color,background-color,box-shadow] duration-200 ease-out active:cursor-grabbing ${
         props.active
           ? "border-blue-500 bg-blue-50 shadow-sm"
           : "border-transparent hover:border-slate-200 hover:bg-white"
-      }`}
+      } ${
+        props.dragging
+          ? "z-10 rotate-1 scale-[0.97] border-blue-400 bg-blue-50 opacity-55 shadow-xl"
+          : ""
+      } ${
+        props.dropPosition
+          ? "border-blue-300 bg-blue-50/70 shadow-md shadow-blue-200/40"
+          : ""
+      } ${props.recentlyDropped ? "page-thumbnail-settle" : ""}`}
     >
+      <span
+        aria-hidden="true"
+        className={`pointer-events-none absolute right-1.5 top-1.5 z-10 flex size-6 items-center justify-center rounded-md border bg-white/90 shadow-sm backdrop-blur transition-[opacity,transform,color] duration-200 [&_svg]:size-3.5 ${
+          props.dragging
+            ? "scale-110 border-blue-300 text-blue-600 opacity-100"
+            : "border-slate-200 text-slate-400 opacity-0 group-hover:opacity-100"
+        }`}
+      >
+        <GripVertical />
+      </span>
+      {props.dropPosition && (
+        <span
+          aria-hidden="true"
+          className={`pointer-events-none absolute inset-x-1 z-20 h-0.5 rounded-full bg-blue-500 shadow-[0_0_0_3px_rgba(219,234,254,0.9)] ${
+            props.dropPosition === "before" ? "-top-1" : "-bottom-1"
+          }`}
+        >
+          <span className="absolute -left-0.5 top-1/2 size-2 -translate-y-1/2 rounded-full bg-blue-500" />
+        </span>
+      )}
       <button
         type="button"
         onClick={props.onClick}
@@ -1601,6 +1650,13 @@ function PageThumbnail(props: {
   );
 }
 
+function pageDropPosition(
+  event: React.DragEvent<HTMLElement>,
+): "before" | "after" {
+  const bounds = event.currentTarget.getBoundingClientRect();
+  return event.clientY < bounds.top + bounds.height / 2 ? "before" : "after";
+}
+
 export function PdfEditor(props: { initialTemplateId?: string }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
@@ -1614,6 +1670,10 @@ export function PdfEditor(props: { initialTemplateId?: string }) {
   const spacePressedRef = useRef(false);
   const touchPointersRef = useRef<Map<number, Point>>(new Map());
   const pinchRef = useRef<PinchGesture | null>(null);
+  const pageThumbnailPositionsRef = useRef<Map<string, DOMRect>>(new Map());
+  const pageListRef = useRef<HTMLDivElement>(null);
+  const pageDropTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const copyLinkTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const renderTaskRef = useRef<{
     promise: Promise<void>;
     cancel: () => void;
@@ -1661,6 +1721,17 @@ export function PdfEditor(props: { initialTemplateId?: string }) {
   const [createdShareLinks, setCreatedShareLinks] = useState<
     Array<{ roleId: string; roleName: string; roleColor: string; url: string }>
   >([]);
+  const [draggingPageId, setDraggingPageId] = useState<string | null>(null);
+  const [pageDropTarget, setPageDropTarget] = useState<{
+    id: string;
+    position: "before" | "after";
+  } | null>(null);
+  const [recentlyDroppedPageId, setRecentlyDroppedPageId] = useState<
+    string | null
+  >(null);
+  const [copiedShareLinkRoleId, setCopiedShareLinkRoleId] = useState<
+    string | null
+  >(null);
   const [isSavingTemplate, setIsSavingTemplate] = useState(false);
   const [pendingReplacement, setPendingReplacement] = useState<File | null>(
     null,
@@ -1685,6 +1756,46 @@ export function PdfEditor(props: { initialTemplateId?: string }) {
   const [error, setError] = useState("");
 
   const selectedId = selectedIds.at(-1) ?? null;
+
+  useLayoutEffect(() => {
+    const list = pageListRef.current;
+    if (!list) return;
+    const reducedMotion = window.matchMedia(
+      "(prefers-reduced-motion: reduce)",
+    ).matches;
+    const nextPositions = new Map<string, DOMRect>();
+    const thumbnails = list.querySelectorAll<HTMLElement>(
+      "[data-page-thumbnail-id]",
+    );
+    for (const thumbnail of thumbnails) {
+      const id = thumbnail.dataset.pageThumbnailId;
+      if (!id) continue;
+      const nextBounds = thumbnail.getBoundingClientRect();
+      nextPositions.set(id, nextBounds);
+      const previousBounds = pageThumbnailPositionsRef.current.get(id);
+      const offset = previousBounds ? previousBounds.top - nextBounds.top : 0;
+      if (!reducedMotion && Math.abs(offset) > 1) {
+        thumbnail.animate(
+          [
+            { transform: `translateY(${offset}px)` },
+            { transform: "translateY(0)" },
+          ],
+          {
+            duration: 280,
+            easing: "cubic-bezier(0.22, 1, 0.36, 1)",
+          },
+        );
+      }
+    }
+    pageThumbnailPositionsRef.current = nextPositions;
+  }, [pageOrder]);
+
+  useEffect(() => {
+    return () => {
+      if (pageDropTimerRef.current) clearTimeout(pageDropTimerRef.current);
+      if (copyLinkTimerRef.current) clearTimeout(copyLinkTimerRef.current);
+    };
+  }, []);
 
   function setSelectedId(id: string | null) {
     setSelectedIds(id ? [id] : []);
@@ -2518,20 +2629,68 @@ export function PdfEditor(props: { initialTemplateId?: string }) {
     setSelectedId(null);
   }
 
-  function reorderPage(draggedId: string, targetId: string) {
+  function reorderPage(
+    draggedId: string,
+    targetId: string,
+    position: "before" | "after",
+  ) {
     if (draggedId === targetId) return;
     const fromIndex = pageOrder.findIndex((entry) => entry.id === draggedId);
-    const targetIndex = pageOrder.findIndex((entry) => entry.id === targetId);
-    if (fromIndex < 0 || targetIndex < 0) return;
+    if (fromIndex < 0) return;
     const next = [...pageOrder];
     const [dragged] = next.splice(fromIndex, 1);
-    next.splice(targetIndex, 0, dragged);
+    const targetIndex = next.findIndex((entry) => entry.id === targetId);
+    if (targetIndex < 0) return;
+    const insertionIndex = targetIndex + (position === "after" ? 1 : 0);
+    next.splice(insertionIndex, 0, dragged);
+    const nextPageNumber = next.findIndex((entry) => entry.id === draggedId) + 1;
     setAnnotations((current) =>
       remapAnnotationsForPageOrder(pageOrder, next, current),
     );
     setPageOrder(next);
-    setPageNumber(targetIndex + 1);
+    setPageNumber(nextPageNumber);
     setSelectedId(null);
+    setRecentlyDroppedPageId(draggedId);
+    if (pageDropTimerRef.current) clearTimeout(pageDropTimerRef.current);
+    pageDropTimerRef.current = setTimeout(
+      () => setRecentlyDroppedPageId(null),
+      420,
+    );
+  }
+
+  function updatePageDropTarget(
+    id: string,
+    position: "before" | "after",
+  ) {
+    if (draggingPageId === id) {
+      setPageDropTarget(null);
+      return;
+    }
+    setPageDropTarget((current) =>
+      current?.id === id && current.position === position
+        ? current
+        : { id, position },
+    );
+  }
+
+  function finishPageDrag() {
+    setDraggingPageId(null);
+    setPageDropTarget(null);
+  }
+
+  async function copyShareLink(roleId: string, url: string) {
+    try {
+      await navigator.clipboard.writeText(url);
+      setError("");
+      setCopiedShareLinkRoleId(roleId);
+      if (copyLinkTimerRef.current) clearTimeout(copyLinkTimerRef.current);
+      copyLinkTimerRef.current = setTimeout(
+        () => setCopiedShareLinkRoleId(null),
+        1800,
+      );
+    } catch {
+      setError("Clipboard access was blocked. Select and copy the link manually.");
+    }
   }
 
   function rotateCurrentPage() {
@@ -4596,7 +4755,7 @@ export function PdfEditor(props: { initialTemplateId?: string }) {
                 {pageOrder.length}
               </span>
             </div>
-            <div className="scrollbar-thin flex-1 space-y-2 overflow-y-auto p-3">
+            <div ref={pageListRef} role="list" aria-label="PDF pages" className="scrollbar-thin flex-1 space-y-2 overflow-y-auto p-3">
               {pageOrder.map((entry, index) => (
                 <PageThumbnail
                   key={entry.id}
@@ -4613,7 +4772,16 @@ export function PdfEditor(props: { initialTemplateId?: string }) {
                   onRotate={rotateCurrentPage}
                   onDuplicate={duplicateCurrentPage}
                   onDelete={deleteCurrentPage}
-                  onDropPage={(draggedId) => reorderPage(draggedId, entry.id)}
+                  dragging={draggingPageId === entry.id}
+                  dropPosition={pageDropTarget?.id === entry.id ? pageDropTarget.position : null}
+                  recentlyDropped={recentlyDroppedPageId === entry.id}
+                  onDragPageStart={() => {
+                    setDraggingPageId(entry.id);
+                    setPageDropTarget(null);
+                  }}
+                  onDragPageOver={(position) => updatePageDropTarget(entry.id, position)}
+                  onDragPageEnd={finishPageDrag}
+                  onDropPage={(draggedId, position) => reorderPage(draggedId, entry.id, position)}
                 />
               ))}
             </div>
@@ -6146,22 +6314,25 @@ export function PdfEditor(props: { initialTemplateId?: string }) {
                 </p>
               </div>
               <div className="space-y-2">
-                {createdShareLinks.map((link) => (
-                  <div key={link.roleId} className="min-w-0 rounded-xl border border-slate-200 p-3">
+                {createdShareLinks.map((link) => {
+                  const copied = copiedShareLinkRoleId === link.roleId;
+                  return (
+                  <div key={link.roleId} className={`min-w-0 rounded-xl border p-3 transition-[border-color,background-color,box-shadow] duration-300 ${copied ? "border-emerald-300 bg-emerald-50/60 shadow-sm shadow-emerald-100" : "border-slate-200"}`}>
                     <div className="flex min-w-0 items-center gap-2">
                       <span className="size-3 shrink-0 rounded-full" style={{ backgroundColor: link.roleColor }} />
                       <p className="min-w-0 truncate text-sm font-semibold text-slate-800">{link.roleName}</p>
                     </div>
                     <div className="mt-2 flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center">
-                      <p title={link.url} className="min-w-0 flex-1 truncate rounded-lg bg-slate-50 px-3 py-2 font-mono text-xs text-slate-500">
+                      <p title={link.url} className={`min-w-0 flex-1 select-all truncate rounded-lg px-3 py-2 font-mono text-xs transition-colors duration-300 ${copied ? "bg-white text-emerald-700" : "bg-slate-50 text-slate-500"}`}>
                         {link.url}
                       </p>
-                      <Button type="button" variant="outline" size="sm" className="w-full shrink-0 sm:w-auto" aria-label={`Copy private link for ${link.roleName}`} onClick={() => void navigator.clipboard.writeText(link.url)}>
-                        <Link2 className="size-3.5" /> Copy link
+                      <Button type="button" variant="outline" size="sm" className={`w-full shrink-0 transition-all duration-200 sm:w-auto ${copied ? "copy-link-success border-emerald-300 bg-emerald-100 text-emerald-700 hover:bg-emerald-100 hover:text-emerald-700" : ""}`} aria-label={copied ? `Copied private link for ${link.roleName}` : `Copy private link for ${link.roleName}`} onClick={() => void copyShareLink(link.roleId, link.url)}>
+                        {copied ? <Check className="size-3.5" /> : <Link2 className="size-3.5" />} <span aria-live="polite">{copied ? "Copied!" : "Copy link"}</span>
                       </Button>
                     </div>
                   </div>
-                ))}
+                  );
+                })}
               </div>
               <Button asChild type="button" className="w-full bg-blue-600 hover:bg-blue-700">
                 <a href="/templates"><FolderOpen className="size-4" /> Open template library</a>
