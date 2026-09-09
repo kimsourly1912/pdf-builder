@@ -13,7 +13,9 @@ import {
   Inbox,
   Link2,
   LoaderCircle,
+  Pencil,
   RefreshCw,
+  Search,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
@@ -22,7 +24,12 @@ import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import { SignOutButton } from "@/components/auth/sign-out-button";
 import { formatCambodiaAddress } from "@/features/gazetteer/gazetteer";
+import {
+  formatLocalDateTime,
+  resolvedLocalTimeZone,
+} from "@/features/templates/date-time";
 import type { SubmissionAnswer } from "@/features/templates/label-binding";
+import { localDateRangeToUtc } from "@/features/templates/submission-filters";
 
 type TemplateSummary = {
   id: string;
@@ -31,6 +38,12 @@ type TemplateSummary = {
   fileName: string;
   createdAt: string;
   updatedAt: string;
+  versionNumber: number;
+  filterRoles: Array<{
+    id: string;
+    name: string;
+    color: string;
+  }>;
   submissionCount: number;
   recipients: Array<{
     id: string;
@@ -49,6 +62,7 @@ type SubmissionSummary = {
   templateId: string;
   templateName: string;
   versionNumber: number;
+  roleId: string;
   roleName: string;
   roleColor: string;
   recipientName: string;
@@ -59,9 +73,26 @@ type SubmissionSummary = {
   submittedAt: string;
 };
 
+type DashboardFilters = {
+  templateId: string;
+  roleId: string;
+  search: string;
+  fromDate: string;
+  toDate: string;
+};
+
+const EMPTY_FILTERS: DashboardFilters = {
+  templateId: "",
+  roleId: "",
+  search: "",
+  fromDate: "",
+  toDate: "",
+};
+
 export function TemplatesDashboard(props: { displayName: string }) {
   const [templates, setTemplates] = useState<TemplateSummary[]>([]);
   const [submissions, setSubmissions] = useState<SubmissionSummary[]>([]);
+  const [submissionTotal, setSubmissionTotal] = useState(0);
   const [activeView, setActiveView] = useState<"templates" | "submissions">(
     "templates",
   );
@@ -71,14 +102,18 @@ export function TemplatesDashboard(props: { displayName: string }) {
     {},
   );
   const [linkActionKey, setLinkActionKey] = useState<string | null>(null);
+  const [localTimeZone, setLocalTimeZone] = useState("UTC");
+  const [filterDraft, setFilterDraft] = useState<DashboardFilters>(EMPTY_FILTERS);
+  const [appliedFilters, setAppliedFilters] = useState<DashboardFilters>(EMPTY_FILTERS);
 
   const loadData = useCallback(async () => {
     setLoading(true);
     setError("");
     try {
+      const submissionParams = submissionFilterParams(appliedFilters);
       const [templateResponse, submissionResponse] = await Promise.all([
         fetch("/api/templates", { cache: "no-store" }),
-        fetch("/api/submissions", { cache: "no-store" }),
+        fetch(`/api/submissions?${submissionParams}`, { cache: "no-store" }),
       ]);
       const templatePayload = (await templateResponse.json()) as {
         templates?: TemplateSummary[];
@@ -86,6 +121,7 @@ export function TemplatesDashboard(props: { displayName: string }) {
       };
       const submissionPayload = (await submissionResponse.json()) as {
         submissions?: SubmissionSummary[];
+        total?: number;
         error?: string;
       };
       if (!templateResponse.ok || !submissionResponse.ok) {
@@ -97,17 +133,26 @@ export function TemplatesDashboard(props: { displayName: string }) {
       }
       setTemplates(templatePayload.templates ?? []);
       setSubmissions(submissionPayload.submissions ?? []);
+      setSubmissionTotal(submissionPayload.total ?? 0);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Dashboard could not be loaded.");
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [appliedFilters]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => void loadData(), 0);
     return () => window.clearTimeout(timer);
   }, [loadData]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(
+      () => setLocalTimeZone(resolvedLocalTimeZone()),
+      0,
+    );
+    return () => window.clearTimeout(timer);
+  }, []);
 
   const totalRecipients = useMemo(
     () => templates.reduce((total, template) => total + template.recipients.length, 0),
@@ -230,7 +275,7 @@ export function TemplatesDashboard(props: { displayName: string }) {
         <section className="grid gap-3 sm:grid-cols-3">
           <StatCard label="Templates" value={templates.length} icon={<FolderOpen />} />
           <StatCard label="Recipient roles" value={totalRecipients} icon={<Link2 />} />
-          <StatCard label="Submissions" value={submissions.length} icon={<Inbox />} />
+          <StatCard label="Submissions" value={submissionTotal} icon={<Inbox />} />
         </section>
 
         <div className="mt-8 flex flex-wrap items-center justify-between gap-3">
@@ -245,9 +290,24 @@ export function TemplatesDashboard(props: { displayName: string }) {
         {loading ? (
           <div className="flex min-h-72 items-center justify-center text-slate-400"><LoaderCircle className="size-6 animate-spin" /></div>
         ) : activeView === "templates" ? (
-          <TemplateGrid templates={templates} generatedLinks={generatedLinks} linkActionKey={linkActionKey} onRegenerate={regenerateLink} onRevoke={revokeLink} />
+          <TemplateGrid templates={templates} generatedLinks={generatedLinks} linkActionKey={linkActionKey} localTimeZone={localTimeZone} onRegenerate={regenerateLink} onRevoke={revokeLink} />
         ) : (
-          <SubmissionList submissions={submissions} />
+          <div>
+            <SubmissionFilterPanel
+              templates={templates}
+              draft={filterDraft}
+              applied={appliedFilters}
+              total={submissionTotal}
+              localTimeZone={localTimeZone}
+              onDraftChange={setFilterDraft}
+              onApply={() => setAppliedFilters(filterDraft)}
+              onClear={() => {
+                setFilterDraft(EMPTY_FILTERS);
+                setAppliedFilters(EMPTY_FILTERS);
+              }}
+            />
+            <SubmissionList submissions={submissions} localTimeZone={localTimeZone} />
+          </div>
         )}
       </div>
     </main>
@@ -262,31 +322,132 @@ function TemplateGrid(props: {
   templates: TemplateSummary[];
   generatedLinks: Record<string, string>;
   linkActionKey: string | null;
+  localTimeZone: string;
   onRegenerate: (templateId: string, roleId: string) => Promise<void>;
   onRevoke: (templateId: string, roleId: string) => Promise<void>;
 }) {
   if (props.templates.length === 0) return <EmptyState title="No templates yet" description="Open the editor, add fields, and choose Save template." />;
   return <div className="mt-5 grid gap-4 lg:grid-cols-2">{props.templates.map((template) => (
     <article key={template.id} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-      <div className="flex items-start justify-between gap-3"><div className="min-w-0"><h2 className="truncate text-base font-bold text-slate-900">{template.name}</h2><p className="mt-1 text-xs text-slate-400">{template.fileName} · {template.submissionCount} submission{template.submissionCount === 1 ? "" : "s"}</p></div><Button asChild variant="outline" size="sm"><a href={`/api/templates/${template.id}/pdf`}><Download className="size-3.5" /> PDF</a></Button></div>
+      <div className="flex flex-wrap items-start justify-between gap-3"><div className="min-w-0"><h2 className="truncate text-base font-bold text-slate-900">{template.name}</h2><p className="mt-1 text-xs text-slate-400">{template.fileName} · v{template.versionNumber} · {template.submissionCount} submission{template.submissionCount === 1 ? "" : "s"}</p></div><div className="flex shrink-0 gap-2"><Button asChild variant="outline" size="sm"><Link href={`/?templateId=${encodeURIComponent(template.id)}`}><Pencil className="size-3.5" /> Edit</Link></Button><Button asChild variant="outline" size="sm"><a href={`/api/templates/${template.id}/pdf`}><Download className="size-3.5" /> PDF</a></Button></div></div>
       {template.description && <p className="mt-3 text-sm leading-6 text-slate-600">{template.description}</p>}
       <div className="mt-4 space-y-2 border-t border-slate-100 pt-4">
         {template.recipients.map((recipient) => {
           const key = `${template.id}:${recipient.roleId}`;
           const url = props.generatedLinks[key];
           const busy = props.linkActionKey === key;
-          return <div key={recipient.id} className="rounded-xl bg-slate-50 p-3"><div className="flex flex-wrap items-center gap-2"><span className="size-2.5 rounded-full" style={{ backgroundColor: recipient.roleColor }} /><span className="min-w-0 flex-1 truncate text-sm font-semibold text-slate-700">{recipient.roleName}</span><span className="rounded-full bg-white px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-slate-500">{recipient.status}</span><Button type="button" variant="ghost" size="sm" disabled={busy} onClick={() => void props.onRegenerate(template.id, recipient.roleId)}>{busy ? <LoaderCircle className="size-3.5 animate-spin" /> : <RefreshCw className="size-3.5" />} {url ? "Regenerate" : "Create link"}</Button>{recipient.status === "active" && <Button type="button" variant="ghost" size="sm" disabled={busy} className="text-rose-600 hover:text-rose-700" onClick={() => void props.onRevoke(template.id, recipient.roleId)}><Ban className="size-3.5" /> Revoke</Button>}</div><p className="mt-1 text-[11px] text-slate-400">{recipient.submissionCount}/{recipient.maxSubmissions} submissions · {recipient.expiresAt ? `expires ${formatDate(recipient.expiresAt)}` : "no expiry"}</p>{url && <div className="mt-2 flex gap-2"><input readOnly value={url} className="h-8 min-w-0 flex-1 rounded-md border border-slate-200 bg-white px-2 text-xs text-slate-500" /><Button type="button" variant="outline" size="icon-sm" aria-label={`Copy ${recipient.roleName} link`} onClick={() => void navigator.clipboard.writeText(url)}><Copy /></Button><Button asChild variant="outline" size="icon-sm"><a href={url} target="_blank" rel="noreferrer" aria-label={`Open ${recipient.roleName} link`}><ExternalLink /></a></Button></div>}</div>;
+          return <div key={recipient.id} className="rounded-xl bg-slate-50 p-3"><div className="flex flex-wrap items-center gap-2"><span className="size-2.5 rounded-full" style={{ backgroundColor: recipient.roleColor }} /><span className="min-w-0 flex-1 truncate text-sm font-semibold text-slate-700">{recipient.roleName}</span><span className="rounded-full bg-white px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-slate-500">{recipient.status}</span><Button type="button" variant="ghost" size="sm" disabled={busy} onClick={() => void props.onRegenerate(template.id, recipient.roleId)}>{busy ? <LoaderCircle className="size-3.5 animate-spin" /> : <RefreshCw className="size-3.5" />} {url ? "Regenerate" : "Create link"}</Button>{recipient.status === "active" && <Button type="button" variant="ghost" size="sm" disabled={busy} className="text-rose-600 hover:text-rose-700" onClick={() => void props.onRevoke(template.id, recipient.roleId)}><Ban className="size-3.5" /> Revoke</Button>}</div><p className="mt-1 text-[11px] text-slate-400">{recipient.submissionCount}/{recipient.maxSubmissions} submissions · {recipient.expiresAt ? `expires ${formatLocalDateTime(recipient.expiresAt, { timeZone: props.localTimeZone })}` : "no expiry"}</p>{url && <div className="mt-2 flex gap-2"><input readOnly value={url} className="h-8 min-w-0 flex-1 rounded-md border border-slate-200 bg-white px-2 text-xs text-slate-500" /><Button type="button" variant="outline" size="icon-sm" aria-label={`Copy ${recipient.roleName} link`} onClick={() => void navigator.clipboard.writeText(url)}><Copy /></Button><Button asChild variant="outline" size="icon-sm"><a href={url} target="_blank" rel="noreferrer" aria-label={`Open ${recipient.roleName} link`}><ExternalLink /></a></Button></div>}</div>;
         })}
       </div>
     </article>
   ))}</div>;
 }
 
-function SubmissionList(props: { submissions: SubmissionSummary[] }) {
+function SubmissionFilterPanel(props: {
+  templates: TemplateSummary[];
+  draft: DashboardFilters;
+  applied: DashboardFilters;
+  total: number;
+  localTimeZone: string;
+  onDraftChange: (filters: DashboardFilters) => void;
+  onApply: () => void;
+  onClear: () => void;
+}) {
+  const selectedTemplate = props.templates.find(
+    (template) => template.id === props.draft.templateId,
+  );
+  const roles = selectedTemplate
+    ? selectedTemplate.filterRoles.map((role) => ({
+        roleId: role.id,
+        roleName: role.name,
+      }))
+    : uniqueRoles(props.templates);
+  const exportParams = submissionFilterParams(props.applied);
+  exportParams.set("timeZone", props.localTimeZone);
+  const canExport = Boolean(props.applied.templateId && props.total > 0);
+
+  function update(changes: Partial<DashboardFilters>) {
+    props.onDraftChange({ ...props.draft, ...changes });
+  }
+
+  return (
+    <section className="mt-5 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+      <form
+        className="grid gap-3 lg:grid-cols-[minmax(12rem,1.4fr)_minmax(10rem,1fr)_minmax(9rem,1fr)_9rem_9rem_auto]"
+        onSubmit={(event) => {
+          event.preventDefault();
+          props.onApply();
+        }}
+      >
+        <label className="relative text-xs font-semibold text-slate-600">
+          Search
+          <Search className="pointer-events-none absolute bottom-2.5 left-3 size-4 text-slate-400" />
+          <input
+            value={props.draft.search}
+            onChange={(event) => update({ search: event.target.value })}
+            placeholder="Recipient, email, template…"
+            className="mt-1.5 h-10 w-full rounded-lg border border-slate-200 pl-9 pr-3 text-sm font-normal outline-none focus:border-blue-500"
+          />
+        </label>
+        <label className="text-xs font-semibold text-slate-600">
+          Template
+          <select
+            value={props.draft.templateId}
+            onChange={(event) => update({ templateId: event.target.value, roleId: "" })}
+            className="mt-1.5 h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm font-normal outline-none focus:border-blue-500"
+          >
+            <option value="">All templates</option>
+            {props.templates.map((template) => <option key={template.id} value={template.id}>{template.name}</option>)}
+          </select>
+        </label>
+        <label className="text-xs font-semibold text-slate-600">
+          Recipient role
+          <select
+            value={props.draft.roleId}
+            onChange={(event) => update({ roleId: event.target.value })}
+            className="mt-1.5 h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm font-normal outline-none focus:border-blue-500"
+          >
+            <option value="">All roles</option>
+            {roles.map((role) => <option key={role.roleId} value={role.roleId}>{role.roleName}</option>)}
+          </select>
+        </label>
+        <label className="text-xs font-semibold text-slate-600">
+          From
+          <input type="date" value={props.draft.fromDate} onChange={(event) => update({ fromDate: event.target.value })} className="mt-1.5 h-10 w-full rounded-lg border border-slate-200 px-3 text-sm font-normal outline-none focus:border-blue-500" />
+        </label>
+        <label className="text-xs font-semibold text-slate-600">
+          To
+          <input type="date" value={props.draft.toDate} onChange={(event) => update({ toDate: event.target.value })} className="mt-1.5 h-10 w-full rounded-lg border border-slate-200 px-3 text-sm font-normal outline-none focus:border-blue-500" />
+        </label>
+        <div className="flex items-end gap-2">
+          <Button type="submit" size="sm" className="h-10">Apply</Button>
+          <Button type="button" variant="ghost" size="sm" className="h-10" onClick={props.onClear}>Clear</Button>
+        </div>
+      </form>
+      <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-4">
+        <p className="text-xs text-slate-500">{props.total} matching submission{props.total === 1 ? "" : "s"}</p>
+        <div className="flex flex-wrap items-center gap-2">
+          {!props.applied.templateId && <span className="text-xs text-slate-400">Choose and apply a template to export all rows.</span>}
+          <Button asChild={canExport} disabled={!canExport} variant="outline" size="sm">
+            {canExport ? <a href={`/api/submissions/export?${withFormat(exportParams, "xlsx")}`}><FileSpreadsheet className="size-3.5" /> Export Excel</a> : <span><FileSpreadsheet className="size-3.5" /> Export Excel</span>}
+          </Button>
+          <Button asChild={canExport} disabled={!canExport} variant="outline" size="sm">
+            {canExport ? <a href={`/api/submissions/export?${withFormat(exportParams, "csv")}`}><Download className="size-3.5" /> Export CSV</a> : <span><Download className="size-3.5" /> Export CSV</span>}
+          </Button>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function SubmissionList(props: {
+  submissions: SubmissionSummary[];
+  localTimeZone: string;
+}) {
   if (props.submissions.length === 0) return <EmptyState title="No submissions yet" description="Completed recipient forms will appear here." />;
   return <div className="mt-5 space-y-3">{props.submissions.map((submission) => (
     <article key={submission.id} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-      <div className="flex flex-wrap items-start justify-between gap-3"><div><p className="flex items-center gap-2 text-sm font-bold text-slate-900"><Check className="size-4 text-emerald-600" /> {submission.recipientName}</p><p className="mt-1 text-xs text-slate-400">{submission.templateName} v{submission.versionNumber} · {submission.roleName} · {new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(new Date(submission.submittedAt))}</p>{submission.recipientEmail && <p className="mt-1 text-xs text-slate-500">{submission.recipientEmail}</p>}</div><div className="flex flex-wrap gap-2"><Button asChild variant="outline" size="sm"><a href={`/api/submissions/${submission.id}/excel`}><FileSpreadsheet className="size-3.5" /> Excel</a></Button>{submission.hasCompletedPdf && <Button asChild variant="outline" size="sm"><a href={`/api/submissions/${submission.id}/pdf`}><Download className="size-3.5" /> Completed PDF</a></Button>}</div></div>
+      <div className="flex flex-wrap items-start justify-between gap-3"><div><p className="flex items-center gap-2 text-sm font-bold text-slate-900"><Check className="size-4 text-emerald-600" /> {submission.recipientName}</p><p className="mt-1 text-xs text-slate-400">{submission.templateName} v{submission.versionNumber} · {submission.roleName} · {formatLocalDateTime(submission.submittedAt, { timeZone: props.localTimeZone })}</p>{submission.recipientEmail && <p className="mt-1 text-xs text-slate-500">{submission.recipientEmail}</p>}</div><div className="flex flex-wrap gap-2"><Button asChild variant="outline" size="sm"><a href={`/api/submissions/${submission.id}/excel?timeZone=${encodeURIComponent(props.localTimeZone)}`}><FileSpreadsheet className="size-3.5" /> Excel</a></Button>{submission.hasCompletedPdf && <Button asChild variant="outline" size="sm"><a href={`/api/submissions/${submission.id}/pdf`}><Download className="size-3.5" /> Completed PDF</a></Button>}</div></div>
       <details className="mt-4 rounded-xl bg-slate-50 p-3"><summary className="cursor-pointer text-xs font-semibold text-slate-600">View submitted values</summary><dl className="mt-3 grid gap-2 sm:grid-cols-2">{submission.answers.map((answer) => <div key={answer.fieldId} className="rounded-lg bg-white p-2"><dt className="truncate text-[10px] font-semibold uppercase tracking-wide text-slate-400">{answer.label}</dt><dd className="mt-1 break-words text-sm text-slate-700">{isPublicSubmissionImage(answer.value) ? <Image src={answer.value.url} alt={answer.label} width={Math.min(answer.value.width, 480)} height={Math.min(answer.value.height, 320)} unoptimized className="max-h-48 w-auto rounded-md object-contain" /> : formatValue(answer.value)}</dd><dd className="mt-1 font-mono text-[10px] text-slate-400">{answer.key}</dd></div>)}</dl></details>
     </article>
   ))}</div>;
@@ -324,8 +485,31 @@ function isPublicSubmissionImage(value: unknown): value is {
   );
 }
 
-function formatDate(value: string) {
-  return new Intl.DateTimeFormat(undefined, { dateStyle: "medium" }).format(
-    new Date(value),
-  );
+function submissionFilterParams(filters: DashboardFilters) {
+  const params = new URLSearchParams();
+  if (filters.templateId) params.set("templateId", filters.templateId);
+  if (filters.roleId) params.set("roleId", filters.roleId);
+  if (filters.search.trim()) params.set("search", filters.search.trim());
+  const range = localDateRangeToUtc(filters.fromDate, filters.toDate);
+  if (range.from) params.set("from", range.from);
+  if (range.to) params.set("to", range.to);
+  return params;
+}
+
+function uniqueRoles(templates: TemplateSummary[]) {
+  const roles = new Map<string, { roleId: string; roleName: string }>();
+  for (const template of templates) {
+    for (const role of template.filterRoles) {
+      if (!roles.has(role.id)) {
+        roles.set(role.id, { roleId: role.id, roleName: role.name });
+      }
+    }
+  }
+  return [...roles.values()];
+}
+
+function withFormat(params: URLSearchParams, format: "xlsx" | "csv") {
+  const next = new URLSearchParams(params);
+  next.set("format", format);
+  return next.toString();
 }

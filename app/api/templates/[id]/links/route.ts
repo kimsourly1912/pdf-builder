@@ -1,7 +1,7 @@
 import { and, eq } from "drizzle-orm";
 
 import { getDb } from "@/db";
-import { recipientLinks, templates } from "@/db/schema";
+import { recipientLinks, templates, templateVersions } from "@/db/schema";
 import {
   parseLinkExpiration,
   parseMaxSubmissions,
@@ -13,6 +13,7 @@ import {
   jsonError,
   requireRequestOwner,
 } from "@/features/templates/template.server";
+import { parseVersionRoles } from "@/features/templates/template-write";
 
 type LinkPayload = {
   roleId?: string;
@@ -128,9 +129,17 @@ async function findOwnedLink(
   ownerEmail: string,
 ) {
   const [row] = await getDb()
-    .select({ link: recipientLinks, template: templates })
+    .select({
+      link: recipientLinks,
+      template: templates,
+      rolesJson: templateVersions.rolesJson,
+    })
     .from(recipientLinks)
     .innerJoin(templates, eq(recipientLinks.templateId, templates.id))
+    .innerJoin(
+      templateVersions,
+      eq(templates.currentVersionId, templateVersions.id),
+    )
     .where(
       and(
         eq(templates.id, templateId),
@@ -139,6 +148,8 @@ async function findOwnedLink(
       ),
     )
     .limit(1);
-  return row ?? null;
+  if (!row) return null;
+  return parseVersionRoles(row.rolesJson).some((role) => role.id === roleId)
+    ? row
+    : null;
 }
-

@@ -32,7 +32,8 @@ export function recipientLinkAvailability(
   }
   if (
     link.status === "expired" ||
-    (link.expiresAt && new Date(link.expiresAt).getTime() <= now.getTime())
+    (link.expiresAt &&
+      (parseUtcTimestamp(link.expiresAt)?.getTime() ?? 0) <= now.getTime())
   ) {
     return unavailable("expired", 410, "This fill link has expired.");
   }
@@ -67,10 +68,10 @@ export function parseLinkExpiration(
   if (value === undefined) return defaultLinkExpiration(now);
   if (value === null || value === "") return null;
   if (typeof value !== "string") return undefined;
-  const date = new Date(value);
+  const date = parseUtcTimestamp(value);
   const maximum = now.getTime() + MAX_LINK_LIFETIME_DAYS * 24 * 60 * 60 * 1000;
   if (
-    !Number.isFinite(date.getTime()) ||
+    !date ||
     date.getTime() <= now.getTime() ||
     date.getTime() > maximum
   ) {
@@ -103,3 +104,4 @@ function unavailable(
 ): RecipientLinkAvailability {
   return { available: false, state, httpStatus, message };
 }
+import { parseUtcTimestamp } from "@/features/templates/date-time";

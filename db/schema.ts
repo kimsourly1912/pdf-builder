@@ -1,4 +1,3 @@
-import { sql } from "drizzle-orm";
 import {
   index,
   integer,
@@ -100,8 +99,8 @@ export const templates = sqliteTable(
     annotationsJson: text("annotations_json").notNull(),
     pageOrderJson: text("page_order_json").notNull(),
     currentVersionId: text("current_version_id").notNull(),
-    createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
-    updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
   },
   (table) => [
     index("templates_owner_updated_idx").on(
@@ -123,7 +122,8 @@ export const templateVersions = sqliteTable(
     fileName: text("file_name").notNull(),
     annotationsJson: text("annotations_json").notNull(),
     pageOrderJson: text("page_order_json").notNull(),
-    publishedAt: text("published_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+    rolesJson: text("roles_json").notNull().default("[]"),
+    publishedAt: text("published_at").notNull(),
   },
   (table) => [
     uniqueIndex("template_versions_template_number_unique").on(
@@ -154,8 +154,8 @@ export const recipientLinks = sqliteTable(
     submissionCount: integer("submission_count").notNull().default(0),
     revokedAt: text("revoked_at"),
     completedAt: text("completed_at"),
-    createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
-    updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
   },
   (table) => [
     uniqueIndex("recipient_links_token_hash_unique").on(table.tokenHash),
@@ -185,7 +185,7 @@ export const submissions = sqliteTable(
     recipientEmail: text("recipient_email").notNull().default(""),
     valuesJson: text("values_json").notNull(),
     completedFileKey: text("completed_file_key"),
-    submittedAt: text("submitted_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+    submittedAt: text("submitted_at").notNull(),
   },
   (table) => [
     index("submissions_template_submitted_idx").on(

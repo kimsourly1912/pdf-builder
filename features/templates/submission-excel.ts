@@ -1,4 +1,8 @@
 import { formatCambodiaAddress } from "@/features/gazetteer/gazetteer";
+import {
+  normalizeTimeZone,
+  parseUtcTimestamp,
+} from "@/features/templates/date-time";
 import { isStoredSubmissionImage } from "@/features/templates/file-validation";
 import type { SubmissionAnswer } from "@/features/templates/label-binding";
 import type { TemplateAnnotation } from "@/features/templates/template.types";
@@ -14,8 +18,27 @@ type SubmissionExcelData = {
   recipientName: string;
   recipientEmail: string;
   submittedAt: string;
+  timeZone: string;
   answers: SubmissionAnswer[];
   annotations: TemplateAnnotation[];
+};
+
+export type BulkSubmissionExcelRow = {
+  id: string;
+  templateName: string;
+  versionNumber: number;
+  roleName: string;
+  recipientName: string;
+  recipientEmail: string;
+  submittedAt: string;
+  answers: SubmissionAnswer[];
+  annotations: TemplateAnnotation[];
+};
+
+type BulkSubmissionExcelData = {
+  templateName: string;
+  timeZone: string;
+  rows: BulkSubmissionExcelRow[];
 };
 
 type ZipEntry = {
@@ -31,6 +54,63 @@ export function createSubmissionExcelWorkbook(
 ) {
   const entries = workbookEntries(data, createdAt);
   return createStoredZip(entries, createdAt);
+}
+
+export function createBulkSubmissionsExcelWorkbook(
+  data: BulkSubmissionExcelData,
+  createdAt = new Date(),
+) {
+  return createStoredZip(
+    workbookPackageEntries(
+      bulkWorksheetXml(data, createdAt),
+      "Submissions",
+      `${data.templateName} submissions`,
+      createdAt,
+    ),
+    createdAt,
+  );
+}
+
+export function createBulkSubmissionsCsv(data: BulkSubmissionExcelData) {
+  const columns = bulkAnswerColumns(data.rows);
+  const headers = [
+    "Submitted at",
+    "Recipient",
+    "Email",
+    "Role",
+    "Template version",
+    "Submission ID",
+    ...columns.map((column) => column.header),
+  ];
+  const formatter = new Intl.DateTimeFormat("en-CA", {
+    timeZone: normalizeTimeZone(data.timeZone),
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hourCycle: "h23",
+  });
+  const rows = data.rows.map((row) => {
+    const answers = new Map(row.answers.map((answer) => [answer.key, answer]));
+    const submittedAt = parseUtcTimestamp(row.submittedAt);
+    return [
+      submittedAt ? formatter.format(submittedAt) : row.submittedAt,
+      row.recipientName,
+      row.recipientEmail,
+      row.roleName,
+      String(row.versionNumber),
+      row.id,
+      ...columns.map((column) => {
+        const answer = answers.get(column.key);
+        return answer ? formatSubmissionExportValue(answer, row.annotations) : "";
+      }),
+    ];
+  });
+  return `\uFEFF${[headers, ...rows]
+    .map((row) => row.map(csvCell).join(","))
+    .join("\r\n")}\r\n`;
 }
 
 export function formatSubmissionExportValue(
@@ -64,28 +144,52 @@ export function formatSubmissionExportValue(
 }
 
 export function submissionExcelFileName(templateName: string) {
+  return `${safeExportName(templateName, "submission")}-submission.xlsx`;
+}
+
+export function bulkSubmissionFileName(
+  templateName: string,
+  format: "xlsx" | "csv",
+) {
+  return `${safeExportName(templateName, "submissions")}-submissions.${format}`;
+}
+
+function safeExportName(templateName: string, fallback: string) {
   const safeName = templateName
     .normalize("NFKD")
     .replace(/[\u0300-\u036f]/gu, "")
     .replace(/[^a-zA-Z0-9_-]+/gu, "-")
     .replace(/^-+|-+$/gu, "")
     .slice(0, 80);
-  return `${safeName || "submission"}-submission.xlsx`;
+  return safeName || fallback;
 }
 
 function workbookEntries(data: SubmissionExcelData, createdAt: Date) {
-  const encoder = new TextEncoder();
+  return workbookPackageEntries(
+    worksheetXml(data),
+    "Submission",
+    `${data.templateName} submission`,
+    createdAt,
+  );
+}
+
+function workbookPackageEntries(
+  sheetXml: string,
+  sheetName: string,
+  title: string,
+  createdAt: Date,
+) {
   return [
     textEntry("[Content_Types].xml", contentTypesXml()),
     textEntry("_rels/.rels", rootRelationshipsXml()),
-    textEntry("docProps/app.xml", appPropertiesXml()),
-    textEntry("docProps/core.xml", corePropertiesXml(createdAt)),
-    textEntry("xl/workbook.xml", workbookXml()),
+    textEntry("docProps/app.xml", appPropertiesXml(sheetName)),
+    textEntry("docProps/core.xml", corePropertiesXml(createdAt, title)),
+    textEntry("xl/workbook.xml", workbookXml(sheetName)),
     textEntry("xl/_rels/workbook.xml.rels", workbookRelationshipsXml()),
     textEntry("xl/styles.xml", stylesXml()),
     {
       name: "xl/worksheets/sheet1.xml",
-      data: encoder.encode(worksheetXml(data)),
+      data: new TextEncoder().encode(sheetXml),
     },
   ];
 }
@@ -116,14 +220,14 @@ function rootRelationshipsXml() {
 </Relationships>`);
 }
 
-function appPropertiesXml() {
+function appPropertiesXml(sheetName: string) {
   return xml(`
 <Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties" xmlns:vt="http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes">
   <Application>PDF Studio</Application>
   <DocSecurity>0</DocSecurity>
   <ScaleCrop>false</ScaleCrop>
   <HeadingPairs><vt:vector size="2" baseType="variant"><vt:variant><vt:lpstr>Worksheets</vt:lpstr></vt:variant><vt:variant><vt:i4>1</vt:i4></vt:variant></vt:vector></HeadingPairs>
-  <TitlesOfParts><vt:vector size="1" baseType="lpstr"><vt:lpstr>Submission</vt:lpstr></vt:vector></TitlesOfParts>
+  <TitlesOfParts><vt:vector size="1" baseType="lpstr"><vt:lpstr>${escapeXml(sheetName)}</vt:lpstr></vt:vector></TitlesOfParts>
   <Company></Company>
   <LinksUpToDate>false</LinksUpToDate>
   <SharedDoc>false</SharedDoc>
@@ -132,24 +236,24 @@ function appPropertiesXml() {
 </Properties>`);
 }
 
-function corePropertiesXml(createdAt: Date) {
+function corePropertiesXml(createdAt: Date, title: string) {
   const timestamp = createdAt.toISOString();
   return xml(`
 <cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:dcmitype="http://purl.org/dc/dcmitype/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
   <dc:creator>PDF Studio</dc:creator>
   <cp:lastModifiedBy>PDF Studio</cp:lastModifiedBy>
-  <dc:title>PDF submission export</dc:title>
+  <dc:title>${escapeXml(title)}</dc:title>
   <dcterms:created xsi:type="dcterms:W3CDTF">${timestamp}</dcterms:created>
   <dcterms:modified xsi:type="dcterms:W3CDTF">${timestamp}</dcterms:modified>
 </cp:coreProperties>`);
 }
 
-function workbookXml() {
+function workbookXml(sheetName: string) {
   return xml(`
 <workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
   <workbookPr date1904="0"/>
   <bookViews><workbookView xWindow="0" yWindow="0" windowWidth="24000" windowHeight="12000"/></bookViews>
-  <sheets><sheet name="Submission" sheetId="1" r:id="rId1"/></sheets>
+  <sheets><sheet name="${escapeXml(sheetName)}" sheetId="1" r:id="rId1"/></sheets>
   <calcPr calcId="191029" fullCalcOnLoad="1"/>
 </workbook>`);
 }
@@ -199,22 +303,22 @@ function stylesXml() {
 }
 
 function worksheetXml(data: SubmissionExcelData) {
-  const submittedAt = new Date(data.submittedAt);
-  const validSubmittedAt = Number.isFinite(submittedAt.getTime());
+  const submittedAt = parseUtcTimestamp(data.submittedAt);
+  const timeZone = normalizeTimeZone(data.timeZone);
   const answerRows = data.answers.map((answer, index) => {
-    const rowNumber = index + 10;
+    const rowNumber = index + 11;
     const value = formatSubmissionExportValue(answer, data.annotations);
     return `<row r="${rowNumber}">${inlineStringCell(`A${rowNumber}`, answer.label, 4)}${inlineStringCell(`B${rowNumber}`, value, 4)}${inlineStringCell(`C${rowNumber}`, answer.key, 4)}${inlineStringCell(`D${rowNumber}`, answer.type, 4)}</row>`;
   });
-  const lastRow = Math.max(10, data.answers.length + 9);
-  const submittedAtCell = validSubmittedAt
-    ? numberCell("B7", excelDateSerial(submittedAt), 6)
+  const lastRow = Math.max(11, data.answers.length + 10);
+  const submittedAtCell = submittedAt
+    ? numberCell("B7", excelDateSerial(submittedAt, timeZone), 6)
     : inlineStringCell("B7", data.submittedAt, 5);
 
   return xml(`
 <worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
   <dimension ref="A1:D${lastRow}"/>
-  <sheetViews><sheetView workbookViewId="0"><pane ySplit="9" topLeftCell="A10" activePane="bottomLeft" state="frozen"/><selection pane="bottomLeft" activeCell="A10" sqref="A10"/></sheetView></sheetViews>
+  <sheetViews><sheetView workbookViewId="0"><pane ySplit="10" topLeftCell="A11" activePane="bottomLeft" state="frozen"/><selection pane="bottomLeft" activeCell="A11" sqref="A11"/></sheetView></sheetViews>
   <sheetFormatPr defaultRowHeight="18"/>
   <cols><col min="1" max="1" width="28" customWidth="1"/><col min="2" max="2" width="64" customWidth="1"/><col min="3" max="3" width="28" customWidth="1"/><col min="4" max="4" width="18" customWidth="1"/></cols>
   <sheetData>
@@ -224,14 +328,109 @@ function worksheetXml(data: SubmissionExcelData) {
     ${metadataRow(5, "Recipient role", data.roleName)}
     <row r="6">${inlineStringCell("A6", "Template version", 2)}${numberCell("B6", data.versionNumber, 5)}</row>
     <row r="7">${inlineStringCell("A7", "Submitted at", 2)}${submittedAtCell}</row>
-    <row r="9" ht="22" customHeight="1">${inlineStringCell("A9", "Field", 3)}${inlineStringCell("B9", "Value", 3)}${inlineStringCell("C9", "Field key", 3)}${inlineStringCell("D9", "Field type", 3)}</row>
+    ${metadataRow(8, "Timezone", timeZone)}
+    <row r="10" ht="22" customHeight="1">${inlineStringCell("A10", "Field", 3)}${inlineStringCell("B10", "Value", 3)}${inlineStringCell("C10", "Field key", 3)}${inlineStringCell("D10", "Field type", 3)}</row>
     ${answerRows.join("\n    ")}
   </sheetData>
-  <autoFilter ref="A9:D${lastRow}"/>
+  <autoFilter ref="A10:D${lastRow}"/>
   <mergeCells count="1"><mergeCell ref="A1:D1"/></mergeCells>
   <pageMargins left="0.35" right="0.35" top="0.5" bottom="0.5" header="0.2" footer="0.2"/>
   <pageSetup orientation="landscape" fitToWidth="1" fitToHeight="0"/>
 </worksheet>`);
+}
+
+function bulkWorksheetXml(data: BulkSubmissionExcelData, createdAt: Date) {
+  const timeZone = normalizeTimeZone(data.timeZone);
+  const columns = bulkAnswerColumns(data.rows);
+  const headers = [
+    "Submitted at",
+    "Recipient",
+    "Email",
+    "Role",
+    "Template version",
+    "Submission ID",
+    ...columns.map((column) => column.header),
+  ];
+  const lastColumn = columnName(headers.length);
+  const headerRow = headers
+    .map((header, index) => inlineStringCell(`${columnName(index + 1)}4`, header, 3))
+    .join("");
+  const submissionRows = data.rows.map((row, rowIndex) => {
+    const rowNumber = rowIndex + 5;
+    const answers = new Map(row.answers.map((answer) => [answer.key, answer]));
+    const submittedAt = parseUtcTimestamp(row.submittedAt);
+    const cells = [
+      submittedAt
+        ? numberCell(`A${rowNumber}`, excelDateSerial(submittedAt, timeZone), 6)
+        : inlineStringCell(`A${rowNumber}`, row.submittedAt, 5),
+      inlineStringCell(`B${rowNumber}`, row.recipientName, 5),
+      inlineStringCell(`C${rowNumber}`, row.recipientEmail, 5),
+      inlineStringCell(`D${rowNumber}`, row.roleName, 5),
+      numberCell(`E${rowNumber}`, row.versionNumber, 5),
+      inlineStringCell(`F${rowNumber}`, row.id, 5),
+      ...columns.map((column, index) => {
+        const answer = answers.get(column.key);
+        const value = answer
+          ? formatSubmissionExportValue(answer, row.annotations)
+          : "";
+        return inlineStringCell(`${columnName(index + 7)}${rowNumber}`, value, 4);
+      }),
+    ];
+    return `<row r="${rowNumber}">${cells.join("")}</row>`;
+  });
+  const lastRow = Math.max(5, data.rows.length + 4);
+  const exportTime = excelDateSerial(createdAt, timeZone);
+  return xml(`
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <dimension ref="A1:${lastColumn}${lastRow}"/>
+  <sheetViews><sheetView workbookViewId="0"><pane ySplit="4" topLeftCell="A5" activePane="bottomLeft" state="frozen"/><selection pane="bottomLeft" activeCell="A5" sqref="A5"/></sheetView></sheetViews>
+  <sheetFormatPr defaultRowHeight="18"/>
+  <cols><col min="1" max="1" width="20" customWidth="1"/><col min="2" max="4" width="22" customWidth="1"/><col min="5" max="5" width="16" customWidth="1"/><col min="6" max="6" width="38" customWidth="1"/><col min="7" max="${headers.length}" width="28" customWidth="1"/></cols>
+  <sheetData>
+    <row r="1" ht="24" customHeight="1">${inlineStringCell("A1", `${data.templateName} submissions`, 1)}</row>
+    <row r="2">${inlineStringCell("A2", `Timezone: ${timeZone}`, 0)}${inlineStringCell("D2", "Exported at", 2)}${numberCell("E2", exportTime, 6)}</row>
+    <row r="4" ht="22" customHeight="1">${headerRow}</row>
+    ${submissionRows.join("\n    ")}
+  </sheetData>
+  <autoFilter ref="A4:${lastColumn}${lastRow}"/>
+  <mergeCells count="2"><mergeCell ref="A1:${lastColumn}1"/><mergeCell ref="A2:B2"/></mergeCells>
+  <pageMargins left="0.35" right="0.35" top="0.5" bottom="0.5" header="0.2" footer="0.2"/>
+  <pageSetup orientation="landscape" fitToWidth="1" fitToHeight="0"/>
+</worksheet>`);
+}
+
+function bulkAnswerColumns(rows: BulkSubmissionExcelRow[]) {
+  const labelsByKey = new Map<string, string>();
+  const labelCounts = new Map<string, number>();
+  for (const row of rows) {
+    for (const answer of row.answers) {
+      if (!labelsByKey.has(answer.key)) labelsByKey.set(answer.key, answer.label);
+    }
+  }
+  for (const label of labelsByKey.values()) {
+    labelCounts.set(label, (labelCounts.get(label) ?? 0) + 1);
+  }
+  return [...labelsByKey].map(([key, label]) => ({
+    key,
+    header: labelCounts.get(label) === 1 ? label : `${label} (${key})`,
+  }));
+}
+
+function columnName(index: number) {
+  let value = index;
+  let result = "";
+  while (value > 0) {
+    value -= 1;
+    result = String.fromCharCode(65 + (value % 26)) + result;
+    value = Math.floor(value / 26);
+  }
+  return result;
+}
+
+function csvCell(value: string) {
+  const clean = excelText(value);
+  const safe = /^[=+\-@]/u.test(clean) ? `'${clean}` : clean;
+  return `"${safe.replaceAll('"', '""')}"`;
 }
 
 function metadataRow(rowNumber: number, label: string, value: string) {
@@ -262,8 +461,30 @@ function escapeXml(value: string) {
     .replaceAll("'", "&apos;");
 }
 
-function excelDateSerial(value: Date) {
-  return value.getTime() / 86_400_000 + 25_569;
+function excelDateSerial(value: Date, timeZone: string) {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(value);
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return (
+    Date.UTC(
+      Number(values.year),
+      Number(values.month) - 1,
+      Number(values.day),
+      Number(values.hour),
+      Number(values.minute),
+      Number(values.second),
+    ) /
+      86_400_000 +
+    25_569
+  );
 }
 
 function xml(body: string) {

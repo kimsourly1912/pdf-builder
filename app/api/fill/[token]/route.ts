@@ -8,6 +8,7 @@ import {
   templateVersions,
 } from "@/db/schema";
 import { buildSubmissionAnswers } from "@/features/templates/label-binding";
+import { toUtcIsoString } from "@/features/templates/date-time";
 import {
   sanitizeImage,
   inspectPdf,
@@ -74,7 +75,7 @@ export async function GET(
         color: fillContext.link.roleColor,
       },
       link: {
-        expiresAt: fillContext.link.expiresAt,
+        expiresAt: toUtcIsoString(fillContext.link.expiresAt),
         maxSubmissions: fillContext.link.maxSubmissions,
         submissionCount: fillContext.link.submissionCount,
       },

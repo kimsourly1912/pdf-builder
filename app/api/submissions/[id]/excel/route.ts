@@ -12,6 +12,7 @@ import {
   submissionExcelFileName,
   XLSX_CONTENT_TYPE,
 } from "@/features/templates/submission-excel";
+import { normalizeTimeZone } from "@/features/templates/date-time";
 import { isSubmissionAnswer } from "@/features/templates/label-binding";
 import type { SubmissionAnswer } from "@/features/templates/label-binding";
 import {
@@ -20,6 +21,7 @@ import {
   requireRequestOwner,
 } from "@/features/templates/template.server";
 import type { TemplateAnnotation } from "@/features/templates/template.types";
+import { versionRole } from "@/features/templates/template-write";
 
 export async function GET(
   request: Request,
@@ -28,12 +30,18 @@ export async function GET(
   try {
     const ownerEmail = await requireRequestOwner(request);
     const { id } = await context.params;
+    const timeZone = normalizeTimeZone(
+      new URL(request.url).searchParams.get("timeZone"),
+    );
     const [row] = await getDb()
       .select({
         templateName: templates.name,
         versionNumber: templateVersions.versionNumber,
         annotationsJson: templateVersions.annotationsJson,
-        roleName: recipientLinks.roleName,
+        rolesJson: templateVersions.rolesJson,
+        roleId: recipientLinks.roleId,
+        fallbackRoleName: recipientLinks.roleName,
+        fallbackRoleColor: recipientLinks.roleColor,
         recipientName: submissions.recipientName,
         recipientEmail: submissions.recipientEmail,
         valuesJson: submissions.valuesJson,
@@ -52,14 +60,19 @@ export async function GET(
       .where(and(eq(submissions.id, id), eq(templates.ownerEmail, ownerEmail)))
       .limit(1);
     if (!row) return jsonError("Submission not found.", 404);
+    const role = versionRole(row.rolesJson, row.roleId, {
+      name: row.fallbackRoleName,
+      color: row.fallbackRoleColor,
+    });
 
     const workbook = createSubmissionExcelWorkbook({
       templateName: row.templateName,
       versionNumber: row.versionNumber,
-      roleName: row.roleName,
+      roleName: role.name,
       recipientName: row.recipientName,
       recipientEmail: row.recipientEmail,
       submittedAt: row.submittedAt,
+      timeZone,
       answers: parseAnswers(row.valuesJson),
       annotations: parseAnnotations(row.annotationsJson),
     });

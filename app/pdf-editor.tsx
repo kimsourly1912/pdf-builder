@@ -83,6 +83,7 @@ import {
   reorderEditorAnnotations,
   resizeEditorAnnotationProportionally,
 } from "@/features/templates/editor-shortcuts";
+import { formatLocalDateTime } from "@/features/templates/date-time";
 import { Button } from "@/components/ui/button";
 import { PdfExtractionDialog } from "@/features/extraction/pdf-extraction-dialog";
 import { extractPdfContent } from "@/features/extraction/pdf-extraction";
@@ -227,6 +228,11 @@ type EditorDraft = {
   annotations: Annotation[];
   pageOrder: PageEntry[];
   savedAt: number;
+  templateId?: string;
+  templateVersionNumber?: number;
+  templateName?: string;
+  templateDescription?: string;
+  recipientRoles?: RecipientRole[];
 };
 type Interaction =
   | {
@@ -1595,7 +1601,7 @@ function PageThumbnail(props: {
   );
 }
 
-export function PdfEditor() {
+export function PdfEditor(props: { initialTemplateId?: string }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
   const imageTargetRef = useRef<string | null>(null);
@@ -1647,6 +1653,8 @@ export function PdfEditor() {
   const [templateOpen, setTemplateOpen] = useState(false);
   const [templateName, setTemplateName] = useState("");
   const [templateDescription, setTemplateDescription] = useState("");
+  const [editingTemplateId, setEditingTemplateId] = useState<string | null>(null);
+  const [editingVersionNumber, setEditingVersionNumber] = useState<number | null>(null);
   const [recipientRoles, setRecipientRoles] = useState<RecipientRole[]>([
     { id: createAnnotationId(), name: "Recipient", color: RECIPIENT_COLORS[0] },
   ]);
@@ -1707,12 +1715,19 @@ export function PdfEditor() {
     setTool(nextTool);
   }
 
+  const loadSavedTemplateRef = useRef(loadSavedTemplate);
+  loadSavedTemplateRef.current = loadSavedTemplate;
+
   useEffect(() => {
     void loadKhmerBrowserFont().catch(() => {
         // The system font stack remains available if this optional load fails.
     });
-    void readDraft().then(setAvailableDraft).catch(() => undefined);
-  }, []);
+    if (props.initialTemplateId) {
+      void loadSavedTemplateRef.current(props.initialTemplateId);
+    } else {
+      void readDraft().then(setAvailableDraft).catch(() => undefined);
+    }
+  }, [props.initialTemplateId]);
 
   useEffect(() => {
     if (!document || !fileBytes || pageOrder.length === 0) return;
@@ -1725,6 +1740,11 @@ export function PdfEditor() {
         annotations: cloneAnnotations(annotations),
         pageOrder: pageOrder.map((entry) => ({ ...entry })),
         savedAt: Date.now(),
+        templateId: editingTemplateId ?? undefined,
+        templateVersionNumber: editingVersionNumber ?? undefined,
+        templateName: templateName || undefined,
+        templateDescription: templateDescription || undefined,
+        recipientRoles: recipientRoles.map((role) => ({ ...role })),
       };
       void writeDraft(draft)
         .then(() => {
@@ -1734,7 +1754,7 @@ export function PdfEditor() {
         .catch(() => setDraftStatus("saved"));
     }, 700);
     return () => window.clearTimeout(timer);
-  }, [annotations, document, fileBytes, fileName, pageOrder]);
+  }, [annotations, document, editingTemplateId, editingVersionNumber, fileBytes, fileName, pageOrder, recipientRoles, templateDescription, templateName]);
 
   const fitToScreen = useCallback(() => {
     const viewport = viewportRef.current;
@@ -2349,6 +2369,65 @@ export function PdfEditor() {
     setExtractionProgress({ current: 0, total: 0 });
   }
 
+  async function loadSavedTemplate(templateId: string) {
+    setIsLoading(true);
+    setError("");
+    try {
+      const [metadataResponse, pdfResponse] = await Promise.all([
+        fetch(`/api/templates/${encodeURIComponent(templateId)}`, {
+          cache: "no-store",
+        }),
+        fetch(`/api/templates/${encodeURIComponent(templateId)}/pdf`, {
+          cache: "no-store",
+        }),
+      ]);
+      const payload = (await metadataResponse.json()) as {
+        error?: string;
+        template?: {
+          id: string;
+          name: string;
+          description: string;
+          fileName: string;
+          versionNumber: number;
+          annotations: Annotation[];
+          pageOrder: PageEntry[];
+          roles: RecipientRole[];
+        };
+      };
+      if (!metadataResponse.ok || !payload.template) {
+        throw new Error(payload.error || "The saved template could not be loaded.");
+      }
+      if (!pdfResponse.ok) {
+        throw new Error("The saved template PDF could not be loaded.");
+      }
+      const saved = payload.template;
+      const bytes = new Uint8Array(
+        await pdfResponse.arrayBuffer(),
+      ) as Uint8Array<ArrayBuffer>;
+      await loadEditorDocument(
+        bytes,
+        saved.fileName,
+        saved.annotations,
+        saved.pageOrder,
+      );
+      setTemplateName(saved.name);
+      setTemplateDescription(saved.description);
+      setRecipientRoles(saved.roles.length ? saved.roles : recipientRoles);
+      setEditingTemplateId(saved.id);
+      setEditingVersionNumber(saved.versionNumber);
+      setCreatedShareLinks([]);
+      setAvailableDraft(null);
+    } catch (cause) {
+      setError(
+        cause instanceof Error
+          ? cause.message
+          : "The saved template could not be loaded.",
+      );
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
   async function openFile(file: File) {
     if (
       file.type !== "application/pdf" &&
@@ -2396,6 +2475,15 @@ export function PdfEditor() {
         availableDraft.annotations,
         availableDraft.pageOrder,
       );
+      setEditingTemplateId(availableDraft.templateId ?? null);
+      setEditingVersionNumber(availableDraft.templateVersionNumber ?? null);
+      setTemplateName(availableDraft.templateName ?? "");
+      setTemplateDescription(availableDraft.templateDescription ?? "");
+      if (availableDraft.recipientRoles?.length) {
+        setRecipientRoles(
+          availableDraft.recipientRoles.map((role) => ({ ...role })),
+        );
+      }
     } catch {
       setError("This saved draft could not be restored.");
     } finally {
@@ -3471,13 +3559,18 @@ export function PdfEditor() {
       formData.set("pageOrder", JSON.stringify(pageOrder));
       formData.set("roles", JSON.stringify(recipientRoles));
 
-      const response = await fetch("/api/templates", {
-        method: "POST",
+      const endpoint = editingTemplateId
+        ? `/api/templates/${encodeURIComponent(editingTemplateId)}`
+        : "/api/templates";
+      const response = await fetch(endpoint, {
+        method: editingTemplateId ? "PUT" : "POST",
         body: formData,
       });
       const payload = (await response.json()) as {
         error?: string;
         template?: {
+          id?: string;
+          versionNumber?: number;
           shareLinks?: Array<{
             roleId: string;
             roleName: string;
@@ -3488,6 +3581,12 @@ export function PdfEditor() {
       };
       if (!response.ok) throw new Error(payload.error || "Template could not be saved.");
       setAnnotations(templateAnnotations);
+      if (payload.template?.id) setEditingTemplateId(payload.template.id);
+      if (payload.template?.versionNumber) {
+        setEditingVersionNumber(payload.template.versionNumber);
+      } else if (!editingTemplateId) {
+        setEditingVersionNumber(1);
+      }
       setCreatedShareLinks(payload.template?.shareLinks ?? []);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Template could not be saved.");
@@ -4273,7 +4372,7 @@ export function PdfEditor() {
                         Continue {availableDraft.fileName}
                       </p>
                       <p className="mt-0.5 text-xs text-slate-500">
-                        Saved {new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(availableDraft.savedAt)}
+                        Saved {formatLocalDateTime(availableDraft.savedAt)}
                       </p>
                       <div className="mt-3 flex gap-2">
                         <Button type="button" size="sm" disabled={isLoading} onClick={() => void restoreDraft()} className="bg-blue-600 hover:bg-blue-700">
@@ -4405,7 +4504,7 @@ export function PdfEditor() {
               className="px-2 sm:px-3"
             >
               <Save className="size-4" />
-              <span className="hidden lg:inline">Save template</span>
+              <span className="hidden lg:inline">{editingTemplateId ? "Save new version" : "Save template"}</span>
             </Button>
             <Button
               type="button"
@@ -6031,16 +6130,16 @@ export function PdfEditor() {
       <Dialog open={templateOpen} onOpenChange={setTemplateOpen}>
         <DialogContent className="max-h-[90dvh] min-w-0 max-w-[calc(100dvw-1rem)] overflow-x-hidden overflow-y-auto p-4 sm:max-w-xl sm:p-6 md:max-w-2xl">
           <DialogHeader className="min-w-0 pr-6">
-            <DialogTitle className="leading-6">Save reusable template</DialogTitle>
+            <DialogTitle className="leading-6">{editingTemplateId ? `Save template version ${editingVersionNumber ? editingVersionNumber + 1 : ""}` : "Save reusable template"}</DialogTitle>
             <DialogDescription className="break-words leading-5">
-              Name this document, define its recipients, then assign fields from the Properties panel before sharing.
+              {editingTemplateId ? "Your previous version and its submissions stay unchanged. Saving rotates fresh recipient links for this version." : "Name this document, define its recipients, then assign fields from the Properties panel before sharing."}
             </DialogDescription>
           </DialogHeader>
           {createdShareLinks.length > 0 ? (
             <div className="min-w-0 space-y-4">
               <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4">
                 <p className="flex items-center gap-2 text-sm font-semibold text-emerald-800">
-                  <Check className="size-4 shrink-0" /> Template saved
+                  <Check className="size-4 shrink-0" /> {editingVersionNumber && editingVersionNumber > 1 ? `Version ${editingVersionNumber} saved` : "Template saved"}
                 </p>
                 <p className="mt-1 text-xs leading-5 text-emerald-700">
                   Copy each private link now. For security, the full token is shown only when a link is created or regenerated.
@@ -6107,7 +6206,7 @@ export function PdfEditor() {
               <Button type="button" variant="ghost" onClick={() => setTemplateOpen(false)}>Cancel</Button>
               <Button type="button" disabled={!templateName.trim() || recipientRoles.some((role) => !role.name.trim()) || isSavingTemplate} onClick={() => void saveTemplate()} className="bg-blue-600 hover:bg-blue-700">
                 {isSavingTemplate ? <LoaderCircle className="size-4 animate-spin" /> : <Save className="size-4" />}
-                Save and create links
+                {editingTemplateId ? "Save new version" : "Save and create links"}
               </Button>
             </DialogFooter>
           )}

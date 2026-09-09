@@ -11,6 +11,7 @@ import {
   defaultLinkExpiration,
   recipientLinkAvailability,
 } from "@/features/templates/recipient-link-lifecycle";
+import { toUtcIsoString } from "@/features/templates/date-time";
 import {
   createRecipientToken,
   getFilesBucket,
@@ -21,6 +22,11 @@ import {
 } from "@/features/templates/template.server";
 import { inspectPdf } from "@/features/templates/file-validation";
 import { validateTemplateDefinition } from "@/features/templates/submission-validation";
+import {
+  parseTemplateJson,
+  parseVersionRoles,
+  validRecipientRoles,
+} from "@/features/templates/template-write";
 import type {
   RecipientRole,
   TemplateAnnotation,
@@ -41,7 +47,7 @@ export async function GET(request: Request) {
 
     const result = await Promise.all(
       templateRows.map(async (template) => {
-        const [links, submissionRows] = await Promise.all([
+        const [links, submissionRows, currentVersion, versionRows] = await Promise.all([
           db
             .select({
               id: recipientLinks.id,
@@ -62,18 +68,51 @@ export async function GET(request: Request) {
             .select({ id: submissions.id })
             .from(submissions)
             .where(eq(submissions.templateId, template.id)),
+          db
+            .select({
+              versionNumber: templateVersions.versionNumber,
+              rolesJson: templateVersions.rolesJson,
+            })
+            .from(templateVersions)
+            .where(eq(templateVersions.id, template.currentVersionId))
+            .limit(1),
+          db
+            .select({ rolesJson: templateVersions.rolesJson })
+            .from(templateVersions)
+            .where(eq(templateVersions.templateId, template.id))
+            .orderBy(desc(templateVersions.versionNumber)),
         ]);
+        const version = currentVersion[0];
+        const currentRoleIds = new Set(
+          parseVersionRoles(version?.rolesJson ?? "[]").map((role) => role.id),
+        );
         return {
           id: template.id,
           name: template.name,
           description: template.description,
           fileName: template.fileName,
-          createdAt: template.createdAt,
-          updatedAt: template.updatedAt,
-          recipients: links.map((link) => ({
-            ...link,
-            status: recipientLinkAvailability(link).state,
-          })),
+          createdAt: toUtcIsoString(template.createdAt) ?? template.createdAt,
+          updatedAt: toUtcIsoString(template.updatedAt) ?? template.updatedAt,
+          versionNumber: version?.versionNumber ?? 1,
+          filterRoles: uniqueVersionRoles(versionRows.map((row) => row.rolesJson)),
+          recipients: links.filter((link) => currentRoleIds.has(link.roleId)).map((link) => {
+            const normalizedLink = {
+              ...link,
+              expiresAt: link.expiresAt
+                ? toUtcIsoString(link.expiresAt) ?? link.expiresAt
+                : null,
+              revokedAt: link.revokedAt
+                ? toUtcIsoString(link.revokedAt) ?? link.revokedAt
+                : null,
+              completedAt: link.completedAt
+                ? toUtcIsoString(link.completedAt) ?? link.completedAt
+                : null,
+            };
+            return {
+              ...normalizedLink,
+              status: recipientLinkAvailability(normalizedLink).state,
+            };
+          }),
           submissionCount: submissionRows.length,
         };
       }),
@@ -87,6 +126,16 @@ export async function GET(request: Request) {
   }
 }
 
+function uniqueVersionRoles(rolesJsonValues: string[]) {
+  const roles = new Map<string, RecipientRole>();
+  for (const rolesJson of rolesJsonValues) {
+    for (const role of parseVersionRoles(rolesJson)) {
+      if (!roles.has(role.id)) roles.set(role.id, role);
+    }
+  }
+  return [...roles.values()];
+}
+
 export async function POST(request: Request) {
   let uploadedKey: string | null = null;
   try {
@@ -95,11 +144,11 @@ export async function POST(request: Request) {
     const pdf = formData.get("pdf");
     const name = String(formData.get("name") ?? "").trim();
     const description = String(formData.get("description") ?? "").trim();
-    const annotations = parseJson<TemplateAnnotation[]>(
+    const annotations = parseTemplateJson<TemplateAnnotation[]>(
       formData.get("annotations"),
     );
-    const pageOrder = parseJson<TemplatePageEntry[]>(formData.get("pageOrder"));
-    const roles = parseJson<RecipientRole[]>(formData.get("roles"));
+    const pageOrder = parseTemplateJson<TemplatePageEntry[]>(formData.get("pageOrder"));
+    const roles = parseTemplateJson<RecipientRole[]>(formData.get("roles"));
 
     if (!(pdf instanceof File) || pdf.type !== "application/pdf") {
       return jsonError("A PDF file is required.", 400);
@@ -113,7 +162,7 @@ export async function POST(request: Request) {
     if (!Array.isArray(annotations) || !Array.isArray(pageOrder)) {
       return jsonError("Template editor data is invalid.", 400);
     }
-    if (!validRoles(roles)) {
+    if (!validRecipientRoles(roles)) {
       return jsonError("Add between 1 and 10 valid recipient roles.", 400);
     }
     const pdfBytes = new Uint8Array(await pdf.arrayBuffer()) as Uint8Array<ArrayBuffer>;
@@ -175,6 +224,8 @@ export async function POST(request: Request) {
         annotationsJson: JSON.stringify(annotations),
         pageOrderJson: JSON.stringify(pageOrder),
         currentVersionId: templateVersionId,
+        createdAt: now,
+        updatedAt: now,
       }),
       db.insert(templateVersions).values({
         id: templateVersionId,
@@ -184,6 +235,7 @@ export async function POST(request: Request) {
         fileName: pdf.name || "template.pdf",
         annotationsJson: JSON.stringify(annotations),
         pageOrderJson: JSON.stringify(pageOrder),
+        rolesJson: JSON.stringify(roles),
         publishedAt: now,
       }),
       db.insert(recipientLinks).values(linkRows.map(({ row }) => row)),
@@ -199,7 +251,7 @@ export async function POST(request: Request) {
     }));
 
     return Response.json(
-      { template: { id: templateId, name, shareLinks } },
+      { template: { id: templateId, name, versionNumber: 1, shareLinks } },
       { status: 201 },
     );
   } catch (error) {
@@ -210,38 +262,4 @@ export async function POST(request: Request) {
     console.error("Failed to save template", error);
     return jsonError("The template could not be saved.", 500);
   }
-}
-
-function parseJson<T>(value: FormDataEntryValue | null): T | null {
-  if (typeof value !== "string") return null;
-  try {
-    return JSON.parse(value) as T;
-  } catch {
-    return null;
-  }
-}
-
-function validRoles(value: RecipientRole[] | null): value is RecipientRole[] {
-  if (!Array.isArray(value) || value.length < 1 || value.length > 10) {
-    return false;
-  }
-  const ids = new Set<string>();
-  for (const role of value) {
-    if (
-      !role ||
-      typeof role.id !== "string" ||
-      typeof role.name !== "string" ||
-      typeof role.color !== "string" ||
-      !/^[A-Za-z0-9_-]{1,120}$/u.test(role.id) ||
-      !role.name.trim() ||
-      role.id.length > 120 ||
-      role.name.length > 80 ||
-      !/^#[0-9a-f]{6}$/iu.test(role.color) ||
-      ids.has(role.id)
-    ) {
-      return false;
-    }
-    ids.add(role.id);
-  }
-  return true;
 }
