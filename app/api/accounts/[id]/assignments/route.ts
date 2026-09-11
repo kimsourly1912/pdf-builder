@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 
 import { getDb } from "@/db";
 import {
@@ -61,6 +61,7 @@ export async function POST(
         and(
           eq(templates.id, templateId),
           eq(templates.ownerEmail, ownerEmail),
+          isNull(templates.archivedAt),
         ),
       )
       .limit(1);

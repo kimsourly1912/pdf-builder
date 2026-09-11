@@ -144,6 +144,7 @@ async function findOwnedLink(
       and(
         eq(templates.id, templateId),
         eq(templates.ownerEmail, ownerEmail),
+        isNull(templates.archivedAt),
         eq(recipientLinks.roleId, roleId),
         isNull(recipientLinks.assignedUserId),
       ),

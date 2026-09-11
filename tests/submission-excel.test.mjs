@@ -120,6 +120,7 @@ test("creates one bulk Excel row per submission with dynamic field columns", () 
   const rows = [
     {
       id: "submission-2",
+      templateId: "template-1",
       templateName: "Employee details",
       versionNumber: 2,
       roleName: "Manager",
@@ -131,6 +132,7 @@ test("creates one bulk Excel row per submission with dynamic field columns", () 
     },
     {
       id: "submission-1",
+      templateId: "template-1",
       templateName: "Employee details",
       versionNumber: 1,
       roleName: "Employee",
@@ -142,7 +144,7 @@ test("creates one bulk Excel row per submission with dynamic field columns", () 
     },
   ];
   const bytes = excel.createBulkSubmissionsExcelWorkbook(
-    { templateName: "Employee details", timeZone: "Asia/Phnom_Penh", rows },
+    { templateId: "template-1", templateName: "Employee details", timeZone: "Asia/Phnom_Penh", rows },
     new Date("2026-09-09T03:00:00.000Z"),
   );
   const entries = readStoredZip(bytes);
@@ -161,10 +163,12 @@ test("creates one bulk Excel row per submission with dynamic field columns", () 
 
 test("creates formula-safe RFC 4180 CSV output", () => {
   const csv = excel.createBulkSubmissionsCsv({
+    templateId: "template-1",
     templateName: "Example",
     timeZone: "UTC",
     rows: [{
       id: "submission-1",
+      templateId: "template-1",
       templateName: "Example",
       versionNumber: 1,
       roleName: "Recipient",
@@ -179,6 +183,29 @@ test("creates formula-safe RFC 4180 CSV output", () => {
   assert.match(csv, /"Template"/u);
   assert.match(csv, /"'=DANGEROUS"/u);
   assert.match(csv, /"Hello, ""world"""/u);
+});
+
+test("rejects a bulk export that mixes different templates", () => {
+  assert.throws(
+    () => excel.createBulkSubmissionsExcelWorkbook({
+      templateId: "template-1",
+      templateName: "Employee details",
+      timeZone: "UTC",
+      rows: [{
+        id: "submission-1",
+        templateId: "template-2",
+        templateName: "Guarantee letter",
+        versionNumber: 1,
+        roleName: "Recipient",
+        recipientName: "Example person",
+        recipientEmail: "person@example.com",
+        submittedAt: "2026-09-09T01:00:00.000Z",
+        annotations: [annotation()],
+        answers: [],
+      }],
+    }),
+    /cannot mix templates/u,
+  );
 });
 
 function readStoredZip(bytes) {

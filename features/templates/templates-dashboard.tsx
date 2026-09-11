@@ -16,6 +16,9 @@ import {
   Pencil,
   RefreshCw,
   Search,
+  SlidersHorizontal,
+  Trash2,
+  TriangleAlert,
   UsersRound,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -23,6 +26,25 @@ import Link from "next/link";
 import Image from "next/image";
 
 import { Button } from "@/components/ui/button";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogMedia,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
+  Popover,
+  PopoverContent,
+  PopoverDescription,
+  PopoverHeader,
+  PopoverTitle,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { SignOutButton } from "@/components/auth/sign-out-button";
 import { formatCambodiaAddress } from "@/features/gazetteer/gazetteer";
 import {
@@ -39,6 +61,7 @@ type TemplateSummary = {
   fileName: string;
   createdAt: string;
   updatedAt: string;
+  archivedAt: string | null;
   versionNumber: number;
   currentRoles: Array<{
     id: string;
@@ -51,6 +74,7 @@ type TemplateSummary = {
     color: string;
   }>;
   submissionCount: number;
+  assignmentCount: number;
   recipients: Array<{
     id: string;
     roleId: string;
@@ -105,12 +129,18 @@ export function TemplatesDashboard(props: { displayName: string }) {
   );
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
   const [generatedLinks, setGeneratedLinks] = useState<Record<string, string>>(
     {},
   );
   const [linkActionKey, setLinkActionKey] = useState<string | null>(null);
   const [copiedLinkKey, setCopiedLinkKey] = useState<string | null>(null);
   const [localTimeZone, setLocalTimeZone] = useState("UTC");
+  const [templatePendingRemoval, setTemplatePendingRemoval] =
+    useState<TemplateSummary | null>(null);
+  const [removingTemplateId, setRemovingTemplateId] = useState<string | null>(
+    null,
+  );
   const [filterDraft, setFilterDraft] = useState<DashboardFilters>(EMPTY_FILTERS);
   const [appliedFilters, setAppliedFilters] = useState<DashboardFilters>(EMPTY_FILTERS);
 
@@ -168,9 +198,13 @@ export function TemplatesDashboard(props: { displayName: string }) {
     };
   }, []);
 
-  const totalRecipients = useMemo(
-    () => templates.reduce((total, template) => total + template.recipients.length, 0),
+  const activeTemplates = useMemo(
+    () => templates.filter((template) => !template.archivedAt),
     [templates],
+  );
+  const totalRecipients = useMemo(
+    () => activeTemplates.reduce((total, template) => total + template.recipients.length, 0),
+    [activeTemplates],
   );
 
   async function regenerateLink(templateId: string, roleId: string) {
@@ -255,6 +289,57 @@ export function TemplatesDashboard(props: { displayName: string }) {
     }
   }
 
+  async function removeTemplate(template: TemplateSummary) {
+    setRemovingTemplateId(template.id);
+    setError("");
+    setNotice("");
+    try {
+      const response = await fetch(`/api/templates/${template.id}`, {
+        method: "DELETE",
+      });
+      const payload = (await response.json()) as {
+        error?: string;
+        template?: {
+          id: string;
+          disposition: "archive" | "delete";
+          archivedAt: string | null;
+        };
+      };
+      if (!response.ok || !payload.template) {
+        throw new Error(payload.error || "The template could not be removed.");
+      }
+
+      if (payload.template.disposition === "delete") {
+        setTemplates((current) =>
+          current.filter((item) => item.id !== template.id),
+        );
+        if (appliedFilters.templateId === template.id) {
+          setFilterDraft(EMPTY_FILTERS);
+          setAppliedFilters(EMPTY_FILTERS);
+        }
+        setNotice(`“${template.name}” was permanently deleted.`);
+      } else {
+        setTemplates((current) =>
+          current.map((item) =>
+            item.id === template.id
+              ? { ...item, archivedAt: payload.template!.archivedAt }
+              : item,
+          ),
+        );
+        setNotice(
+          `“${template.name}” was archived. Existing assignments and submissions were preserved.`,
+        );
+      }
+    } catch (cause) {
+      setError(
+        cause instanceof Error ? cause.message : "The template could not be removed.",
+      );
+    } finally {
+      setRemovingTemplateId(null);
+      setTemplatePendingRemoval(null);
+    }
+  }
+
   function updateRecipientLink(
     templateId: string,
     roleId: string,
@@ -304,7 +389,7 @@ export function TemplatesDashboard(props: { displayName: string }) {
 
       <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6">
         <section className="grid gap-3 sm:grid-cols-3">
-          <StatCard label="Templates" value={templates.length} icon={<FolderOpen />} />
+          <StatCard label="Active templates" value={activeTemplates.length} icon={<FolderOpen />} />
           <StatCard label="Recipient roles" value={totalRecipients} icon={<Link2 />} />
           <StatCard label="Submissions" value={submissionTotal} icon={<Inbox />} />
         </section>
@@ -318,10 +403,11 @@ export function TemplatesDashboard(props: { displayName: string }) {
         </div>
 
         {error && <p role="alert" className="mt-4 rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-700">{error}</p>}
+        {notice && <p role="status" className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-700">{notice}</p>}
         {loading ? (
           <div className="flex min-h-72 items-center justify-center text-slate-400"><LoaderCircle className="size-6 animate-spin" /></div>
         ) : activeView === "templates" ? (
-          <TemplateGrid templates={templates} generatedLinks={generatedLinks} linkActionKey={linkActionKey} copiedLinkKey={copiedLinkKey} localTimeZone={localTimeZone} onRegenerate={regenerateLink} onRevoke={revokeLink} onCopy={copyGeneratedLink} />
+          <TemplateGrid templates={activeTemplates} generatedLinks={generatedLinks} linkActionKey={linkActionKey} copiedLinkKey={copiedLinkKey} removingTemplateId={removingTemplateId} localTimeZone={localTimeZone} onRegenerate={regenerateLink} onRevoke={revokeLink} onCopy={copyGeneratedLink} onRequestRemove={setTemplatePendingRemoval} />
         ) : (
           <div>
             <SubmissionFilterPanel
@@ -341,6 +427,14 @@ export function TemplatesDashboard(props: { displayName: string }) {
           </div>
         )}
       </div>
+      <TemplateRemovalDialog
+        template={templatePendingRemoval}
+        removing={removingTemplateId !== null}
+        onOpenChange={(open) => {
+          if (!open && !removingTemplateId) setTemplatePendingRemoval(null);
+        }}
+        onConfirm={(template) => void removeTemplate(template)}
+      />
     </main>
   );
 }
@@ -354,15 +448,17 @@ function TemplateGrid(props: {
   generatedLinks: Record<string, string>;
   linkActionKey: string | null;
   copiedLinkKey: string | null;
+  removingTemplateId: string | null;
   localTimeZone: string;
   onRegenerate: (templateId: string, roleId: string) => Promise<void>;
   onRevoke: (templateId: string, roleId: string) => Promise<void>;
   onCopy: (key: string, url: string) => Promise<void>;
+  onRequestRemove: (template: TemplateSummary) => void;
 }) {
   if (props.templates.length === 0) return <EmptyState title="No templates yet" description="Open the editor, add fields, and choose Save template." />;
   return <div className="mt-5 grid gap-4 lg:grid-cols-2">{props.templates.map((template) => (
     <article key={template.id} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-      <div className="flex flex-wrap items-start justify-between gap-3"><div className="min-w-0"><h2 className="truncate text-base font-bold text-slate-900">{template.name}</h2><p className="mt-1 text-xs text-slate-400">{template.fileName} · v{template.versionNumber} · {template.submissionCount} submission{template.submissionCount === 1 ? "" : "s"}</p></div><div className="flex shrink-0 gap-2"><Button asChild variant="outline" size="sm"><Link href={`/?templateId=${encodeURIComponent(template.id)}`}><Pencil className="size-3.5" /> Edit</Link></Button><Button asChild variant="outline" size="sm"><a href={`/api/templates/${template.id}/pdf`}><Download className="size-3.5" /> PDF</a></Button></div></div>
+      <div className="flex flex-wrap items-start justify-between gap-3"><div className="min-w-0"><h2 className="truncate text-base font-bold text-slate-900">{template.name}</h2><p className="mt-1 text-xs text-slate-400">{template.fileName} · v{template.versionNumber} · {template.submissionCount} submission{template.submissionCount === 1 ? "" : "s"}</p></div><div className="flex shrink-0 flex-wrap justify-end gap-2"><Button asChild variant="outline" size="sm"><Link href={`/?templateId=${encodeURIComponent(template.id)}`}><Pencil className="size-3.5" /> Edit</Link></Button><Button asChild variant="outline" size="sm"><a href={`/api/templates/${template.id}/pdf`}><Download className="size-3.5" /> PDF</a></Button><Button type="button" variant="outline" size="sm" className="text-rose-600 hover:text-rose-700" disabled={props.removingTemplateId !== null} onClick={() => props.onRequestRemove(template)}>{props.removingTemplateId === template.id ? <LoaderCircle className="size-3.5 animate-spin" /> : <Trash2 className="size-3.5" />} Remove</Button></div></div>
       {template.description && <p className="mt-3 text-sm leading-6 text-slate-600">{template.description}</p>}
       <div className="mt-4 space-y-2 border-t border-slate-100 pt-4">
         {template.recipients.map((recipient) => {
@@ -377,6 +473,56 @@ function TemplateGrid(props: {
   ))}</div>;
 }
 
+function TemplateRemovalDialog(props: {
+  template: TemplateSummary | null;
+  removing: boolean;
+  onOpenChange: (open: boolean) => void;
+  onConfirm: (template: TemplateSummary) => void;
+}) {
+  const template = props.template;
+  const willArchive = Boolean(
+    template && (template.submissionCount > 0 || template.assignmentCount > 0),
+  );
+  return (
+    <AlertDialog open={Boolean(template)} onOpenChange={props.onOpenChange}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogMedia
+            className={
+              willArchive
+                ? "bg-amber-100 text-amber-700"
+                : "bg-rose-100 text-rose-700"
+            }
+          >
+            <TriangleAlert />
+          </AlertDialogMedia>
+          <AlertDialogTitle>
+            {willArchive ? "Archive this template?" : "Delete this template permanently?"}
+          </AlertDialogTitle>
+          <AlertDialogDescription className="leading-6">
+            {willArchive && template
+              ? `“${template.name}” has ${template.assignmentCount} assignment${template.assignmentCount === 1 ? "" : "s"} and ${template.submissionCount} submission${template.submissionCount === 1 ? "" : "s"}. It will be hidden, active links will be revoked, and historical records will remain available.`
+              : `“${template?.name ?? "This template"}” has no assignments or submissions. Its template record and stored PDF versions will be permanently deleted. This cannot be undone.`}
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel disabled={props.removing}>Keep template</AlertDialogCancel>
+          <AlertDialogAction
+            variant="destructive"
+            disabled={props.removing || !template}
+            onClick={() => {
+              if (template) props.onConfirm(template);
+            }}
+          >
+            {props.removing && <LoaderCircle className="size-4 animate-spin" />}
+            {willArchive ? "Archive template" : "Delete permanently"}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  );
+}
+
 function SubmissionFilterPanel(props: {
   templates: TemplateSummary[];
   draft: DashboardFilters;
@@ -387,6 +533,7 @@ function SubmissionFilterPanel(props: {
   onApply: () => void;
   onClear: () => void;
 }) {
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const selectedTemplate = props.templates.find(
     (template) => template.id === props.draft.templateId,
   );
@@ -396,9 +543,28 @@ function SubmissionFilterPanel(props: {
         roleName: role.name,
       }))
     : uniqueRoles(props.templates);
+  const appliedTemplate = props.templates.find(
+    (template) => template.id === props.applied.templateId,
+  );
+  const filtersChanged = !dashboardFiltersEqual(props.draft, props.applied);
   const exportParams = submissionFilterParams(props.applied);
   exportParams.set("timeZone", props.localTimeZone);
-  const canExport = props.total > 0;
+  const canExport = Boolean(appliedTemplate) && props.total > 0 && !filtersChanged;
+  const exportDescription = bulkExportDescription({
+    filtersChanged,
+    templateName: appliedTemplate?.name,
+    total: props.total,
+  });
+  const appliedRole = uniqueRoles(props.templates).find(
+    (role) => role.roleId === props.applied.roleId,
+  );
+  const activeFilterCount = countAdvancedFilters(props.applied);
+  const appliedFilterLabels = [
+    appliedTemplate ? `Template: ${appliedTemplate.name}` : "",
+    appliedRole ? `Role: ${appliedRole.roleName}` : "",
+    props.applied.fromDate ? `From: ${props.applied.fromDate}` : "",
+    props.applied.toDate ? `To: ${props.applied.toDate}` : "",
+  ].filter(Boolean);
 
   function update(changes: Partial<DashboardFilters>) {
     props.onDraftChange({ ...props.draft, ...changes });
@@ -407,66 +573,112 @@ function SubmissionFilterPanel(props: {
   return (
     <section className="mt-5 min-w-0 overflow-hidden rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
       <form
-        className="grid min-w-0 gap-3 sm:grid-cols-2 xl:grid-cols-6"
+        className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center"
         onSubmit={(event) => {
           event.preventDefault();
           props.onApply();
         }}
       >
-        <label className="relative min-w-0 text-xs font-semibold text-slate-600 sm:col-span-2 xl:col-span-2">
-          Search
-          <Search className="pointer-events-none absolute bottom-2.5 left-3 size-4 text-slate-400" />
+        <label className="relative min-w-0 flex-1">
+          <span className="sr-only">Search submissions</span>
+          <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
           <input
             value={props.draft.search}
             onChange={(event) => update({ search: event.target.value })}
-            placeholder="Recipient, email, template…"
-            className="mt-1.5 h-10 w-full rounded-lg border border-slate-200 pl-9 pr-3 text-sm font-normal outline-none focus:border-blue-500"
+            placeholder="Search recipient, email, or template…"
+            className="h-10 w-full rounded-lg border border-slate-200 pl-9 pr-3 text-sm font-normal outline-none focus:border-blue-500"
           />
         </label>
-        <label className="min-w-0 text-xs font-semibold text-slate-600">
-          Template
-          <select
-            value={props.draft.templateId}
-            onChange={(event) => update({ templateId: event.target.value, roleId: "" })}
-            className="mt-1.5 h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm font-normal outline-none focus:border-blue-500"
-          >
-            <option value="">All templates</option>
-            {props.templates.map((template) => <option key={template.id} value={template.id}>{template.name}</option>)}
-          </select>
-        </label>
-        <label className="min-w-0 text-xs font-semibold text-slate-600">
-          Recipient role
-          <select
-            value={props.draft.roleId}
-            onChange={(event) => update({ roleId: event.target.value })}
-            className="mt-1.5 h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm font-normal outline-none focus:border-blue-500"
-          >
-            <option value="">All roles</option>
-            {roles.map((role) => <option key={role.roleId} value={role.roleId}>{role.roleName}</option>)}
-          </select>
-        </label>
-        <label className="min-w-0 text-xs font-semibold text-slate-600">
-          From
-          <input type="date" value={props.draft.fromDate} onChange={(event) => update({ fromDate: event.target.value })} className="mt-1.5 h-10 w-full rounded-lg border border-slate-200 px-3 text-sm font-normal outline-none focus:border-blue-500" />
-        </label>
-        <label className="min-w-0 text-xs font-semibold text-slate-600">
-          To
-          <input type="date" value={props.draft.toDate} onChange={(event) => update({ toDate: event.target.value })} className="mt-1.5 h-10 w-full rounded-lg border border-slate-200 px-3 text-sm font-normal outline-none focus:border-blue-500" />
-        </label>
-        <div className="flex min-w-0 justify-end gap-2 sm:col-span-2 xl:col-span-6">
-          <Button type="submit" size="sm" className="h-10 min-w-24">Apply filters</Button>
-          <Button type="button" variant="ghost" size="sm" className="h-10 min-w-20" onClick={props.onClear}>Clear</Button>
+        <div className="flex shrink-0 gap-2">
+          <Button type="submit" size="sm" className="h-10 min-w-20">Search</Button>
+          <Popover open={filtersOpen} onOpenChange={setFiltersOpen}>
+            <PopoverTrigger asChild>
+              <Button type="button" variant="outline" size="sm" className="h-10 min-w-24">
+                <SlidersHorizontal className="size-4" />
+                Filters
+                {activeFilterCount > 0 && (
+                  <span className="flex min-w-5 items-center justify-center rounded-full bg-blue-600 px-1.5 py-0.5 text-[10px] font-bold text-white">
+                    {activeFilterCount}
+                  </span>
+                )}
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent align="end" className="w-[calc(100vw-2rem)] max-w-sm p-0">
+              <PopoverHeader className="border-b border-slate-100 p-4">
+                <PopoverTitle>Filter submissions</PopoverTitle>
+                <PopoverDescription>
+                  Narrow the results before reviewing or exporting them.
+                </PopoverDescription>
+              </PopoverHeader>
+              <div className="grid gap-4 p-4">
+                <label className="text-xs font-semibold text-slate-600">
+                  Template
+                  <select
+                    value={props.draft.templateId}
+                    onChange={(event) => update({ templateId: event.target.value, roleId: "" })}
+                    className="mt-1.5 h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm font-normal outline-none focus:border-blue-500"
+                  >
+                    <option value="">All templates</option>
+                    {props.templates.map((template) => <option key={template.id} value={template.id}>{template.name}{template.archivedAt ? " (Archived)" : ""}</option>)}
+                  </select>
+                </label>
+                <label className="text-xs font-semibold text-slate-600">
+                  Recipient role
+                  <select
+                    value={props.draft.roleId}
+                    onChange={(event) => update({ roleId: event.target.value })}
+                    className="mt-1.5 h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm font-normal outline-none focus:border-blue-500"
+                  >
+                    <option value="">All roles</option>
+                    {roles.map((role) => <option key={role.roleId} value={role.roleId}>{role.roleName}</option>)}
+                  </select>
+                </label>
+                <fieldset>
+                  <legend className="text-xs font-semibold text-slate-600">Submitted date</legend>
+                  <div className="mt-1.5 grid grid-cols-2 gap-3">
+                    <label className="text-[11px] font-medium text-slate-500">
+                      From
+                      <input type="date" value={props.draft.fromDate} onChange={(event) => update({ fromDate: event.target.value })} className="mt-1 h-10 w-full rounded-lg border border-slate-200 px-2 text-sm font-normal outline-none focus:border-blue-500" />
+                    </label>
+                    <label className="text-[11px] font-medium text-slate-500">
+                      To
+                      <input type="date" value={props.draft.toDate} onChange={(event) => update({ toDate: event.target.value })} className="mt-1 h-10 w-full rounded-lg border border-slate-200 px-2 text-sm font-normal outline-none focus:border-blue-500" />
+                    </label>
+                  </div>
+                </fieldset>
+              </div>
+              <div className="flex items-center justify-between gap-2 border-t border-slate-100 p-4">
+                <Button type="button" variant="ghost" size="sm" onClick={() => { props.onClear(); setFiltersOpen(false); }}>Clear all</Button>
+                <Button type="button" size="sm" onClick={() => { props.onApply(); setFiltersOpen(false); }}>Apply filters</Button>
+              </div>
+            </PopoverContent>
+          </Popover>
         </div>
       </form>
-      <div className="mt-4 flex min-w-0 flex-col gap-3 border-t border-slate-100 pt-4 sm:flex-row sm:items-center sm:justify-between">
+      {appliedFilterLabels.length > 0 && (
+        <div className="mt-3 flex flex-wrap items-center gap-2" aria-label="Applied filters">
+          <span className="text-[11px] font-semibold text-slate-400">Applied:</span>
+          {appliedFilterLabels.map((label) => (
+            <span key={label} className="rounded-full border border-blue-100 bg-blue-50 px-2.5 py-1 text-[11px] font-semibold text-blue-700">
+              {label}
+            </span>
+          ))}
+          <Button type="button" variant="ghost" size="xs" className="h-7 text-xs text-slate-500" onClick={props.onClear}>Clear</Button>
+        </div>
+      )}
+      <div className="mt-4 flex min-w-0 flex-col gap-4 border-t border-slate-100 pt-4 sm:flex-row sm:items-end sm:justify-between">
         <p className="text-xs text-slate-500">{props.total} matching submission{props.total === 1 ? "" : "s"}</p>
-        <div className="grid min-w-0 grid-cols-2 gap-2 sm:flex sm:items-center">
-          <Button asChild={canExport} disabled={!canExport} variant="outline" size="sm" className="min-w-0">
-            {canExport ? <a href={`/api/submissions/export?${withFormat(exportParams, "xlsx")}`}><FileSpreadsheet className="size-3.5" /> Export Excel</a> : <span><FileSpreadsheet className="size-3.5" /> Export Excel</span>}
-          </Button>
-          <Button asChild={canExport} disabled={!canExport} variant="outline" size="sm" className="min-w-0">
-            {canExport ? <a href={`/api/submissions/export?${withFormat(exportParams, "csv")}`}><Download className="size-3.5" /> Export CSV</a> : <span><Download className="size-3.5" /> Export CSV</span>}
-          </Button>
+        <div className="min-w-0 sm:max-w-xl sm:text-right">
+          <p className="text-xs font-bold text-slate-700">Bulk export</p>
+          <p id="bulk-export-description" aria-live="polite" className="mt-1 text-xs leading-5 text-slate-500">{exportDescription}</p>
+          <div className="mt-2 grid min-w-0 grid-cols-2 gap-2 sm:flex sm:justify-end">
+            <Button asChild={canExport} disabled={!canExport} variant="outline" size="sm" className="min-w-0" aria-describedby="bulk-export-description">
+              {canExport ? <a href={`/api/submissions/export?${withFormat(exportParams, "xlsx")}`}><FileSpreadsheet className="size-3.5" /> Bulk Excel</a> : <span><FileSpreadsheet className="size-3.5" /> Bulk Excel</span>}
+            </Button>
+            <Button asChild={canExport} disabled={!canExport} variant="outline" size="sm" className="min-w-0" aria-describedby="bulk-export-description">
+              {canExport ? <a href={`/api/submissions/export?${withFormat(exportParams, "csv")}`}><Download className="size-3.5" /> Bulk CSV</a> : <span><Download className="size-3.5" /> Bulk CSV</span>}
+            </Button>
+          </div>
         </div>
       </div>
     </section>
@@ -545,4 +757,40 @@ function withFormat(params: URLSearchParams, format: "xlsx" | "csv") {
   const next = new URLSearchParams(params);
   next.set("format", format);
   return next.toString();
+}
+
+function dashboardFiltersEqual(
+  left: DashboardFilters,
+  right: DashboardFilters,
+) {
+  return (
+    left.templateId === right.templateId &&
+    left.roleId === right.roleId &&
+    left.search === right.search &&
+    left.fromDate === right.fromDate &&
+    left.toDate === right.toDate
+  );
+}
+
+function countAdvancedFilters(filters: DashboardFilters) {
+  return [
+    filters.templateId,
+    filters.roleId,
+    filters.fromDate,
+    filters.toDate,
+  ].filter(Boolean).length;
+}
+
+function bulkExportDescription(options: {
+  filtersChanged: boolean;
+  templateName?: string;
+  total: number;
+}) {
+  const { filtersChanged, templateName, total } = options;
+  if (filtersChanged) return "Apply the changed filters before exporting.";
+  if (!templateName) {
+    return "Select one template and apply filters. Different templates are never mixed in one export.";
+  }
+  if (total === 0) return `No matching submissions from “${templateName}” to export.`;
+  return `${total} matching submission${total === 1 ? "" : "s"} from “${templateName}” will be exported.`;
 }

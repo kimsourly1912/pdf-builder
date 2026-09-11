@@ -2,6 +2,7 @@ import { and, desc, eq, isNull } from "drizzle-orm";
 
 import { getDb } from "@/db";
 import {
+  formAssignments,
   recipientLinks,
   submissions,
   templates,
@@ -47,7 +48,7 @@ export async function GET(request: Request) {
 
     const result = await Promise.all(
       templateRows.map(async (template) => {
-        const [links, submissionRows, currentVersion, versionRows] = await Promise.all([
+        const [links, submissionRows, assignmentRows, currentVersion, versionRows] = await Promise.all([
           db
             .select({
               id: recipientLinks.id,
@@ -74,6 +75,10 @@ export async function GET(request: Request) {
             .from(submissions)
             .where(eq(submissions.templateId, template.id)),
           db
+            .select({ id: formAssignments.id })
+            .from(formAssignments)
+            .where(eq(formAssignments.templateId, template.id)),
+          db
             .select({
               versionNumber: templateVersions.versionNumber,
               rolesJson: templateVersions.rolesJson,
@@ -95,6 +100,9 @@ export async function GET(request: Request) {
           name: template.name,
           description: template.description,
           fileName: template.fileName,
+          archivedAt: template.archivedAt
+            ? toUtcIsoString(template.archivedAt) ?? template.archivedAt
+            : null,
           createdAt: toUtcIsoString(template.createdAt) ?? template.createdAt,
           updatedAt: toUtcIsoString(template.updatedAt) ?? template.updatedAt,
           versionNumber: version?.versionNumber ?? 1,
@@ -119,6 +127,7 @@ export async function GET(request: Request) {
             };
           }),
           submissionCount: submissionRows.length,
+          assignmentCount: assignmentRows.length,
         };
       }),
     );

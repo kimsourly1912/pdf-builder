@@ -25,6 +25,7 @@ type SubmissionExcelData = {
 
 export type BulkSubmissionExcelRow = {
   id: string;
+  templateId: string;
   templateName: string;
   versionNumber: number;
   roleName: string;
@@ -36,6 +37,7 @@ export type BulkSubmissionExcelRow = {
 };
 
 type BulkSubmissionExcelData = {
+  templateId: string;
   templateName: string;
   timeZone: string;
   rows: BulkSubmissionExcelRow[];
@@ -60,6 +62,7 @@ export function createBulkSubmissionsExcelWorkbook(
   data: BulkSubmissionExcelData,
   createdAt = new Date(),
 ) {
+  assertSingleTemplateExport(data);
   return createStoredZip(
     workbookPackageEntries(
       bulkWorksheetXml(data, createdAt),
@@ -72,6 +75,7 @@ export function createBulkSubmissionsExcelWorkbook(
 }
 
 export function createBulkSubmissionsCsv(data: BulkSubmissionExcelData) {
+  assertSingleTemplateExport(data);
   const columns = bulkAnswerColumns(data.rows);
   const headers = [
     "Submitted at",
@@ -164,6 +168,15 @@ function safeExportName(templateName: string, fallback: string) {
     .replace(/^-+|-+$/gu, "")
     .slice(0, 80);
   return safeName || fallback;
+}
+
+function assertSingleTemplateExport(data: BulkSubmissionExcelData) {
+  if (!data.templateId.trim()) {
+    throw new Error("Bulk submission exports require one template.");
+  }
+  if (data.rows.some((row) => row.templateId !== data.templateId)) {
+    throw new Error("Bulk submission exports cannot mix templates.");
+  }
 }
 
 function workbookEntries(data: SubmissionExcelData, createdAt: Date) {

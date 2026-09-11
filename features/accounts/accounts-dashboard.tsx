@@ -37,6 +37,7 @@ import {
 type TemplateSummary = {
   id: string;
   name: string;
+  archivedAt: string | null;
   versionNumber: number;
   currentRoles: Array<{ id: string; name: string; color: string }>;
   filterRoles: Array<{ id: string; name: string; color: string }>;
@@ -95,7 +96,11 @@ export function AccountsDashboard(props: { displayName: string }) {
         );
       }
       setAccounts(accountsPayload.accounts ?? []);
-      setTemplates(templatesPayload.templates ?? []);
+      setTemplates(
+        (templatesPayload.templates ?? []).filter(
+          (template) => !template.archivedAt,
+        ),
+      );
     } catch (cause) {
       setError(
         cause instanceof Error ? cause.message : "Accounts could not be loaded.",

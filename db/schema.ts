@@ -105,6 +105,7 @@ export const templates = sqliteTable(
     annotationsJson: text("annotations_json").notNull(),
     pageOrderJson: text("page_order_json").notNull(),
     currentVersionId: text("current_version_id").notNull(),
+    archivedAt: text("archived_at"),
     createdAt: text("created_at").notNull(),
     updatedAt: text("updated_at").notNull(),
   },

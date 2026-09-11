@@ -1,11 +1,18 @@
-import { and, eq, isNull } from "drizzle-orm";
+import { and, count, eq, isNull, notExists } from "drizzle-orm";
 
 import { getDb } from "@/db";
-import { recipientLinks, templates, templateVersions } from "@/db/schema";
+import {
+  formAssignments,
+  recipientLinks,
+  submissions,
+  templates,
+  templateVersions,
+} from "@/db/schema";
 import { toUtcIsoString } from "@/features/templates/date-time";
 import { inspectPdf } from "@/features/templates/file-validation";
 import { defaultLinkExpiration } from "@/features/templates/recipient-link-lifecycle";
 import { validateTemplateDefinition } from "@/features/templates/submission-validation";
+import { templateRemovalDisposition } from "@/features/templates/template-removal";
 import {
   createRecipientToken,
   getFilesBucket,
@@ -238,6 +245,120 @@ export async function PUT(
   }
 }
 
+export async function DELETE(
+  request: Request,
+  context: { params: Promise<{ id: string }> },
+) {
+  try {
+    const ownerEmail = await requireRequestOwner(request);
+    const { id } = await context.params;
+    const db = getDb();
+    const [template] = await db
+      .select({
+        id: templates.id,
+        fileKey: templates.fileKey,
+        archivedAt: templates.archivedAt,
+      })
+      .from(templates)
+      .where(and(eq(templates.id, id), eq(templates.ownerEmail, ownerEmail)))
+      .limit(1);
+    if (!template) return jsonError("Template not found.", 404);
+    if (template.archivedAt) {
+      return Response.json({
+        template: {
+          id,
+          disposition: "archive",
+          archivedAt: template.archivedAt,
+        },
+      });
+    }
+
+    const [versionRows, submissionTotals, assignmentTotals] = await Promise.all([
+      db
+        .select({ fileKey: templateVersions.fileKey })
+        .from(templateVersions)
+        .where(eq(templateVersions.templateId, id)),
+      db
+        .select({ total: count() })
+        .from(submissions)
+        .where(eq(submissions.templateId, id)),
+      db
+        .select({ total: count() })
+        .from(formAssignments)
+        .where(eq(formAssignments.templateId, id)),
+    ]);
+    const disposition = templateRemovalDisposition({
+      assignmentCount: assignmentTotals[0]?.total ?? 0,
+      submissionCount: submissionTotals[0]?.total ?? 0,
+    });
+
+    if (disposition === "archive") {
+      const archivedAt = new Date().toISOString();
+      await archiveOwnedTemplate({ id, ownerEmail, archivedAt });
+      return Response.json({
+        template: { id, disposition, archivedAt },
+      });
+    }
+
+    const deletedRows = await db
+      .delete(templates)
+      .where(
+        and(
+          eq(templates.id, id),
+          eq(templates.ownerEmail, ownerEmail),
+          notExists(
+            db
+              .select({ id: submissions.id })
+              .from(submissions)
+              .where(eq(submissions.templateId, id)),
+          ),
+          notExists(
+            db
+              .select({ id: formAssignments.id })
+              .from(formAssignments)
+              .where(eq(formAssignments.templateId, id)),
+          ),
+        ),
+      )
+      .returning({ id: templates.id });
+
+    if (deletedRows.length === 0) {
+      const archivedAt = new Date().toISOString();
+      await archiveOwnedTemplate({ id, ownerEmail, archivedAt });
+      return Response.json({
+        template: { id, disposition: "archive", archivedAt },
+      });
+    }
+
+    const fileKeys = [
+      ...new Set([template.fileKey, ...versionRows.map((row) => row.fileKey)]),
+    ];
+    let failedFileDeletes = 0;
+    try {
+      const files = getFilesBucket();
+      const results = await Promise.allSettled(
+        fileKeys.map((fileKey) => files.delete(fileKey)),
+      );
+      failedFileDeletes = results.filter((result) => result.status === "rejected").length;
+    } catch {
+      failedFileDeletes = fileKeys.length;
+    }
+    if (failedFileDeletes > 0) {
+      console.warn("Template data was deleted but some stored PDF cleanup failed", {
+        failedFileDeletes,
+      });
+    }
+
+    return Response.json({
+      template: { id, disposition, archivedAt: null },
+    });
+  } catch (error) {
+    if (isResponse(error)) return error;
+    console.error("Failed to remove template", error);
+    return jsonError("The template could not be removed.", 500);
+  }
+}
+
 async function findOwnedTemplateVersion(id: string, ownerEmail: string) {
   const [row] = await getDb()
     .select({ template: templates, version: templateVersions })
@@ -246,7 +367,37 @@ async function findOwnedTemplateVersion(id: string, ownerEmail: string) {
       templateVersions,
       eq(templates.currentVersionId, templateVersions.id),
     )
-    .where(and(eq(templates.id, id), eq(templates.ownerEmail, ownerEmail)))
+    .where(
+      and(
+        eq(templates.id, id),
+        eq(templates.ownerEmail, ownerEmail),
+        isNull(templates.archivedAt),
+      ),
+    )
     .limit(1);
   return row ?? null;
+}
+
+async function archiveOwnedTemplate(options: {
+  id: string;
+  ownerEmail: string;
+  archivedAt: string;
+}) {
+  const { id, ownerEmail, archivedAt } = options;
+  const db = getDb();
+  await db.batch([
+    db
+      .update(templates)
+      .set({ archivedAt, updatedAt: archivedAt })
+      .where(and(eq(templates.id, id), eq(templates.ownerEmail, ownerEmail))),
+    db
+      .update(recipientLinks)
+      .set({ status: "revoked", revokedAt: archivedAt, updatedAt: archivedAt })
+      .where(
+        and(
+          eq(recipientLinks.templateId, id),
+          eq(recipientLinks.status, "active"),
+        ),
+      ),
+  ]);
 }

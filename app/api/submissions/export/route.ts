@@ -21,6 +21,12 @@ export async function GET(request: Request) {
     const url = new URL(request.url);
     const parsed = parseSubmissionFilters(url.searchParams);
     if (!parsed.filters) return jsonError(parsed.error, 400);
+    if (!parsed.filters.templateId) {
+      return jsonError(
+        "Choose one template before exporting submissions.",
+        422,
+      );
+    }
     const format = url.searchParams.get("format") === "csv" ? "csv" : "xlsx";
     const timeZone = normalizeTimeZone(url.searchParams.get("timeZone"));
     const result = await queryOwnedSubmissions(
@@ -38,14 +44,14 @@ export async function GET(request: Request) {
       );
     }
 
-    const templateName = parsed.filters.templateId
-      ? result.rows[0].templateName
-      : "All templates";
+    const templateName = result.rows[0].templateName;
     const data = {
+      templateId: parsed.filters.templateId,
       templateName,
       timeZone,
       rows: result.rows.map((row) => ({
         id: row.id,
+        templateId: row.templateId,
         templateName: row.templateName,
         versionNumber: row.versionNumber,
         roleName: row.roleName,
