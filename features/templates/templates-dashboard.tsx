@@ -27,6 +27,7 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
+import type { ColumnDef } from "@tanstack/react-table";
 
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -43,8 +44,11 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { DataTable } from "@/components/ui/data-table";
-import type { DataTableColumn } from "@/components/ui/data-table";
+import {
+  DataTable,
+  DataTableColumnHeader,
+} from "@/components/ui/data-table";
+import type { DataTableFeatures } from "@/components/ui/data-table-features";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -573,98 +577,127 @@ function TemplateTable(props: {
   const linksTemplate = props.templates.find(
     (template) => template.id === linksTemplateId,
   );
-  const columns: DataTableColumn<TemplateSummary>[] = [
+  const columns: ColumnDef<DataTableFeatures, TemplateSummary>[] = [
     {
-      id: "template",
-      header: "Template",
-      className: "min-w-72 whitespace-normal",
-      cell: (template) => (
-        <div className="flex min-w-0 items-center gap-3">
-          <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
-            <FileText className="size-4" />
-          </span>
-          <div className="min-w-0">
-            <p className="truncate font-medium">{template.name}</p>
-            <p className="mt-0.5 max-w-72 truncate text-xs text-muted-foreground">
-              {template.description || template.fileName}
-            </p>
-          </div>
-        </div>
+      accessorKey: "name",
+      header: ({ column }) => (
+        <DataTableColumnHeader column={column} title="Template" />
       ),
+      meta: { className: "min-w-72 whitespace-normal" },
+      cell: ({ row }) => {
+        const template = row.original;
+        return (
+          <div className="flex min-w-0 items-center gap-3">
+            <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+              <FileText className="size-4" />
+            </span>
+            <div className="min-w-0">
+              <p className="truncate font-medium">{template.name}</p>
+              <p className="mt-0.5 max-w-72 truncate text-xs text-muted-foreground">
+                {template.description || template.fileName}
+              </p>
+            </div>
+          </div>
+        );
+      },
     },
     {
-      id: "version",
-      header: "Version",
-      cell: (template) => (
-        <Badge variant="secondary">v{template.versionNumber}</Badge>
+      accessorKey: "versionNumber",
+      header: ({ column }) => (
+        <DataTableColumnHeader column={column} title="Version" />
+      ),
+      cell: ({ row }) => (
+        <Badge variant="secondary">v{row.original.versionNumber}</Badge>
       ),
     },
     {
       id: "roles",
-      header: "Roles",
-      className: "min-w-40 whitespace-normal",
-      cell: (template) => (
-        <div className="flex flex-wrap gap-1.5">
-          {template.currentRoles.slice(0, 2).map((role) => (
-            <Badge key={role.id} variant="outline">
-              <span
-                className="size-2 rounded-full"
-                style={{ backgroundColor: role.color }}
-              />
-              {role.name}
-            </Badge>
-          ))}
-          {template.currentRoles.length > 2 && (
-            <Badge variant="outline">+{template.currentRoles.length - 2}</Badge>
-          )}
-        </div>
+      accessorFn: (template) =>
+        template.currentRoles.map((role) => role.name).join(", "),
+      header: ({ column }) => (
+        <DataTableColumnHeader column={column} title="Roles" />
       ),
+      meta: { className: "min-w-40 whitespace-normal" },
+      cell: ({ row }) => {
+        const template = row.original;
+        return (
+          <div className="flex flex-wrap gap-1.5">
+            {template.currentRoles.slice(0, 2).map((role) => (
+              <Badge key={role.id} variant="outline">
+                <span
+                  className="size-2 rounded-full"
+                  style={{ backgroundColor: role.color }}
+                />
+                {role.name}
+              </Badge>
+            ))}
+            {template.currentRoles.length > 2 && (
+              <Badge variant="outline">+{template.currentRoles.length - 2}</Badge>
+            )}
+          </div>
+        );
+      },
     },
     {
       id: "activity",
-      header: "Activity",
-      className: "min-w-32",
-      cell: (template) => (
-        <div className="space-y-1 text-xs">
-          <p>{template.assignmentCount} assigned</p>
-          <p className="text-muted-foreground">
-            {template.submissionCount} submitted
-          </p>
-        </div>
+      accessorFn: (template) => template.assignmentCount,
+      header: ({ column }) => (
+        <DataTableColumnHeader column={column} title="Activity" />
       ),
+      meta: { className: "min-w-32" },
+      cell: ({ row }) => {
+        const template = row.original;
+        return (
+          <div className="space-y-1 text-xs">
+            <p>{template.assignmentCount} assigned</p>
+            <p className="text-muted-foreground">
+              {template.submissionCount} submitted
+            </p>
+          </div>
+        );
+      },
     },
     {
-      id: "updated",
-      header: "Updated",
-      className: "min-w-40 text-xs text-muted-foreground",
-      cell: (template) =>
-        formatLocalDateTime(template.updatedAt, {
+      accessorKey: "updatedAt",
+      header: ({ column }) => (
+        <DataTableColumnHeader column={column} title="Updated" />
+      ),
+      meta: { className: "min-w-40 text-xs text-muted-foreground" },
+      cell: ({ row }) =>
+        formatLocalDateTime(row.original.updatedAt, {
           timeZone: props.localTimeZone,
         }),
     },
     {
       id: "links",
-      header: "Fill links",
-      cell: (template) => (
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          onClick={() => setLinksTemplateId(template.id)}
-        >
-          <Link2 /> Manage
-          <Badge variant="secondary">{template.recipients.length}</Badge>
-        </Button>
+      accessorFn: (template) => template.recipients.length,
+      header: ({ column }) => (
+        <DataTableColumnHeader column={column} title="Fill links" />
       ),
+      cell: ({ row }) => {
+        const template = row.original;
+        return (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => setLinksTemplateId(template.id)}
+          >
+            <Link2 /> Manage
+            <Badge variant="secondary">{template.recipients.length}</Badge>
+          </Button>
+        );
+      },
     },
     {
       id: "actions",
-      header: <span className="sr-only">Actions</span>,
-      headerClassName: "text-right",
-      className: "text-right",
-      cell: (template) => (
+      header: () => <span className="sr-only">Actions</span>,
+      meta: { headerClassName: "text-right", className: "text-right" },
+      enableHiding: false,
+      enableSorting: false,
+      cell: ({ row }) => (
         <TemplateRowActions
-          template={template}
+          template={row.original}
           removingTemplateId={props.removingTemplateId}
           onRequestRemove={props.onRequestRemove}
         />
@@ -682,6 +715,9 @@ function TemplateTable(props: {
         emptyTitle="No templates yet"
         emptyDescription="Open the editor, add fields, and choose Save template."
         emptyIcon={<FolderOpen />}
+        filterColumn="name"
+        filterPlaceholder="Filter templates..."
+        enableRowSelection
         className="mt-5"
       />
       <TemplateLinksDialog
@@ -765,49 +801,60 @@ function TemplateLinksDialog(props: {
   onCopy: (key: string, url: string) => Promise<void>;
 }) {
   const template = props.template;
-  const columns: DataTableColumn<TemplateSummary["recipients"][number]>[] = [
+  const columns: ColumnDef<
+    DataTableFeatures,
+    TemplateSummary["recipients"][number]
+  >[] = [
     {
-      id: "role",
-      header: "Recipient role",
-      className: "min-w-36",
-      cell: (recipient) => (
+      accessorKey: "roleName",
+      header: ({ column }) => (
+        <DataTableColumnHeader column={column} title="Recipient role" />
+      ),
+      meta: { className: "min-w-36" },
+      cell: ({ row }) => (
         <div className="flex items-center gap-2 font-medium">
           <span
             className="size-2.5 shrink-0 rounded-full"
-            style={{ backgroundColor: recipient.roleColor }}
+            style={{ backgroundColor: row.original.roleColor }}
           />
-          {recipient.roleName}
+          {row.original.roleName}
         </div>
       ),
     },
     {
-      id: "status",
-      header: "Status",
-      cell: (recipient) => (
+      accessorKey: "status",
+      header: ({ column }) => (
+        <DataTableColumnHeader column={column} title="Status" />
+      ),
+      cell: ({ row }) => (
         <Badge
           variant="outline"
-          className={linkStatusClassName(recipient.status)}
+          className={linkStatusClassName(row.original.status)}
         >
-          {recipient.status}
+          {row.original.status}
         </Badge>
       ),
     },
     {
-      id: "usage",
-      header: "Usage",
-      cell: (recipient) => (
+      accessorKey: "submissionCount",
+      header: ({ column }) => (
+        <DataTableColumnHeader column={column} title="Usage" />
+      ),
+      cell: ({ row }) => (
         <span className="text-xs">
-          {recipient.submissionCount}/{recipient.maxSubmissions} submissions
+          {row.original.submissionCount}/{row.original.maxSubmissions} submissions
         </span>
       ),
     },
     {
-      id: "expiry",
-      header: "Expiry",
-      className: "min-w-40 text-xs text-muted-foreground",
-      cell: (recipient) =>
-        recipient.expiresAt
-          ? formatLocalDateTime(recipient.expiresAt, {
+      accessorKey: "expiresAt",
+      header: ({ column }) => (
+        <DataTableColumnHeader column={column} title="Expiry" />
+      ),
+      meta: { className: "min-w-40 text-xs text-muted-foreground" },
+      cell: ({ row }) =>
+        row.original.expiresAt
+          ? formatLocalDateTime(row.original.expiresAt, {
               timeZone: props.localTimeZone,
             })
           : "No expiry",
@@ -815,8 +862,10 @@ function TemplateLinksDialog(props: {
     {
       id: "link",
       header: "Generated link",
-      className: "min-w-80",
-      cell: (recipient) => {
+      meta: { className: "min-w-80" },
+      enableSorting: false,
+      cell: ({ row }) => {
+        const recipient = row.original;
         const key = `${template?.id ?? ""}:${recipient.roleId}`;
         const url = props.generatedLinks[key];
         if (!url) {
@@ -872,9 +921,12 @@ function TemplateLinksDialog(props: {
     },
     {
       id: "actions",
-      header: <span className="sr-only">Actions</span>,
-      className: "text-right",
-      cell: (recipient) => {
+      header: () => <span className="sr-only">Actions</span>,
+      meta: { headerClassName: "text-right", className: "text-right" },
+      enableHiding: false,
+      enableSorting: false,
+      cell: ({ row }) => {
+        const recipient = row.original;
         const key = `${template?.id ?? ""}:${recipient.roleId}`;
         const busy = props.linkActionKey === key;
         const hasGeneratedUrl = Boolean(props.generatedLinks[key]);
@@ -937,6 +989,9 @@ function TemplateLinksDialog(props: {
           emptyTitle="No recipient roles"
           emptyDescription="Add a recipient role in the template editor before creating a fill link."
           emptyIcon={<Link2 />}
+          filterColumn="roleName"
+          filterPlaceholder="Filter recipient roles..."
+          initialPageSize={5}
           className="shadow-none"
         />
         <DialogFooter showCloseButton />
@@ -952,65 +1007,83 @@ function ArchivedTemplateTable(props: {
   onRestore: (template: TemplateSummary) => void;
   onViewSubmissions: (template: TemplateSummary) => void;
 }) {
-  const columns: DataTableColumn<TemplateSummary>[] = [
+  const columns: ColumnDef<DataTableFeatures, TemplateSummary>[] = [
     {
-      id: "template",
-      header: "Template",
-      className: "min-w-72 whitespace-normal",
-      cell: (template) => (
-        <div className="flex min-w-0 items-center gap-3">
-          <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-amber-100 text-amber-700">
-            <Archive className="size-4" />
-          </span>
-          <div className="min-w-0">
-            <div className="flex items-center gap-2">
-              <p className="truncate font-medium">{template.name}</p>
-              <Badge className="bg-amber-100 text-amber-800 hover:bg-amber-100">
-                Archived
-              </Badge>
-            </div>
-            <p className="mt-0.5 max-w-72 truncate text-xs text-muted-foreground">
-              {template.description || template.fileName}
-            </p>
-          </div>
-        </div>
+      accessorKey: "name",
+      header: ({ column }) => (
+        <DataTableColumnHeader column={column} title="Template" />
       ),
+      meta: { className: "min-w-72 whitespace-normal" },
+      cell: ({ row }) => {
+        const template = row.original;
+        return (
+          <div className="flex min-w-0 items-center gap-3">
+            <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-amber-100 text-amber-700">
+              <Archive className="size-4" />
+            </span>
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <p className="truncate font-medium">{template.name}</p>
+                <Badge className="bg-amber-100 text-amber-800 hover:bg-amber-100">
+                  Archived
+                </Badge>
+              </div>
+              <p className="mt-0.5 max-w-72 truncate text-xs text-muted-foreground">
+                {template.description || template.fileName}
+              </p>
+            </div>
+          </div>
+        );
+      },
     },
     {
-      id: "version",
-      header: "Version",
-      cell: (template) => (
-        <Badge variant="secondary">v{template.versionNumber}</Badge>
+      accessorKey: "versionNumber",
+      header: ({ column }) => (
+        <DataTableColumnHeader column={column} title="Version" />
+      ),
+      cell: ({ row }) => (
+        <Badge variant="secondary">v{row.original.versionNumber}</Badge>
       ),
     },
     {
       id: "history",
-      header: "Saved history",
-      className: "min-w-36",
-      cell: (template) => (
-        <div className="space-y-1 text-xs">
-          <p>{template.assignmentCount} assignments</p>
-          <p className="text-muted-foreground">
-            {template.submissionCount} submissions
-          </p>
-        </div>
+      accessorFn: (template) => template.assignmentCount,
+      header: ({ column }) => (
+        <DataTableColumnHeader column={column} title="Saved history" />
       ),
+      meta: { className: "min-w-36" },
+      cell: ({ row }) => {
+        const template = row.original;
+        return (
+          <div className="space-y-1 text-xs">
+            <p>{template.assignmentCount} assignments</p>
+            <p className="text-muted-foreground">
+              {template.submissionCount} submissions
+            </p>
+          </div>
+        );
+      },
     },
     {
-      id: "archived",
-      header: "Archived",
-      className: "min-w-40 text-xs text-muted-foreground",
-      cell: (template) =>
-        formatLocalDateTime(template.archivedAt ?? template.updatedAt, {
+      accessorKey: "archivedAt",
+      header: ({ column }) => (
+        <DataTableColumnHeader column={column} title="Archived" />
+      ),
+      meta: { className: "min-w-40 text-xs text-muted-foreground" },
+      cell: ({ row }) =>
+        formatLocalDateTime(row.original.archivedAt ?? row.original.updatedAt, {
           timeZone: props.localTimeZone,
         }),
     },
     {
       id: "actions",
-      header: <span className="sr-only">Actions</span>,
-      headerClassName: "text-right",
-      className: "text-right",
-      cell: (template) => (
+      header: () => <span className="sr-only">Actions</span>,
+      meta: { headerClassName: "text-right", className: "text-right" },
+      enableHiding: false,
+      enableSorting: false,
+      cell: ({ row }) => {
+        const template = row.original;
+        return (
         <div className="flex justify-end gap-1">
           {template.submissionCount > 0 && (
             <Button
@@ -1041,7 +1114,8 @@ function ArchivedTemplateTable(props: {
             Restore
           </Button>
         </div>
-      ),
+        );
+      },
     },
   ];
 
@@ -1054,6 +1128,9 @@ function ArchivedTemplateTable(props: {
       emptyTitle="No archived templates"
       emptyDescription="Templates you archive will appear here with their assignment and submission history."
       emptyIcon={<Archive />}
+      filterColumn="name"
+      filterPlaceholder="Filter archived templates..."
+      enableRowSelection
       className="mt-5 border-amber-200"
       rowClassName={() => "bg-amber-50/20"}
     />
@@ -1278,66 +1355,80 @@ function SubmissionTable(props: {
   const detailSubmission = props.submissions.find(
     (submission) => submission.id === detailSubmissionId,
   );
-  const columns: DataTableColumn<SubmissionSummary>[] = [
+  const columns: ColumnDef<DataTableFeatures, SubmissionSummary>[] = [
     {
-      id: "recipient",
-      header: "Recipient",
-      className: "min-w-56 whitespace-normal",
-      cell: (submission) => (
-        <div className="flex min-w-0 items-center gap-3">
-          <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-700">
-            <Check className="size-4" />
-          </span>
-          <div className="min-w-0">
-            <p className="truncate font-medium">{submission.recipientName}</p>
-            <p className="mt-0.5 truncate text-xs text-muted-foreground">
-              {submission.recipientEmail || "No email provided"}
-            </p>
-          </div>
-        </div>
+      accessorKey: "recipientName",
+      header: ({ column }) => (
+        <DataTableColumnHeader column={column} title="Recipient" />
       ),
+      meta: { className: "min-w-56 whitespace-normal" },
+      cell: ({ row }) => {
+        const submission = row.original;
+        return (
+          <div className="flex min-w-0 items-center gap-3">
+            <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-700">
+              <Check className="size-4" />
+            </span>
+            <div className="min-w-0">
+              <p className="truncate font-medium">{submission.recipientName}</p>
+              <p className="mt-0.5 truncate text-xs text-muted-foreground">
+                {submission.recipientEmail || "No email provided"}
+              </p>
+            </div>
+          </div>
+        );
+      },
     },
     {
-      id: "template",
-      header: "Template",
-      className: "min-w-48 whitespace-normal",
-      cell: (submission) => (
+      accessorKey: "templateName",
+      header: ({ column }) => (
+        <DataTableColumnHeader column={column} title="Template" />
+      ),
+      meta: { className: "min-w-48 whitespace-normal" },
+      cell: ({ row }) => (
         <div>
-          <p className="font-medium">{submission.templateName}</p>
+          <p className="font-medium">{row.original.templateName}</p>
           <p className="mt-0.5 text-xs text-muted-foreground">
-            Version {submission.versionNumber}
+            Version {row.original.versionNumber}
           </p>
         </div>
       ),
     },
     {
-      id: "role",
-      header: "Recipient role",
-      cell: (submission) => (
+      accessorKey: "roleName",
+      header: ({ column }) => (
+        <DataTableColumnHeader column={column} title="Recipient role" />
+      ),
+      cell: ({ row }) => (
         <Badge variant="outline">
           <span
             className="size-2 rounded-full"
-            style={{ backgroundColor: submission.roleColor }}
+            style={{ backgroundColor: row.original.roleColor }}
           />
-          {submission.roleName}
+          {row.original.roleName}
         </Badge>
       ),
     },
     {
-      id: "submitted",
-      header: "Submitted",
-      className: "min-w-40 text-xs text-muted-foreground",
-      cell: (submission) =>
-        formatLocalDateTime(submission.submittedAt, {
+      accessorKey: "submittedAt",
+      header: ({ column }) => (
+        <DataTableColumnHeader column={column} title="Submitted" />
+      ),
+      meta: { className: "min-w-40 text-xs text-muted-foreground" },
+      cell: ({ row }) =>
+        formatLocalDateTime(row.original.submittedAt, {
           timeZone: props.localTimeZone,
         }),
     },
     {
       id: "actions",
-      header: <span className="sr-only">Actions</span>,
-      headerClassName: "text-right",
-      className: "text-right",
-      cell: (submission) => (
+      header: () => <span className="sr-only">Actions</span>,
+      meta: { headerClassName: "text-right", className: "text-right" },
+      enableHiding: false,
+      enableSorting: false,
+      cell: ({ row }) => {
+        const submission = row.original;
+        return (
         <div className="flex justify-end gap-1">
           <Button
             type="button"
@@ -1376,7 +1467,8 @@ function SubmissionTable(props: {
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
-      ),
+        );
+      },
     },
   ];
 
@@ -1390,6 +1482,9 @@ function SubmissionTable(props: {
         emptyTitle="No submissions yet"
         emptyDescription="Completed recipient forms will appear here."
         emptyIcon={<Inbox />}
+        filterColumn="recipientName"
+        filterPlaceholder="Filter recipients..."
+        enableRowSelection
         className="mt-5"
       />
       <SubmissionDetailsDialog
@@ -1407,36 +1502,42 @@ function SubmissionDetailsDialog(props: {
   onOpenChange: (open: boolean) => void;
 }) {
   const submission = props.submission;
-  const columns: DataTableColumn<SubmissionAnswer>[] = [
+  const columns: ColumnDef<DataTableFeatures, SubmissionAnswer>[] = [
     {
-      id: "field",
-      header: "Field",
-      className: "min-w-48 whitespace-normal",
-      cell: (answer) => <span className="font-medium">{answer.label}</span>,
+      accessorKey: "label",
+      header: ({ column }) => (
+        <DataTableColumnHeader column={column} title="Field" />
+      ),
+      meta: { className: "min-w-48 whitespace-normal" },
+      cell: ({ row }) => (
+        <span className="font-medium">{row.original.label}</span>
+      ),
     },
     {
       id: "value",
       header: "Submitted value",
-      className: "min-w-64 max-w-xl whitespace-normal",
-      cell: (answer) =>
-        isPublicSubmissionImage(answer.value) ? (
+      meta: { className: "min-w-64 max-w-xl whitespace-normal" },
+      enableSorting: false,
+      cell: ({ row }) =>
+        isPublicSubmissionImage(row.original.value) ? (
           <Image
-            src={answer.value.url}
-            alt={answer.label}
-            width={Math.min(answer.value.width, 480)}
-            height={Math.min(answer.value.height, 320)}
+            src={row.original.value.url}
+            alt={row.original.label}
+            width={Math.min(row.original.value.width, 480)}
+            height={Math.min(row.original.value.height, 320)}
             unoptimized
             className="max-h-48 w-auto rounded-md object-contain"
           />
         ) : (
-          <span className="break-words">{formatValue(answer.value)}</span>
+          <span className="break-words">{formatValue(row.original.value)}</span>
         ),
     },
     {
-      id: "key",
-      header: "Data key",
-      className: "font-mono text-xs text-muted-foreground",
-      cell: (answer) => answer.key,
+      accessorKey: "key",
+      header: ({ column }) => (
+        <DataTableColumnHeader column={column} title="Data key" />
+      ),
+      meta: { className: "font-mono text-xs text-muted-foreground" },
     },
   ];
 
@@ -1459,6 +1560,9 @@ function SubmissionDetailsDialog(props: {
           emptyTitle="No submitted values"
           emptyDescription="This submission does not contain any displayable answers."
           emptyIcon={<FileText />}
+          filterColumn="label"
+          filterPlaceholder="Filter submitted fields..."
+          initialPageSize={5}
           className="shadow-none"
         />
         <DialogFooter showCloseButton />

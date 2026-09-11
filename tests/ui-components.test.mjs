@@ -88,14 +88,12 @@ test("composes the shared data table from shadcn card and table primitives", asy
   );
   const columns = [
     {
-      id: "name",
+      accessorKey: "name",
       header: "Template",
-      cell: (row) => row.name,
     },
     {
-      id: "status",
+      accessorKey: "status",
       header: "Status",
-      cell: (row) => row.status,
     },
   ];
   const html = renderToStaticMarkup(
@@ -106,6 +104,9 @@ test("composes the shared data table from shadcn card and table primitives", asy
       caption: "Templates",
       emptyTitle: "No templates",
       emptyDescription: "Create your first template.",
+      filterColumn: "name",
+      filterPlaceholder: "Filter templates...",
+      enableRowSelection: true,
     }),
   );
 
@@ -114,6 +115,11 @@ test("composes the shared data table from shadcn card and table primitives", asy
   assert.match(html, /data-slot="table-header"/);
   assert.match(html, /Employee form/);
   assert.match(html, /Active/);
+  assert.match(html, /Filter templates/);
+  assert.match(html, /Columns/);
+  assert.match(html, /Select all rows on this page/);
+  assert.match(html, /Previous page/);
+  assert.match(html, /Next page/);
 });
 
 test("keeps the data table structure visible for empty results", async () => {
@@ -122,7 +128,7 @@ test("keeps the data table structure visible for empty results", async () => {
   );
   const html = renderToStaticMarkup(
     React.createElement(DataTable, {
-      columns: [{ id: "name", header: "Template", cell: () => "" }],
+      columns: [{ accessorKey: "name", header: "Template" }],
       data: [],
       getRowId: (row) => row.id,
       caption: "Templates",
