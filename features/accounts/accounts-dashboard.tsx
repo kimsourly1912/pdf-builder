@@ -24,6 +24,7 @@ import {
   buildTelegramShareUrl,
   generateTemporaryPassword,
 } from "@/features/accounts/account-share";
+import { assignmentDisplay } from "@/features/accounts/assignment-status";
 import type {
   RecipientAccountSummary,
   RecipientAccountType,
@@ -560,22 +561,44 @@ function AccountCard(props: {
         ) : (
           <div className="space-y-2">
             {props.account.assignments.map((assignment) => (
-              <div key={assignment.id} className="flex flex-wrap items-center gap-3 rounded-xl border border-slate-100 p-3">
-                <span className="size-2.5 shrink-0 rounded-full" style={{ backgroundColor: assignment.roleColor }} />
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-xs font-bold text-slate-700">{assignment.templateName}</p>
-                  <p className="mt-0.5 text-[11px] text-slate-400">v{assignment.versionNumber} · {assignment.roleName} · {formatLocalDateTime(assignment.assignedAt, { timeZone: props.timeZone })}</p>
-                </div>
-                <span className={`flex items-center gap-1 rounded-full px-2 py-1 text-[10px] font-bold uppercase ${assignment.status === "completed" ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-600"}`}>
-                  {assignment.status === "completed" && <Check className="size-3" />}
-                  {assignment.status}
-                </span>
-              </div>
+              <AccountAssignmentRow
+                key={assignment.id}
+                assignment={assignment}
+                timeZone={props.timeZone}
+              />
             ))}
           </div>
         )}
       </div>
     </article>
+  );
+}
+
+function AccountAssignmentRow(props: {
+  assignment: RecipientAssignmentSummary;
+  timeZone: string;
+}) {
+  const display = assignmentDisplay(props.assignment.status);
+  const statusClassName =
+    display.state === "completed"
+      ? "bg-emerald-50 text-emerald-700"
+      : display.state === "cancelled"
+        ? "bg-amber-50 text-amber-700"
+        : display.state === "active"
+          ? "bg-blue-50 text-blue-700"
+          : "bg-slate-100 text-slate-600";
+  return (
+    <div className="flex flex-wrap items-center gap-3 rounded-xl border border-slate-100 p-3">
+      <span className="size-2.5 shrink-0 rounded-full" style={{ backgroundColor: props.assignment.roleColor }} />
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-xs font-bold text-slate-700">{props.assignment.templateName}</p>
+        <p className="mt-0.5 text-[11px] text-slate-400">v{props.assignment.versionNumber} · {props.assignment.roleName} · {formatLocalDateTime(props.assignment.assignedAt, { timeZone: props.timeZone })}</p>
+      </div>
+      <span className={`flex items-center gap-1 rounded-full px-2 py-1 text-[10px] font-bold uppercase ${statusClassName}`} title={display.detail}>
+        {display.state === "completed" && <Check className="size-3" />}
+        {display.label}
+      </span>
+    </div>
   );
 }
 

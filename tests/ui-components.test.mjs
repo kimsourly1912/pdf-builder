@@ -59,6 +59,29 @@ test("forwards progress semantics to the primitive", async () => {
   assert.match(html, /data-state="loading"/);
 });
 
+test("composes shadcn card slots without custom dashboard markup", async () => {
+  const { Card, CardContent, CardHeader, CardTitle } = await vite.ssrLoadModule(
+    "/components/ui/card.tsx",
+  );
+  const html = renderToStaticMarkup(
+    React.createElement(
+      Card,
+      null,
+      React.createElement(
+        CardHeader,
+        null,
+        React.createElement(CardTitle, null, "Template"),
+      ),
+      React.createElement(CardContent, null, "Details"),
+    ),
+  );
+
+  assert.match(html, /data-slot="card"/);
+  assert.match(html, /data-slot="card-header"/);
+  assert.match(html, /data-slot="card-title"/);
+  assert.match(html, /data-slot="card-content"/);
+});
+
 test("emits chart themes for the starter's media dark mode", async () => {
   const { ChartStyle } = await vite.ssrLoadModule("/components/ui/chart.tsx");
   const html = renderToStaticMarkup(

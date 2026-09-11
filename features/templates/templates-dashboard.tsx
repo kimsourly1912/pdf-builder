@@ -1,11 +1,14 @@
 "use client";
 
 import {
+  Archive,
+  ArchiveRestore,
   ArrowLeft,
   Ban,
   Check,
   Copy,
   Download,
+  EllipsisVertical,
   ExternalLink,
   FileSpreadsheet,
   FileText,
@@ -26,6 +29,35 @@ import Link from "next/link";
 import Image from "next/image";
 
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import {
+  Card,
+  CardAction,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupButton,
+  InputGroupInput,
+} from "@/components/ui/input-group";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Input } from "@/components/ui/input";
+import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
+import { Separator } from "@/components/ui/separator";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -111,6 +143,8 @@ type DashboardFilters = {
   toDate: string;
 };
 
+type DashboardView = "templates" | "submissions" | "archived";
+
 const EMPTY_FILTERS: DashboardFilters = {
   templateId: "",
   roleId: "",
@@ -124,9 +158,7 @@ export function TemplatesDashboard(props: { displayName: string }) {
   const [templates, setTemplates] = useState<TemplateSummary[]>([]);
   const [submissions, setSubmissions] = useState<SubmissionSummary[]>([]);
   const [submissionTotal, setSubmissionTotal] = useState(0);
-  const [activeView, setActiveView] = useState<"templates" | "submissions">(
-    "templates",
-  );
+  const [activeView, setActiveView] = useState<DashboardView>("templates");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -200,6 +232,10 @@ export function TemplatesDashboard(props: { displayName: string }) {
 
   const activeTemplates = useMemo(
     () => templates.filter((template) => !template.archivedAt),
+    [templates],
+  );
+  const archivedTemplates = useMemo(
+    () => templates.filter((template) => template.archivedAt),
     [templates],
   );
   const totalRecipients = useMemo(
@@ -327,7 +363,7 @@ export function TemplatesDashboard(props: { displayName: string }) {
           ),
         );
         setNotice(
-          `“${template.name}” was archived. Existing assignments and submissions were preserved.`,
+          `“${template.name}” was archived. Pending assignments were cancelled and submission history was preserved.`,
         );
       }
     } catch (cause) {
@@ -338,6 +374,52 @@ export function TemplatesDashboard(props: { displayName: string }) {
       setRemovingTemplateId(null);
       setTemplatePendingRemoval(null);
     }
+  }
+
+  async function restoreTemplate(template: TemplateSummary) {
+    setRemovingTemplateId(template.id);
+    setError("");
+    setNotice("");
+    try {
+      const response = await fetch(`/api/templates/${template.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "restore" }),
+      });
+      const payload = (await response.json()) as {
+        error?: string;
+        template?: {
+          id: string;
+          disposition: "restore";
+          archivedAt: null;
+        };
+      };
+      if (!response.ok || !payload.template) {
+        throw new Error(payload.error || "The template could not be restored.");
+      }
+
+      setTemplates((current) =>
+        current.map((item) =>
+          item.id === template.id ? { ...item, archivedAt: null } : item,
+        ),
+      );
+      setNotice(
+        `“${template.name}” was restored. Old links and cancelled assignments remain inactive.`,
+      );
+    } catch (cause) {
+      setError(
+        cause instanceof Error ? cause.message : "The template could not be restored.",
+      );
+    } finally {
+      setRemovingTemplateId(null);
+    }
+  }
+
+  function viewTemplateSubmissions(template: TemplateSummary) {
+    const filters = { ...EMPTY_FILTERS, templateId: template.id };
+    setFilterDraft(filters);
+    setAppliedFilters(filters);
+    setActiveView("submissions");
   }
 
   function updateRecipientLink(
@@ -367,49 +449,61 @@ export function TemplatesDashboard(props: { displayName: string }) {
   }
 
   return (
-    <main className="min-h-screen bg-slate-100 text-slate-950">
-      <header className="sticky top-0 z-20 border-b border-slate-200 bg-white/95 backdrop-blur">
-        <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6">
+    <main className="min-h-screen bg-background text-foreground">
+      <header className="sticky top-0 z-20 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
+        <div className="mx-auto flex min-h-16 max-w-7xl items-center justify-between gap-3 px-4 py-2 sm:px-6">
           <div className="flex items-center gap-3">
             <Button asChild variant="ghost" size="icon-sm"><Link href="/" aria-label="Back to editor"><ArrowLeft /></Link></Button>
-            <div>
-              <p className="text-sm font-bold text-slate-900">PDF Studio</p>
-              <p className="text-xs text-slate-400">Templates and submissions</p>
+            <span className="flex size-9 items-center justify-center rounded-lg bg-primary text-primary-foreground"><FileText className="size-4" /></span>
+            <div className="min-w-0">
+              <p className="truncate text-sm font-semibold">PDF Studio</p>
+              <p className="hidden text-xs text-muted-foreground sm:block">Template workspace</p>
             </div>
           </div>
-          <div className="flex items-center gap-2">
-            <span className="hidden max-w-48 truncate text-xs text-slate-500 sm:block">{props.displayName}</span>
+          <div className="flex min-w-0 items-center gap-1 sm:gap-2">
+            <span className="hidden max-w-40 truncate text-xs text-muted-foreground lg:block">{props.displayName}</span>
+            <Button asChild variant="ghost" size="sm"><Link href="/resumes"><FileText className="size-4" /><span className="hidden sm:inline">Resumes</span></Link></Button>
+            <Button asChild variant="ghost" size="sm"><Link href="/accounts"><UsersRound className="size-4" /><span className="hidden sm:inline">Accounts</span></Link></Button>
             <SignOutButton />
-            <Button asChild variant="outline" size="sm"><Link href="/resumes"><FileText className="size-4" /> Resumes</Link></Button>
-            <Button asChild variant="outline" size="sm"><Link href="/accounts"><UsersRound className="size-4" /> Accounts</Link></Button>
-            <Button asChild size="sm" className="bg-blue-600 hover:bg-blue-700"><Link href="/"><FileText className="size-4" /> New template</Link></Button>
           </div>
         </div>
       </header>
 
-      <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6">
-        <section className="grid gap-3 sm:grid-cols-3">
+      <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:py-10">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <Badge variant="secondary" className="mb-3">HR forms</Badge>
+            <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">Templates</h1>
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">Create reusable PDF forms, manage recipient access, and review submissions from one workspace.</p>
+          </div>
+          <Button asChild size="lg"><Link href="/"><FileText className="size-4" /> New template</Link></Button>
+        </div>
+
+        <section className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <StatCard label="Active templates" value={activeTemplates.length} icon={<FolderOpen />} />
+          <StatCard label="Archived templates" value={archivedTemplates.length} icon={<Archive />} />
           <StatCard label="Recipient roles" value={totalRecipients} icon={<Link2 />} />
           <StatCard label="Submissions" value={submissionTotal} icon={<Inbox />} />
         </section>
 
-        <div className="mt-8 flex flex-wrap items-center justify-between gap-3">
-          <div className="flex rounded-lg border border-slate-200 bg-white p-1">
-            <Button type="button" size="sm" variant={activeView === "templates" ? "default" : "ghost"} onClick={() => setActiveView("templates")}><FolderOpen className="size-4" /> Templates</Button>
-            <Button type="button" size="sm" variant={activeView === "submissions" ? "default" : "ghost"} onClick={() => setActiveView("submissions")}><Inbox className="size-4" /> Submissions</Button>
-          </div>
-          <Button type="button" variant="outline" size="sm" onClick={() => void loadData()} disabled={loading}><RefreshCw className={`size-4 ${loading ? "animate-spin" : ""}`} /> Refresh</Button>
-        </div>
+        {error && <Alert variant="destructive" className="mt-6"><TriangleAlert /><AlertTitle>Something went wrong</AlertTitle><AlertDescription>{error}</AlertDescription></Alert>}
+        {notice && <Alert role="status" className="mt-6 border-emerald-200 bg-emerald-50 text-emerald-800"><Check /><AlertTitle>Updated successfully</AlertTitle><AlertDescription className="text-emerald-700">{notice}</AlertDescription></Alert>}
 
-        {error && <p role="alert" className="mt-4 rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-700">{error}</p>}
-        {notice && <p role="status" className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-700">{notice}</p>}
-        {loading ? (
-          <div className="flex min-h-72 items-center justify-center text-slate-400"><LoaderCircle className="size-6 animate-spin" /></div>
-        ) : activeView === "templates" ? (
-          <TemplateGrid templates={activeTemplates} generatedLinks={generatedLinks} linkActionKey={linkActionKey} copiedLinkKey={copiedLinkKey} removingTemplateId={removingTemplateId} localTimeZone={localTimeZone} onRegenerate={regenerateLink} onRevoke={revokeLink} onCopy={copyGeneratedLink} onRequestRemove={setTemplatePendingRemoval} />
-        ) : (
-          <div>
+        <Tabs value={activeView} onValueChange={(value) => { if (isDashboardView(value)) setActiveView(value); }} className="mt-8">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <TabsList className="grid h-auto w-full grid-cols-3 sm:w-auto">
+              <TabsTrigger value="templates"><FolderOpen /> Templates <Badge variant="secondary" className="ml-1 hidden sm:inline-flex">{activeTemplates.length}</Badge></TabsTrigger>
+              <TabsTrigger value="submissions"><Inbox /> Submissions <Badge variant="secondary" className="ml-1 hidden sm:inline-flex">{submissionTotal}</Badge></TabsTrigger>
+              <TabsTrigger value="archived"><Archive /> Archived <Badge variant="secondary" className="ml-1 hidden sm:inline-flex">{archivedTemplates.length}</Badge></TabsTrigger>
+            </TabsList>
+            <Button type="button" variant="outline" size="sm" onClick={() => void loadData()} disabled={loading}><RefreshCw className={loading ? "animate-spin" : ""} /> Refresh</Button>
+          </div>
+
+          <TabsContent value="templates" className="mt-2">
+            {loading ? <DashboardSkeleton /> : <TemplateGrid templates={activeTemplates} generatedLinks={generatedLinks} linkActionKey={linkActionKey} copiedLinkKey={copiedLinkKey} removingTemplateId={removingTemplateId} localTimeZone={localTimeZone} onRegenerate={regenerateLink} onRevoke={revokeLink} onCopy={copyGeneratedLink} onRequestRemove={setTemplatePendingRemoval} />}
+          </TabsContent>
+          <TabsContent value="submissions" className="mt-2">
+            {loading ? <DashboardSkeleton /> : <div>
             <SubmissionFilterPanel
               templates={templates}
               draft={filterDraft}
@@ -424,8 +518,18 @@ export function TemplatesDashboard(props: { displayName: string }) {
               }}
             />
             <SubmissionList submissions={submissions} localTimeZone={localTimeZone} />
-          </div>
-        )}
+            </div>}
+          </TabsContent>
+          <TabsContent value="archived" className="mt-2">
+            {loading ? <DashboardSkeleton /> : <ArchivedTemplateGrid
+            templates={archivedTemplates}
+            busyTemplateId={removingTemplateId}
+            localTimeZone={localTimeZone}
+            onRestore={(template) => void restoreTemplate(template)}
+            onViewSubmissions={viewTemplateSubmissions}
+            />}
+          </TabsContent>
+        </Tabs>
       </div>
       <TemplateRemovalDialog
         template={templatePendingRemoval}
@@ -440,7 +544,11 @@ export function TemplatesDashboard(props: { displayName: string }) {
 }
 
 function StatCard(props: { label: string; value: number; icon: React.ReactNode }) {
-  return <div className="flex items-center gap-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><span className="flex size-11 items-center justify-center rounded-xl bg-blue-50 text-blue-600 [&_svg]:size-5">{props.icon}</span><div><p className="text-2xl font-bold tabular-nums">{props.value}</p><p className="text-xs font-medium text-slate-400">{props.label}</p></div></div>;
+  return <Card className="gap-0 py-0"><CardContent className="flex items-center gap-4 p-5"><span className="flex size-10 items-center justify-center rounded-lg bg-primary/10 text-primary [&_svg]:size-4">{props.icon}</span><div><p className="text-2xl font-bold tabular-nums">{props.value}</p><p className="text-xs font-medium text-muted-foreground">{props.label}</p></div></CardContent></Card>;
+}
+
+function DashboardSkeleton() {
+  return <div className="mt-5 grid gap-4 lg:grid-cols-2">{[0, 1].map((item) => <Card key={item}><CardHeader><Skeleton className="h-5 w-2/5" /><Skeleton className="h-4 w-3/5" /></CardHeader><CardContent className="space-y-3"><Skeleton className="h-16 w-full" /><Skeleton className="h-16 w-full" /></CardContent></Card>)}</div>;
 }
 
 function TemplateGrid(props: {
@@ -456,21 +564,187 @@ function TemplateGrid(props: {
   onRequestRemove: (template: TemplateSummary) => void;
 }) {
   if (props.templates.length === 0) return <EmptyState title="No templates yet" description="Open the editor, add fields, and choose Save template." />;
-  return <div className="mt-5 grid gap-4 lg:grid-cols-2">{props.templates.map((template) => (
-    <article key={template.id} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-      <div className="flex flex-wrap items-start justify-between gap-3"><div className="min-w-0"><h2 className="truncate text-base font-bold text-slate-900">{template.name}</h2><p className="mt-1 text-xs text-slate-400">{template.fileName} · v{template.versionNumber} · {template.submissionCount} submission{template.submissionCount === 1 ? "" : "s"}</p></div><div className="flex shrink-0 flex-wrap justify-end gap-2"><Button asChild variant="outline" size="sm"><Link href={`/?templateId=${encodeURIComponent(template.id)}`}><Pencil className="size-3.5" /> Edit</Link></Button><Button asChild variant="outline" size="sm"><a href={`/api/templates/${template.id}/pdf`}><Download className="size-3.5" /> PDF</a></Button><Button type="button" variant="outline" size="sm" className="text-rose-600 hover:text-rose-700" disabled={props.removingTemplateId !== null} onClick={() => props.onRequestRemove(template)}>{props.removingTemplateId === template.id ? <LoaderCircle className="size-3.5 animate-spin" /> : <Trash2 className="size-3.5" />} Remove</Button></div></div>
-      {template.description && <p className="mt-3 text-sm leading-6 text-slate-600">{template.description}</p>}
-      <div className="mt-4 space-y-2 border-t border-slate-100 pt-4">
-        {template.recipients.map((recipient) => {
-          const key = `${template.id}:${recipient.roleId}`;
-          const url = props.generatedLinks[key];
-          const busy = props.linkActionKey === key;
-          const copied = props.copiedLinkKey === key;
-          return <div key={recipient.id} className={`rounded-xl p-3 transition-[background-color,box-shadow] duration-300 ${copied ? "bg-emerald-50 shadow-sm shadow-emerald-100" : "bg-slate-50"}`}><div className="flex flex-wrap items-center gap-2"><span className="size-2.5 rounded-full" style={{ backgroundColor: recipient.roleColor }} /><span className="min-w-0 flex-1 truncate text-sm font-semibold text-slate-700">{recipient.roleName}</span><span className="rounded-full bg-white px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-slate-500">{recipient.status}</span><Button type="button" variant="ghost" size="sm" disabled={busy} onClick={() => void props.onRegenerate(template.id, recipient.roleId)}>{busy ? <LoaderCircle className="size-3.5 animate-spin" /> : <RefreshCw className="size-3.5" />} {url ? "Regenerate" : "Create link"}</Button>{recipient.status === "active" && <Button type="button" variant="ghost" size="sm" disabled={busy} className="text-rose-600 hover:text-rose-700" onClick={() => void props.onRevoke(template.id, recipient.roleId)}><Ban className="size-3.5" /> Revoke</Button>}</div><p className="mt-1 text-[11px] text-slate-400">{recipient.submissionCount}/{recipient.maxSubmissions} submissions · {recipient.expiresAt ? `expires ${formatLocalDateTime(recipient.expiresAt, { timeZone: props.localTimeZone })}` : "no expiry"}</p>{url && <div className="mt-2 flex gap-2"><input readOnly value={url} className={`h-8 min-w-0 flex-1 rounded-md border bg-white px-2 text-xs transition-colors duration-300 ${copied ? "border-emerald-200 text-emerald-700" : "border-slate-200 text-slate-500"}`} /><Button type="button" variant="outline" size="icon-sm" className={copied ? "copy-link-success border-emerald-300 bg-emerald-100 text-emerald-700 hover:bg-emerald-100 hover:text-emerald-700" : ""} aria-label={copied ? `Copied ${recipient.roleName} link` : `Copy ${recipient.roleName} link`} title={copied ? "Copied!" : "Copy link"} onClick={() => void props.onCopy(key, url)}>{copied ? <Check /> : <Copy />}<span aria-live="polite" className="sr-only">{copied ? "Link copied" : ""}</span></Button><Button asChild variant="outline" size="icon-sm"><a href={url} target="_blank" rel="noreferrer" aria-label={`Open ${recipient.roleName} link`}><ExternalLink /></a></Button></div>}</div>;
-        })}
-      </div>
-    </article>
+  return <div className="mt-5 grid items-start gap-4 lg:grid-cols-2">{props.templates.map((template) => (
+    <TemplateCard
+      key={template.id}
+      template={template}
+      generatedLinks={props.generatedLinks}
+      linkActionKey={props.linkActionKey}
+      copiedLinkKey={props.copiedLinkKey}
+      removingTemplateId={props.removingTemplateId}
+      localTimeZone={props.localTimeZone}
+      onRegenerate={props.onRegenerate}
+      onRevoke={props.onRevoke}
+      onCopy={props.onCopy}
+      onRequestRemove={props.onRequestRemove}
+    />
   ))}</div>;
+}
+
+function TemplateCard(props: {
+  template: TemplateSummary;
+  generatedLinks: Record<string, string>;
+  linkActionKey: string | null;
+  copiedLinkKey: string | null;
+  removingTemplateId: string | null;
+  localTimeZone: string;
+  onRegenerate: (templateId: string, roleId: string) => Promise<void>;
+  onRevoke: (templateId: string, roleId: string) => Promise<void>;
+  onCopy: (key: string, url: string) => Promise<void>;
+  onRequestRemove: (template: TemplateSummary) => void;
+}) {
+  const willArchive =
+    props.template.assignmentCount > 0 || props.template.submissionCount > 0;
+  return (
+    <Card className="gap-0 overflow-hidden py-0 transition-shadow hover:shadow-md">
+      <CardHeader className="p-5 pb-4">
+        <div className="flex min-w-0 items-center gap-3">
+          <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary"><FileText className="size-4" /></span>
+          <div className="min-w-0">
+            <CardTitle className="truncate text-base">{props.template.name}</CardTitle>
+            <CardDescription className="mt-1 truncate text-xs">{props.template.fileName}</CardDescription>
+          </div>
+        </div>
+        <CardAction className="flex items-center gap-1">
+          <Button asChild variant="outline" size="sm"><Link href={`/?templateId=${encodeURIComponent(props.template.id)}`}><Pencil /> Edit</Link></Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon-sm" disabled={props.removingTemplateId !== null} aria-label={`More actions for ${props.template.name}`}>
+                {props.removingTemplateId === props.template.id ? <LoaderCircle className="animate-spin" /> : <EllipsisVertical />}
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-48">
+              <DropdownMenuItem asChild><a href={`/api/templates/${props.template.id}/pdf`}><Download /> Download PDF</a></DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                variant={willArchive ? "default" : "destructive"}
+                className={willArchive ? "text-amber-700 focus:text-amber-800" : undefined}
+                onSelect={() => props.onRequestRemove(props.template)}
+              >
+                {willArchive ? <Archive /> : <Trash2 />}
+                {willArchive ? "Archive template" : "Delete template"}
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </CardAction>
+      </CardHeader>
+      <CardContent className="px-5 pb-5">
+        {props.template.description && <p className="mb-4 line-clamp-2 text-sm leading-6 text-muted-foreground">{props.template.description}</p>}
+        <div className="flex flex-wrap gap-2">
+          <Badge variant="secondary">Version {props.template.versionNumber}</Badge>
+          <Badge variant="outline">{props.template.currentRoles.length} role{props.template.currentRoles.length === 1 ? "" : "s"}</Badge>
+          <Badge variant="outline">{props.template.assignmentCount} assigned</Badge>
+          <Badge variant="outline">{props.template.submissionCount} submitted</Badge>
+        </div>
+        <Separator className="my-4" />
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <div>
+            <h3 className="text-sm font-semibold">Public fill links</h3>
+            <p className="mt-0.5 text-xs text-muted-foreground">Create a link for each recipient role.</p>
+          </div>
+          <Badge variant="outline">{props.template.recipients.length}</Badge>
+        </div>
+        <div className="space-y-2">
+          {props.template.recipients.map((recipient) => {
+            const key = `${props.template.id}:${recipient.roleId}`;
+            return (
+              <RecipientLinkRow
+                key={recipient.id}
+                templateId={props.template.id}
+                recipient={recipient}
+                url={props.generatedLinks[key]}
+                busy={props.linkActionKey === key}
+                copied={props.copiedLinkKey === key}
+                localTimeZone={props.localTimeZone}
+                onRegenerate={props.onRegenerate}
+                onRevoke={props.onRevoke}
+                onCopy={(url) => props.onCopy(key, url)}
+              />
+            );
+          })}
+        </div>
+      </CardContent>
+      <CardFooter className="border-t bg-muted/30 px-5 py-3 text-xs text-muted-foreground">Updated {formatLocalDateTime(props.template.updatedAt, { timeZone: props.localTimeZone })}</CardFooter>
+    </Card>
+  );
+}
+
+function RecipientLinkRow(props: {
+  templateId: string;
+  recipient: TemplateSummary["recipients"][number];
+  url: string | undefined;
+  busy: boolean;
+  copied: boolean;
+  localTimeZone: string;
+  onRegenerate: (templateId: string, roleId: string) => Promise<void>;
+  onRevoke: (templateId: string, roleId: string) => Promise<void>;
+  onCopy: (url: string) => Promise<void>;
+}) {
+  const { recipient } = props;
+  const url = props.url;
+  return (
+    <div className={`rounded-lg border p-3 transition-colors ${props.copied ? "border-emerald-300 bg-emerald-50" : "bg-muted/25"}`}>
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="size-2.5 shrink-0 rounded-full" style={{ backgroundColor: recipient.roleColor }} />
+        <span className="min-w-0 flex-1 truncate text-sm font-medium">{recipient.roleName}</span>
+        <Badge variant="outline" className={linkStatusClassName(recipient.status)}>{recipient.status}</Badge>
+        <Button type="button" variant="ghost" size="xs" disabled={props.busy} onClick={() => void props.onRegenerate(props.templateId, recipient.roleId)}>{props.busy ? <LoaderCircle className="animate-spin" /> : <RefreshCw />} {url ? "Regenerate" : "Create link"}</Button>
+        {recipient.status === "active" && <Button type="button" variant="ghost" size="xs" disabled={props.busy} className="text-destructive hover:text-destructive" onClick={() => void props.onRevoke(props.templateId, recipient.roleId)}><Ban /> Revoke</Button>}
+      </div>
+      <p className="mt-1 text-xs text-muted-foreground">{recipient.submissionCount}/{recipient.maxSubmissions} submissions · {recipient.expiresAt ? `expires ${formatLocalDateTime(recipient.expiresAt, { timeZone: props.localTimeZone })}` : "no expiry"}</p>
+      {url && (
+        <InputGroup className={`mt-3 ${props.copied ? "border-emerald-300 bg-white" : "bg-background"}`}>
+          <InputGroupInput readOnly value={url} aria-label={`${recipient.roleName} fill link`} className={props.copied ? "text-emerald-700" : "text-muted-foreground"} />
+          <InputGroupAddon align="inline-end">
+            <InputGroupButton size="icon-xs" aria-label={props.copied ? `Copied ${recipient.roleName} link` : `Copy ${recipient.roleName} link`} title={props.copied ? "Copied!" : "Copy link"} onClick={() => void props.onCopy(url)}>{props.copied ? <Check /> : <Copy />}<span aria-live="polite" className="sr-only">{props.copied ? "Link copied" : ""}</span></InputGroupButton>
+            <InputGroupButton asChild size="icon-xs"><a href={url} target="_blank" rel="noreferrer" aria-label={`Open ${recipient.roleName} link`}><ExternalLink /></a></InputGroupButton>
+          </InputGroupAddon>
+        </InputGroup>
+      )}
+    </div>
+  );
+}
+
+function ArchivedTemplateGrid(props: {
+  templates: TemplateSummary[];
+  busyTemplateId: string | null;
+  localTimeZone: string;
+  onRestore: (template: TemplateSummary) => void;
+  onViewSubmissions: (template: TemplateSummary) => void;
+}) {
+  if (props.templates.length === 0) {
+    return <EmptyState title="No archived templates" description="Templates you archive will appear here with their assignment and submission history." />;
+  }
+  return (
+    <div className="mt-5 grid items-start gap-4 lg:grid-cols-2">
+      {props.templates.map((template) => (
+        <Card key={template.id} className="gap-0 border-amber-200 py-0">
+          <CardHeader className="p-5 pb-4">
+            <div className="flex min-w-0 items-center gap-3">
+              <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-amber-100 text-amber-700"><Archive className="size-4" /></span>
+              <div className="min-w-0">
+                <div className="flex items-center gap-2"><CardTitle className="truncate text-base">{template.name}</CardTitle><Badge className="bg-amber-100 text-amber-800 hover:bg-amber-100">Archived</Badge></div>
+                <CardDescription className="mt-1 truncate text-xs">{template.fileName} · Version {template.versionNumber}</CardDescription>
+              </div>
+            </div>
+            <CardAction><Button type="button" size="sm" disabled={props.busyTemplateId !== null} onClick={() => props.onRestore(template)}>{props.busyTemplateId === template.id ? <LoaderCircle className="animate-spin" /> : <ArchiveRestore />} Restore</Button></CardAction>
+          </CardHeader>
+          <CardContent className="px-5 pb-5">
+            {template.description && <p className="mb-4 line-clamp-2 text-sm leading-6 text-muted-foreground">{template.description}</p>}
+            <div className="flex flex-wrap gap-2">
+              <Badge variant="outline">{template.assignmentCount} assignment{template.assignmentCount === 1 ? "" : "s"}</Badge>
+              <Badge variant="outline">{template.submissionCount} submission{template.submissionCount === 1 ? "" : "s"}</Badge>
+            </div>
+            <Alert role="note" className="mt-4 border-amber-200 bg-amber-50 text-amber-800"><ArchiveRestore /><AlertTitle>Safe to restore</AlertTitle><AlertDescription className="text-amber-700">Old links and cancelled assignments will remain inactive.</AlertDescription></Alert>
+          </CardContent>
+          <CardFooter className="flex-wrap justify-between gap-3 border-t bg-muted/30 px-5 py-3">
+            <span className="text-xs text-muted-foreground">Archived {formatLocalDateTime(template.archivedAt ?? template.updatedAt, { timeZone: props.localTimeZone })}</span>
+            <div className="flex gap-2">{template.submissionCount > 0 && <Button type="button" variant="ghost" size="sm" onClick={() => props.onViewSubmissions(template)}><Inbox /> Submissions</Button>}<Button asChild variant="ghost" size="sm"><a href={`/api/templates/${template.id}/pdf`}><Download /> PDF</a></Button></div>
+          </CardFooter>
+        </Card>
+      ))}
+    </div>
+  );
 }
 
 function TemplateRemovalDialog(props: {
@@ -494,21 +768,21 @@ function TemplateRemovalDialog(props: {
                 : "bg-rose-100 text-rose-700"
             }
           >
-            <TriangleAlert />
+            {willArchive ? <Archive /> : <TriangleAlert />}
           </AlertDialogMedia>
           <AlertDialogTitle>
             {willArchive ? "Archive this template?" : "Delete this template permanently?"}
           </AlertDialogTitle>
           <AlertDialogDescription className="leading-6">
             {willArchive && template
-              ? `“${template.name}” has ${template.assignmentCount} assignment${template.assignmentCount === 1 ? "" : "s"} and ${template.submissionCount} submission${template.submissionCount === 1 ? "" : "s"}. It will be hidden, active links will be revoked, and historical records will remain available.`
+              ? `“${template.name}” has ${template.assignmentCount} assignment${template.assignmentCount === 1 ? "" : "s"} and ${template.submissionCount} submission${template.submissionCount === 1 ? "" : "s"}. Pending assignments will be cancelled, active links will be revoked, and completed submission history will remain available.`
               : `“${template?.name ?? "This template"}” has no assignments or submissions. Its template record and stored PDF versions will be permanently deleted. This cannot be undone.`}
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogCancel disabled={props.removing}>Keep template</AlertDialogCancel>
           <AlertDialogAction
-            variant="destructive"
+            variant={willArchive ? "default" : "destructive"}
             disabled={props.removing || !template}
             onClick={() => {
               if (template) props.onConfirm(template);
@@ -571,7 +845,8 @@ function SubmissionFilterPanel(props: {
   }
 
   return (
-    <section className="mt-5 min-w-0 overflow-hidden rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+    <Card className="mt-5 min-w-0 gap-0 overflow-hidden py-0">
+      <CardContent className="p-4">
       <form
         className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center"
         onSubmit={(event) => {
@@ -579,15 +854,12 @@ function SubmissionFilterPanel(props: {
           props.onApply();
         }}
       >
-        <label className="relative min-w-0 flex-1">
+        <label className="min-w-0 flex-1">
           <span className="sr-only">Search submissions</span>
-          <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
-          <input
-            value={props.draft.search}
-            onChange={(event) => update({ search: event.target.value })}
-            placeholder="Search recipient, email, or template…"
-            className="h-10 w-full rounded-lg border border-slate-200 pl-9 pr-3 text-sm font-normal outline-none focus:border-blue-500"
-          />
+          <InputGroup className="h-10">
+            <InputGroupAddon><Search /></InputGroupAddon>
+            <InputGroupInput value={props.draft.search} onChange={(event) => update({ search: event.target.value })} placeholder="Search recipient, email, or template…" />
+          </InputGroup>
         </label>
         <div className="flex shrink-0 gap-2">
           <Button type="submit" size="sm" className="h-10 min-w-20">Search</Button>
@@ -597,9 +869,7 @@ function SubmissionFilterPanel(props: {
                 <SlidersHorizontal className="size-4" />
                 Filters
                 {activeFilterCount > 0 && (
-                  <span className="flex min-w-5 items-center justify-center rounded-full bg-blue-600 px-1.5 py-0.5 text-[10px] font-bold text-white">
-                    {activeFilterCount}
-                  </span>
+                  <Badge className="min-w-5 px-1.5 text-[10px]">{activeFilterCount}</Badge>
                 )}
               </Button>
             </PopoverTrigger>
@@ -611,38 +881,38 @@ function SubmissionFilterPanel(props: {
                 </PopoverDescription>
               </PopoverHeader>
               <div className="grid gap-4 p-4">
-                <label className="text-xs font-semibold text-slate-600">
+                <label className="text-xs font-semibold text-slate-600 [&_[data-slot=native-select-wrapper]]:w-full">
                   Template
-                  <select
+                  <NativeSelect
                     value={props.draft.templateId}
                     onChange={(event) => update({ templateId: event.target.value, roleId: "" })}
-                    className="mt-1.5 h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm font-normal outline-none focus:border-blue-500"
+                    className="mt-1.5 h-10 w-full"
                   >
-                    <option value="">All templates</option>
-                    {props.templates.map((template) => <option key={template.id} value={template.id}>{template.name}{template.archivedAt ? " (Archived)" : ""}</option>)}
-                  </select>
+                    <NativeSelectOption value="">All templates</NativeSelectOption>
+                    {props.templates.map((template) => <NativeSelectOption key={template.id} value={template.id}>{template.name}{template.archivedAt ? " (Archived)" : ""}</NativeSelectOption>)}
+                  </NativeSelect>
                 </label>
-                <label className="text-xs font-semibold text-slate-600">
+                <label className="text-xs font-semibold text-slate-600 [&_[data-slot=native-select-wrapper]]:w-full">
                   Recipient role
-                  <select
+                  <NativeSelect
                     value={props.draft.roleId}
                     onChange={(event) => update({ roleId: event.target.value })}
-                    className="mt-1.5 h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm font-normal outline-none focus:border-blue-500"
+                    className="mt-1.5 h-10 w-full"
                   >
-                    <option value="">All roles</option>
-                    {roles.map((role) => <option key={role.roleId} value={role.roleId}>{role.roleName}</option>)}
-                  </select>
+                    <NativeSelectOption value="">All roles</NativeSelectOption>
+                    {roles.map((role) => <NativeSelectOption key={role.roleId} value={role.roleId}>{role.roleName}</NativeSelectOption>)}
+                  </NativeSelect>
                 </label>
                 <fieldset>
                   <legend className="text-xs font-semibold text-slate-600">Submitted date</legend>
                   <div className="mt-1.5 grid grid-cols-2 gap-3">
                     <label className="text-[11px] font-medium text-slate-500">
                       From
-                      <input type="date" value={props.draft.fromDate} onChange={(event) => update({ fromDate: event.target.value })} className="mt-1 h-10 w-full rounded-lg border border-slate-200 px-2 text-sm font-normal outline-none focus:border-blue-500" />
+                      <Input type="date" value={props.draft.fromDate} onChange={(event) => update({ fromDate: event.target.value })} className="mt-1 h-10" />
                     </label>
                     <label className="text-[11px] font-medium text-slate-500">
                       To
-                      <input type="date" value={props.draft.toDate} onChange={(event) => update({ toDate: event.target.value })} className="mt-1 h-10 w-full rounded-lg border border-slate-200 px-2 text-sm font-normal outline-none focus:border-blue-500" />
+                      <Input type="date" value={props.draft.toDate} onChange={(event) => update({ toDate: event.target.value })} className="mt-1 h-10" />
                     </label>
                   </div>
                 </fieldset>
@@ -659,14 +929,13 @@ function SubmissionFilterPanel(props: {
         <div className="mt-3 flex flex-wrap items-center gap-2" aria-label="Applied filters">
           <span className="text-[11px] font-semibold text-slate-400">Applied:</span>
           {appliedFilterLabels.map((label) => (
-            <span key={label} className="rounded-full border border-blue-100 bg-blue-50 px-2.5 py-1 text-[11px] font-semibold text-blue-700">
-              {label}
-            </span>
+            <Badge key={label} variant="secondary" className="bg-blue-50 text-blue-700">{label}</Badge>
           ))}
           <Button type="button" variant="ghost" size="xs" className="h-7 text-xs text-slate-500" onClick={props.onClear}>Clear</Button>
         </div>
       )}
-      <div className="mt-4 flex min-w-0 flex-col gap-4 border-t border-slate-100 pt-4 sm:flex-row sm:items-end sm:justify-between">
+      <Separator className="my-4" />
+      <div className="flex min-w-0 flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <p className="text-xs text-slate-500">{props.total} matching submission{props.total === 1 ? "" : "s"}</p>
         <div className="min-w-0 sm:max-w-xl sm:text-right">
           <p className="text-xs font-bold text-slate-700">Bulk export</p>
@@ -681,7 +950,8 @@ function SubmissionFilterPanel(props: {
           </div>
         </div>
       </div>
-    </section>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -691,15 +961,24 @@ function SubmissionList(props: {
 }) {
   if (props.submissions.length === 0) return <EmptyState title="No submissions yet" description="Completed recipient forms will appear here." />;
   return <div className="mt-5 space-y-3">{props.submissions.map((submission) => (
-    <article key={submission.id} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-      <div className="flex flex-wrap items-start justify-between gap-3"><div><p className="flex items-center gap-2 text-sm font-bold text-slate-900"><Check className="size-4 text-emerald-600" /> {submission.recipientName}</p><p className="mt-1 text-xs text-slate-400">{submission.templateName} v{submission.versionNumber} · {submission.roleName} · {formatLocalDateTime(submission.submittedAt, { timeZone: props.localTimeZone })}</p>{submission.recipientEmail && <p className="mt-1 text-xs text-slate-500">{submission.recipientEmail}</p>}</div><div className="flex flex-wrap gap-2"><Button asChild variant="outline" size="sm"><a href={`/api/submissions/${submission.id}/excel?timeZone=${encodeURIComponent(props.localTimeZone)}`}><FileSpreadsheet className="size-3.5" /> Excel</a></Button>{submission.hasCompletedPdf && <Button asChild variant="outline" size="sm"><a href={`/api/submissions/${submission.id}/pdf`}><Download className="size-3.5" /> Completed PDF</a></Button>}</div></div>
-      <details className="mt-4 rounded-xl bg-slate-50 p-3"><summary className="cursor-pointer text-xs font-semibold text-slate-600">View submitted values</summary><dl className="mt-3 grid gap-2 sm:grid-cols-2">{submission.answers.map((answer) => <div key={answer.fieldId} className="rounded-lg bg-white p-2"><dt className="truncate text-[10px] font-semibold uppercase tracking-wide text-slate-400">{answer.label}</dt><dd className="mt-1 break-words text-sm text-slate-700">{isPublicSubmissionImage(answer.value) ? <Image src={answer.value.url} alt={answer.label} width={Math.min(answer.value.width, 480)} height={Math.min(answer.value.height, 320)} unoptimized className="max-h-48 w-auto rounded-md object-contain" /> : formatValue(answer.value)}</dd><dd className="mt-1 font-mono text-[10px] text-slate-400">{answer.key}</dd></div>)}</dl></details>
-    </article>
+    <Card key={submission.id} className="gap-0 py-0">
+      <CardHeader className="p-5 pb-4">
+        <div className="flex min-w-0 items-center gap-3">
+          <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-700"><Check className="size-4" /></span>
+          <div className="min-w-0"><CardTitle className="truncate text-base">{submission.recipientName}</CardTitle><CardDescription className="mt-1 truncate">{submission.recipientEmail || "No email provided"}</CardDescription></div>
+        </div>
+        <CardAction className="flex flex-wrap gap-2"><Button asChild variant="outline" size="sm"><a href={`/api/submissions/${submission.id}/excel?timeZone=${encodeURIComponent(props.localTimeZone)}`}><FileSpreadsheet /> Excel</a></Button>{submission.hasCompletedPdf && <Button asChild variant="outline" size="sm"><a href={`/api/submissions/${submission.id}/pdf`}><Download /> PDF</a></Button>}</CardAction>
+      </CardHeader>
+      <CardContent className="px-5 pb-5">
+        <div className="flex flex-wrap gap-2"><Badge variant="secondary">{submission.templateName} · v{submission.versionNumber}</Badge><Badge variant="outline"><span className="size-2 rounded-full" style={{ backgroundColor: submission.roleColor }} />{submission.roleName}</Badge><Badge variant="outline">{formatLocalDateTime(submission.submittedAt, { timeZone: props.localTimeZone })}</Badge></div>
+        <details className="mt-4 rounded-lg border bg-muted/25 p-3"><summary className="cursor-pointer text-sm font-medium">View submitted values</summary><dl className="mt-3 grid gap-2 sm:grid-cols-2">{submission.answers.map((answer) => <div key={answer.fieldId} className="rounded-md border bg-background p-3"><dt className="truncate text-xs font-medium text-muted-foreground">{answer.label}</dt><dd className="mt-1 break-words text-sm">{isPublicSubmissionImage(answer.value) ? <Image src={answer.value.url} alt={answer.label} width={Math.min(answer.value.width, 480)} height={Math.min(answer.value.height, 320)} unoptimized className="max-h-48 w-auto rounded-md object-contain" /> : formatValue(answer.value)}</dd><dd className="mt-1 font-mono text-[10px] text-muted-foreground">{answer.key}</dd></div>)}</dl></details>
+      </CardContent>
+    </Card>
   ))}</div>;
 }
 
 function EmptyState(props: { title: string; description: string }) {
-  return <div className="mt-5 flex min-h-72 flex-col items-center justify-center rounded-2xl border-2 border-dashed border-slate-200 bg-white text-center"><span className="flex size-12 items-center justify-center rounded-xl bg-slate-100 text-slate-400"><FolderOpen className="size-5" /></span><p className="mt-4 text-sm font-bold text-slate-700">{props.title}</p><p className="mt-1 text-xs text-slate-400">{props.description}</p></div>;
+  return <Card className="mt-5 min-h-72 items-center justify-center border-dashed text-center shadow-none"><CardContent className="flex flex-col items-center"><span className="flex size-12 items-center justify-center rounded-xl bg-muted text-muted-foreground"><FolderOpen className="size-5" /></span><p className="mt-4 text-sm font-semibold">{props.title}</p><p className="mt-1 max-w-sm text-xs text-muted-foreground">{props.description}</p></CardContent></Card>;
 }
 
 function formatValue(value: unknown) {
@@ -728,6 +1007,17 @@ function isPublicSubmissionImage(value: unknown): value is {
     typeof image.height === "number" &&
     typeof image.size === "number"
   );
+}
+
+function isDashboardView(value: string): value is DashboardView {
+  return value === "templates" || value === "submissions" || value === "archived";
+}
+
+function linkStatusClassName(status: string) {
+  if (status === "active") return "border-blue-200 bg-blue-50 text-blue-700";
+  if (status === "completed") return "border-emerald-200 bg-emerald-50 text-emerald-700";
+  if (status === "revoked") return "border-amber-200 bg-amber-50 text-amber-700";
+  return "bg-muted text-muted-foreground";
 }
 
 function submissionFilterParams(filters: DashboardFilters) {

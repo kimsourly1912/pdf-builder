@@ -1,9 +1,12 @@
 "use client";
 
 import {
+  Ban,
   CheckCircle2,
   ClipboardList,
+  Clock3,
   ExternalLink,
+  History,
   LoaderCircle,
   RefreshCw,
 } from "lucide-react";
@@ -11,6 +14,7 @@ import { useCallback, useEffect, useState } from "react";
 
 import { SignOutButton } from "@/components/auth/sign-out-button";
 import { Button } from "@/components/ui/button";
+import { assignmentDisplay } from "@/features/accounts/assignment-status";
 import {
   formatLocalDateTime,
   resolvedLocalTimeZone,
@@ -69,7 +73,12 @@ export function RecipientPortal(props: {
     return () => window.clearTimeout(timer);
   }, [loadAssignments]);
 
-  const activeCount = assignments.filter((item) => item.status === "active").length;
+  const activeAssignments = assignments.filter(
+    (assignment) => assignmentDisplay(assignment.status).state === "active",
+  );
+  const historyAssignments = assignments.filter(
+    (assignment) => assignmentDisplay(assignment.status).state !== "active",
+  );
   return (
     <main className="min-h-[100dvh] bg-slate-100 text-slate-950">
       <header className="border-b border-slate-200 bg-white">
@@ -83,10 +92,105 @@ export function RecipientPortal(props: {
           <div><h1 className="text-2xl font-bold tracking-tight">My assigned forms</h1><p className="mt-1 text-sm text-slate-500">Signed in as {props.email}</p></div>
           <Button type="button" variant="outline" size="sm" disabled={loading} onClick={() => void loadAssignments()}><RefreshCw className={`size-4 ${loading ? "animate-spin" : ""}`} /> Refresh</Button>
         </div>
-        <div className="mt-6 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"><p className="text-2xl font-bold tabular-nums">{activeCount}</p><p className="text-xs font-medium text-slate-400">Forms waiting for submission</p></div>
+        <div className="mt-6 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"><p className="text-2xl font-bold tabular-nums">{activeAssignments.length}</p><p className="text-xs font-medium text-slate-400">Forms waiting for submission</p></div>
         {error && <p role="alert" className="mt-5 rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm font-medium text-rose-700">{error}</p>}
-        {loading ? <div className="flex min-h-64 items-center justify-center text-slate-400"><LoaderCircle className="size-6 animate-spin" /></div> : assignments.length === 0 ? <div className="mt-5 flex min-h-64 flex-col items-center justify-center rounded-2xl border-2 border-dashed border-slate-200 bg-white text-center"><ClipboardList className="size-7 text-slate-400" /><p className="mt-4 text-sm font-bold text-slate-700">No forms assigned yet</p><p className="mt-1 text-xs text-slate-400">New assignments will appear here.</p></div> : <div className="mt-5 grid gap-4 md:grid-cols-2">{assignments.map((assignment) => <article key={assignment.id} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><div className="flex items-start gap-3"><span className="mt-1 size-3 shrink-0 rounded-full" style={{ backgroundColor: assignment.roleColor }} /><div className="min-w-0 flex-1"><h2 className="truncate text-base font-bold">{assignment.templateName}</h2><p className="mt-1 text-xs text-slate-400">Version {assignment.versionNumber} · {assignment.roleName}</p></div><span className={`rounded-full px-2 py-1 text-[10px] font-bold uppercase ${assignment.status === "active" ? "bg-blue-50 text-blue-700" : "bg-emerald-50 text-emerald-700"}`}>{assignment.status}</span></div>{assignment.description && <p className="mt-4 text-sm leading-6 text-slate-600">{assignment.description}</p>}<p className="mt-4 text-xs text-slate-400">Assigned {formatLocalDateTime(assignment.assignedAt, { timeZone })}</p>{assignment.url ? <Button asChild className="mt-4 w-full bg-blue-600 hover:bg-blue-700"><a href={assignment.url}><ExternalLink className="size-4" /> Open form</a></Button> : <div className="mt-4 flex items-center gap-2 rounded-lg bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700"><CheckCircle2 className="size-4" /> Submitted{assignment.completedAt ? ` ${formatLocalDateTime(assignment.completedAt, { timeZone })}` : ""}</div>}</article>)}</div>}
+        {loading ? (
+          <div className="flex min-h-64 items-center justify-center text-slate-400"><LoaderCircle className="size-6 animate-spin" /></div>
+        ) : assignments.length === 0 ? (
+          <div className="mt-5 flex min-h-64 flex-col items-center justify-center rounded-2xl border-2 border-dashed border-slate-200 bg-white text-center"><ClipboardList className="size-7 text-slate-400" /><p className="mt-4 text-sm font-bold text-slate-700">No forms assigned yet</p><p className="mt-1 text-xs text-slate-400">New assignments will appear here.</p></div>
+        ) : (
+          <div className="mt-6 space-y-8">
+            <AssignmentSection
+              title="Waiting for submission"
+              emptyMessage="You have no forms waiting for submission."
+              assignments={activeAssignments}
+              timeZone={timeZone}
+            />
+            {historyAssignments.length > 0 && (
+              <AssignmentSection
+                title="History"
+                emptyMessage=""
+                assignments={historyAssignments}
+                timeZone={timeZone}
+                history
+              />
+            )}
+          </div>
+        )}
       </div>
     </main>
   );
+}
+
+function AssignmentSection(props: {
+  title: string;
+  emptyMessage: string;
+  assignments: PortalAssignment[];
+  timeZone: string;
+  history?: boolean;
+}) {
+  return (
+    <section>
+      <div className="flex items-center gap-2">
+        {props.history ? <History className="size-4 text-slate-500" /> : <Clock3 className="size-4 text-blue-600" />}
+        <h2 className="text-sm font-bold text-slate-700">{props.title}</h2>
+        <span className="rounded-full bg-slate-200 px-2 py-0.5 text-[10px] font-bold text-slate-600">{props.assignments.length}</span>
+      </div>
+      {props.assignments.length === 0 ? (
+        <p className="mt-3 rounded-xl border border-dashed border-slate-200 bg-white p-5 text-center text-xs text-slate-500">{props.emptyMessage}</p>
+      ) : (
+        <div className="mt-3 grid gap-4 md:grid-cols-2">
+          {props.assignments.map((assignment) => (
+            <AssignmentCard key={assignment.id} assignment={assignment} timeZone={props.timeZone} />
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function AssignmentCard(props: {
+  assignment: PortalAssignment;
+  timeZone: string;
+}) {
+  const { assignment } = props;
+  const display = assignmentDisplay(assignment.status);
+  const tone = assignmentTone(display.state);
+  return (
+    <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+      <div className="flex items-start gap-3">
+        <span className="mt-1 size-3 shrink-0 rounded-full" style={{ backgroundColor: assignment.roleColor }} />
+        <div className="min-w-0 flex-1">
+          <h3 className="truncate text-base font-bold">{assignment.templateName}</h3>
+          <p className="mt-1 text-xs text-slate-400">Version {assignment.versionNumber} · {assignment.roleName}</p>
+        </div>
+        <span className={`rounded-full px-2 py-1 text-[10px] font-bold uppercase ${tone.badge}`}>{display.label}</span>
+      </div>
+      {assignment.description && <p className="mt-4 text-sm leading-6 text-slate-600">{assignment.description}</p>}
+      <p className="mt-4 text-xs text-slate-400">Assigned {formatLocalDateTime(assignment.assignedAt, { timeZone: props.timeZone })}</p>
+      {assignment.url ? (
+        <Button asChild className="mt-4 w-full bg-blue-600 hover:bg-blue-700"><a href={assignment.url}><ExternalLink className="size-4" /> Open form</a></Button>
+      ) : (
+        <div className={`mt-4 flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold ${tone.panel}`}>
+          {display.state === "completed" ? <CheckCircle2 className="size-4" /> : <Ban className="size-4" />}
+          {display.state === "completed" && assignment.completedAt
+            ? `Submitted ${formatLocalDateTime(assignment.completedAt, { timeZone: props.timeZone })}`
+            : display.detail}
+        </div>
+      )}
+    </article>
+  );
+}
+
+function assignmentTone(state: ReturnType<typeof assignmentDisplay>["state"]) {
+  if (state === "active") {
+    return { badge: "bg-blue-50 text-blue-700", panel: "bg-blue-50 text-blue-700" };
+  }
+  if (state === "completed") {
+    return { badge: "bg-emerald-50 text-emerald-700", panel: "bg-emerald-50 text-emerald-700" };
+  }
+  if (state === "cancelled") {
+    return { badge: "bg-amber-50 text-amber-700", panel: "bg-amber-50 text-amber-700" };
+  }
+  return { badge: "bg-slate-100 text-slate-600", panel: "bg-slate-100 text-slate-600" };
 }

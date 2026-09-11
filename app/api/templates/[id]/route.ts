@@ -245,6 +245,50 @@ export async function PUT(
   }
 }
 
+export async function PATCH(
+  request: Request,
+  context: { params: Promise<{ id: string }> },
+) {
+  try {
+    const ownerEmail = await requireRequestOwner(request);
+    const { id } = await context.params;
+    const body = (await request.json()) as Record<string, unknown>;
+    if (body.action !== "restore") {
+      return jsonError("Choose a valid template action.", 400);
+    }
+
+    const db = getDb();
+    const [template] = await db
+      .select({ id: templates.id, archivedAt: templates.archivedAt })
+      .from(templates)
+      .where(and(eq(templates.id, id), eq(templates.ownerEmail, ownerEmail)))
+      .limit(1);
+    if (!template) return jsonError("Template not found.", 404);
+
+    if (template.archivedAt) {
+      const restoredAt = new Date().toISOString();
+      await db
+        .update(templates)
+        .set({ archivedAt: null, updatedAt: restoredAt })
+        .where(
+          and(
+            eq(templates.id, id),
+            eq(templates.ownerEmail, ownerEmail),
+            eq(templates.archivedAt, template.archivedAt),
+          ),
+        );
+    }
+
+    return Response.json({
+      template: { id, disposition: "restore", archivedAt: null },
+    });
+  } catch (error) {
+    if (isResponse(error)) return error;
+    console.error("Failed to restore template", error);
+    return jsonError("The template could not be restored.", 500);
+  }
+}
+
 export async function DELETE(
   request: Request,
   context: { params: Promise<{ id: string }> },
@@ -397,6 +441,15 @@ async function archiveOwnedTemplate(options: {
         and(
           eq(recipientLinks.templateId, id),
           eq(recipientLinks.status, "active"),
+        ),
+      ),
+    db
+      .update(formAssignments)
+      .set({ status: "cancelled", updatedAt: archivedAt })
+      .where(
+        and(
+          eq(formAssignments.templateId, id),
+          eq(formAssignments.status, "assigned"),
         ),
       ),
   ]);
