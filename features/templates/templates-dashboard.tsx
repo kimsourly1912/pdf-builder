@@ -32,13 +32,19 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
   Card,
-  CardAction,
   CardContent,
-  CardDescription,
-  CardFooter,
   CardHeader,
-  CardTitle,
 } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { DataTable } from "@/components/ui/data-table";
+import type { DataTableColumn } from "@/components/ui/data-table";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -500,7 +506,7 @@ export function TemplatesDashboard(props: { displayName: string }) {
           </div>
 
           <TabsContent value="templates" className="mt-2">
-            {loading ? <DashboardSkeleton /> : <TemplateGrid templates={activeTemplates} generatedLinks={generatedLinks} linkActionKey={linkActionKey} copiedLinkKey={copiedLinkKey} removingTemplateId={removingTemplateId} localTimeZone={localTimeZone} onRegenerate={regenerateLink} onRevoke={revokeLink} onCopy={copyGeneratedLink} onRequestRemove={setTemplatePendingRemoval} />}
+            {loading ? <DashboardSkeleton /> : <TemplateTable templates={activeTemplates} generatedLinks={generatedLinks} linkActionKey={linkActionKey} copiedLinkKey={copiedLinkKey} removingTemplateId={removingTemplateId} localTimeZone={localTimeZone} onRegenerate={regenerateLink} onRevoke={revokeLink} onCopy={copyGeneratedLink} onRequestRemove={setTemplatePendingRemoval} />}
           </TabsContent>
           <TabsContent value="submissions" className="mt-2">
             {loading ? <DashboardSkeleton /> : <div>
@@ -517,11 +523,11 @@ export function TemplatesDashboard(props: { displayName: string }) {
                 setAppliedFilters(EMPTY_FILTERS);
               }}
             />
-            <SubmissionList submissions={submissions} localTimeZone={localTimeZone} />
+            <SubmissionTable submissions={submissions} localTimeZone={localTimeZone} />
             </div>}
           </TabsContent>
           <TabsContent value="archived" className="mt-2">
-            {loading ? <DashboardSkeleton /> : <ArchivedTemplateGrid
+            {loading ? <DashboardSkeleton /> : <ArchivedTemplateTable
             templates={archivedTemplates}
             busyTemplateId={removingTemplateId}
             localTimeZone={localTimeZone}
@@ -551,7 +557,7 @@ function DashboardSkeleton() {
   return <div className="mt-5 grid gap-4 lg:grid-cols-2">{[0, 1].map((item) => <Card key={item}><CardHeader><Skeleton className="h-5 w-2/5" /><Skeleton className="h-4 w-3/5" /></CardHeader><CardContent className="space-y-3"><Skeleton className="h-16 w-full" /><Skeleton className="h-16 w-full" /></CardContent></Card>)}</div>;
 }
 
-function TemplateGrid(props: {
+function TemplateTable(props: {
   templates: TemplateSummary[];
   generatedLinks: Record<string, string>;
   linkActionKey: string | null;
@@ -563,187 +569,494 @@ function TemplateGrid(props: {
   onCopy: (key: string, url: string) => Promise<void>;
   onRequestRemove: (template: TemplateSummary) => void;
 }) {
-  if (props.templates.length === 0) return <EmptyState title="No templates yet" description="Open the editor, add fields, and choose Save template." />;
-  return <div className="mt-5 grid items-start gap-4 lg:grid-cols-2">{props.templates.map((template) => (
-    <TemplateCard
-      key={template.id}
-      template={template}
-      generatedLinks={props.generatedLinks}
-      linkActionKey={props.linkActionKey}
-      copiedLinkKey={props.copiedLinkKey}
-      removingTemplateId={props.removingTemplateId}
-      localTimeZone={props.localTimeZone}
-      onRegenerate={props.onRegenerate}
-      onRevoke={props.onRevoke}
-      onCopy={props.onCopy}
-      onRequestRemove={props.onRequestRemove}
-    />
-  ))}</div>;
+  const [linksTemplateId, setLinksTemplateId] = useState<string | null>(null);
+  const linksTemplate = props.templates.find(
+    (template) => template.id === linksTemplateId,
+  );
+  const columns: DataTableColumn<TemplateSummary>[] = [
+    {
+      id: "template",
+      header: "Template",
+      className: "min-w-72 whitespace-normal",
+      cell: (template) => (
+        <div className="flex min-w-0 items-center gap-3">
+          <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+            <FileText className="size-4" />
+          </span>
+          <div className="min-w-0">
+            <p className="truncate font-medium">{template.name}</p>
+            <p className="mt-0.5 max-w-72 truncate text-xs text-muted-foreground">
+              {template.description || template.fileName}
+            </p>
+          </div>
+        </div>
+      ),
+    },
+    {
+      id: "version",
+      header: "Version",
+      cell: (template) => (
+        <Badge variant="secondary">v{template.versionNumber}</Badge>
+      ),
+    },
+    {
+      id: "roles",
+      header: "Roles",
+      className: "min-w-40 whitespace-normal",
+      cell: (template) => (
+        <div className="flex flex-wrap gap-1.5">
+          {template.currentRoles.slice(0, 2).map((role) => (
+            <Badge key={role.id} variant="outline">
+              <span
+                className="size-2 rounded-full"
+                style={{ backgroundColor: role.color }}
+              />
+              {role.name}
+            </Badge>
+          ))}
+          {template.currentRoles.length > 2 && (
+            <Badge variant="outline">+{template.currentRoles.length - 2}</Badge>
+          )}
+        </div>
+      ),
+    },
+    {
+      id: "activity",
+      header: "Activity",
+      className: "min-w-32",
+      cell: (template) => (
+        <div className="space-y-1 text-xs">
+          <p>{template.assignmentCount} assigned</p>
+          <p className="text-muted-foreground">
+            {template.submissionCount} submitted
+          </p>
+        </div>
+      ),
+    },
+    {
+      id: "updated",
+      header: "Updated",
+      className: "min-w-40 text-xs text-muted-foreground",
+      cell: (template) =>
+        formatLocalDateTime(template.updatedAt, {
+          timeZone: props.localTimeZone,
+        }),
+    },
+    {
+      id: "links",
+      header: "Fill links",
+      cell: (template) => (
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={() => setLinksTemplateId(template.id)}
+        >
+          <Link2 /> Manage
+          <Badge variant="secondary">{template.recipients.length}</Badge>
+        </Button>
+      ),
+    },
+    {
+      id: "actions",
+      header: <span className="sr-only">Actions</span>,
+      headerClassName: "text-right",
+      className: "text-right",
+      cell: (template) => (
+        <TemplateRowActions
+          template={template}
+          removingTemplateId={props.removingTemplateId}
+          onRequestRemove={props.onRequestRemove}
+        />
+      ),
+    },
+  ];
+
+  return (
+    <>
+      <DataTable
+        columns={columns}
+        data={props.templates}
+        getRowId={(template) => template.id}
+        caption="Active PDF templates"
+        emptyTitle="No templates yet"
+        emptyDescription="Open the editor, add fields, and choose Save template."
+        emptyIcon={<FolderOpen />}
+        className="mt-5"
+      />
+      <TemplateLinksDialog
+        template={linksTemplate ?? null}
+        generatedLinks={props.generatedLinks}
+        linkActionKey={props.linkActionKey}
+        copiedLinkKey={props.copiedLinkKey}
+        localTimeZone={props.localTimeZone}
+        onOpenChange={(open) => {
+          if (!open) setLinksTemplateId(null);
+        }}
+        onRegenerate={props.onRegenerate}
+        onRevoke={props.onRevoke}
+        onCopy={props.onCopy}
+      />
+    </>
+  );
 }
 
-function TemplateCard(props: {
+function TemplateRowActions(props: {
   template: TemplateSummary;
-  generatedLinks: Record<string, string>;
-  linkActionKey: string | null;
-  copiedLinkKey: string | null;
   removingTemplateId: string | null;
-  localTimeZone: string;
-  onRegenerate: (templateId: string, roleId: string) => Promise<void>;
-  onRevoke: (templateId: string, roleId: string) => Promise<void>;
-  onCopy: (key: string, url: string) => Promise<void>;
   onRequestRemove: (template: TemplateSummary) => void;
 }) {
   const willArchive =
     props.template.assignmentCount > 0 || props.template.submissionCount > 0;
   return (
-    <Card className="gap-0 overflow-hidden py-0 transition-shadow hover:shadow-md">
-      <CardHeader className="p-5 pb-4">
-        <div className="flex min-w-0 items-center gap-3">
-          <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary"><FileText className="size-4" /></span>
-          <div className="min-w-0">
-            <CardTitle className="truncate text-base">{props.template.name}</CardTitle>
-            <CardDescription className="mt-1 truncate text-xs">{props.template.fileName}</CardDescription>
-          </div>
-        </div>
-        <CardAction className="flex items-center gap-1">
-          <Button asChild variant="outline" size="sm"><Link href={`/?templateId=${encodeURIComponent(props.template.id)}`}><Pencil /> Edit</Link></Button>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon-sm" disabled={props.removingTemplateId !== null} aria-label={`More actions for ${props.template.name}`}>
-                {props.removingTemplateId === props.template.id ? <LoaderCircle className="animate-spin" /> : <EllipsisVertical />}
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-48">
-              <DropdownMenuItem asChild><a href={`/api/templates/${props.template.id}/pdf`}><Download /> Download PDF</a></DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem
-                variant={willArchive ? "default" : "destructive"}
-                className={willArchive ? "text-amber-700 focus:text-amber-800" : undefined}
-                onSelect={() => props.onRequestRemove(props.template)}
-              >
-                {willArchive ? <Archive /> : <Trash2 />}
-                {willArchive ? "Archive template" : "Delete template"}
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </CardAction>
-      </CardHeader>
-      <CardContent className="px-5 pb-5">
-        {props.template.description && <p className="mb-4 line-clamp-2 text-sm leading-6 text-muted-foreground">{props.template.description}</p>}
-        <div className="flex flex-wrap gap-2">
-          <Badge variant="secondary">Version {props.template.versionNumber}</Badge>
-          <Badge variant="outline">{props.template.currentRoles.length} role{props.template.currentRoles.length === 1 ? "" : "s"}</Badge>
-          <Badge variant="outline">{props.template.assignmentCount} assigned</Badge>
-          <Badge variant="outline">{props.template.submissionCount} submitted</Badge>
-        </div>
-        <Separator className="my-4" />
-        <div className="mb-3 flex items-center justify-between gap-3">
-          <div>
-            <h3 className="text-sm font-semibold">Public fill links</h3>
-            <p className="mt-0.5 text-xs text-muted-foreground">Create a link for each recipient role.</p>
-          </div>
-          <Badge variant="outline">{props.template.recipients.length}</Badge>
-        </div>
-        <div className="space-y-2">
-          {props.template.recipients.map((recipient) => {
-            const key = `${props.template.id}:${recipient.roleId}`;
-            return (
-              <RecipientLinkRow
-                key={recipient.id}
-                templateId={props.template.id}
-                recipient={recipient}
-                url={props.generatedLinks[key]}
-                busy={props.linkActionKey === key}
-                copied={props.copiedLinkKey === key}
-                localTimeZone={props.localTimeZone}
-                onRegenerate={props.onRegenerate}
-                onRevoke={props.onRevoke}
-                onCopy={(url) => props.onCopy(key, url)}
-              />
-            );
-          })}
-        </div>
-      </CardContent>
-      <CardFooter className="border-t bg-muted/30 px-5 py-3 text-xs text-muted-foreground">Updated {formatLocalDateTime(props.template.updatedAt, { timeZone: props.localTimeZone })}</CardFooter>
-    </Card>
-  );
-}
-
-function RecipientLinkRow(props: {
-  templateId: string;
-  recipient: TemplateSummary["recipients"][number];
-  url: string | undefined;
-  busy: boolean;
-  copied: boolean;
-  localTimeZone: string;
-  onRegenerate: (templateId: string, roleId: string) => Promise<void>;
-  onRevoke: (templateId: string, roleId: string) => Promise<void>;
-  onCopy: (url: string) => Promise<void>;
-}) {
-  const { recipient } = props;
-  const url = props.url;
-  return (
-    <div className={`rounded-lg border p-3 transition-colors ${props.copied ? "border-emerald-300 bg-emerald-50" : "bg-muted/25"}`}>
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="size-2.5 shrink-0 rounded-full" style={{ backgroundColor: recipient.roleColor }} />
-        <span className="min-w-0 flex-1 truncate text-sm font-medium">{recipient.roleName}</span>
-        <Badge variant="outline" className={linkStatusClassName(recipient.status)}>{recipient.status}</Badge>
-        <Button type="button" variant="ghost" size="xs" disabled={props.busy} onClick={() => void props.onRegenerate(props.templateId, recipient.roleId)}>{props.busy ? <LoaderCircle className="animate-spin" /> : <RefreshCw />} {url ? "Regenerate" : "Create link"}</Button>
-        {recipient.status === "active" && <Button type="button" variant="ghost" size="xs" disabled={props.busy} className="text-destructive hover:text-destructive" onClick={() => void props.onRevoke(props.templateId, recipient.roleId)}><Ban /> Revoke</Button>}
-      </div>
-      <p className="mt-1 text-xs text-muted-foreground">{recipient.submissionCount}/{recipient.maxSubmissions} submissions · {recipient.expiresAt ? `expires ${formatLocalDateTime(recipient.expiresAt, { timeZone: props.localTimeZone })}` : "no expiry"}</p>
-      {url && (
-        <InputGroup className={`mt-3 ${props.copied ? "border-emerald-300 bg-white" : "bg-background"}`}>
-          <InputGroupInput readOnly value={url} aria-label={`${recipient.roleName} fill link`} className={props.copied ? "text-emerald-700" : "text-muted-foreground"} />
-          <InputGroupAddon align="inline-end">
-            <InputGroupButton size="icon-xs" aria-label={props.copied ? `Copied ${recipient.roleName} link` : `Copy ${recipient.roleName} link`} title={props.copied ? "Copied!" : "Copy link"} onClick={() => void props.onCopy(url)}>{props.copied ? <Check /> : <Copy />}<span aria-live="polite" className="sr-only">{props.copied ? "Link copied" : ""}</span></InputGroupButton>
-            <InputGroupButton asChild size="icon-xs"><a href={url} target="_blank" rel="noreferrer" aria-label={`Open ${recipient.roleName} link`}><ExternalLink /></a></InputGroupButton>
-          </InputGroupAddon>
-        </InputGroup>
-      )}
+    <div className="flex justify-end gap-1">
+      <Button asChild variant="outline" size="sm">
+        <Link href={`/?templateId=${encodeURIComponent(props.template.id)}`}>
+          <Pencil /> Edit
+        </Link>
+      </Button>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            disabled={props.removingTemplateId !== null}
+            aria-label={`More actions for ${props.template.name}`}
+          >
+            {props.removingTemplateId === props.template.id ? (
+              <LoaderCircle className="animate-spin" />
+            ) : (
+              <EllipsisVertical />
+            )}
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-48">
+          <DropdownMenuItem asChild>
+            <a href={`/api/templates/${props.template.id}/pdf`}>
+              <Download /> Download PDF
+            </a>
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem
+            variant={willArchive ? "default" : "destructive"}
+            className={
+              willArchive ? "text-amber-700 focus:text-amber-800" : undefined
+            }
+            onSelect={() => props.onRequestRemove(props.template)}
+          >
+            {willArchive ? <Archive /> : <Trash2 />}
+            {willArchive ? "Archive template" : "Delete template"}
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
     </div>
   );
 }
 
-function ArchivedTemplateGrid(props: {
+function TemplateLinksDialog(props: {
+  template: TemplateSummary | null;
+  generatedLinks: Record<string, string>;
+  linkActionKey: string | null;
+  copiedLinkKey: string | null;
+  localTimeZone: string;
+  onOpenChange: (open: boolean) => void;
+  onRegenerate: (templateId: string, roleId: string) => Promise<void>;
+  onRevoke: (templateId: string, roleId: string) => Promise<void>;
+  onCopy: (key: string, url: string) => Promise<void>;
+}) {
+  const template = props.template;
+  const columns: DataTableColumn<TemplateSummary["recipients"][number]>[] = [
+    {
+      id: "role",
+      header: "Recipient role",
+      className: "min-w-36",
+      cell: (recipient) => (
+        <div className="flex items-center gap-2 font-medium">
+          <span
+            className="size-2.5 shrink-0 rounded-full"
+            style={{ backgroundColor: recipient.roleColor }}
+          />
+          {recipient.roleName}
+        </div>
+      ),
+    },
+    {
+      id: "status",
+      header: "Status",
+      cell: (recipient) => (
+        <Badge
+          variant="outline"
+          className={linkStatusClassName(recipient.status)}
+        >
+          {recipient.status}
+        </Badge>
+      ),
+    },
+    {
+      id: "usage",
+      header: "Usage",
+      cell: (recipient) => (
+        <span className="text-xs">
+          {recipient.submissionCount}/{recipient.maxSubmissions} submissions
+        </span>
+      ),
+    },
+    {
+      id: "expiry",
+      header: "Expiry",
+      className: "min-w-40 text-xs text-muted-foreground",
+      cell: (recipient) =>
+        recipient.expiresAt
+          ? formatLocalDateTime(recipient.expiresAt, {
+              timeZone: props.localTimeZone,
+            })
+          : "No expiry",
+    },
+    {
+      id: "link",
+      header: "Generated link",
+      className: "min-w-80",
+      cell: (recipient) => {
+        const key = `${template?.id ?? ""}:${recipient.roleId}`;
+        const url = props.generatedLinks[key];
+        if (!url) {
+          return (
+            <span className="text-xs text-muted-foreground">
+              Generate a new link to copy or open it.
+            </span>
+          );
+        }
+        const copied = props.copiedLinkKey === key;
+        return (
+          <InputGroup
+            className={
+              copied ? "border-emerald-300 bg-emerald-50" : "bg-background"
+            }
+          >
+            <InputGroupInput
+              readOnly
+              value={url}
+              aria-label={`${recipient.roleName} fill link`}
+              className={copied ? "text-emerald-700" : "text-muted-foreground"}
+            />
+            <InputGroupAddon align="inline-end">
+              <InputGroupButton
+                size="icon-xs"
+                aria-label={
+                  copied
+                    ? `Copied ${recipient.roleName} link`
+                    : `Copy ${recipient.roleName} link`
+                }
+                title={copied ? "Copied!" : "Copy link"}
+                onClick={() => void props.onCopy(key, url)}
+              >
+                {copied ? <Check /> : <Copy />}
+                <span aria-live="polite" className="sr-only">
+                  {copied ? "Link copied" : ""}
+                </span>
+              </InputGroupButton>
+              <InputGroupButton asChild size="icon-xs">
+                <a
+                  href={url}
+                  target="_blank"
+                  rel="noreferrer"
+                  aria-label={`Open ${recipient.roleName} link`}
+                >
+                  <ExternalLink />
+                </a>
+              </InputGroupButton>
+            </InputGroupAddon>
+          </InputGroup>
+        );
+      },
+    },
+    {
+      id: "actions",
+      header: <span className="sr-only">Actions</span>,
+      className: "text-right",
+      cell: (recipient) => {
+        const key = `${template?.id ?? ""}:${recipient.roleId}`;
+        const busy = props.linkActionKey === key;
+        const hasGeneratedUrl = Boolean(props.generatedLinks[key]);
+        return (
+          <div className="flex justify-end gap-1">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={busy || !template}
+              onClick={() => {
+                if (template) {
+                  void props.onRegenerate(template.id, recipient.roleId);
+                }
+              }}
+            >
+              {busy ? (
+                <LoaderCircle className="animate-spin" />
+              ) : (
+                <RefreshCw />
+              )}
+              {hasGeneratedUrl ? "Regenerate" : "Create link"}
+            </Button>
+            {recipient.status === "active" && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                disabled={busy || !template}
+                className="text-destructive hover:text-destructive"
+                aria-label={`Revoke ${recipient.roleName} link`}
+                onClick={() => {
+                  if (template) void props.onRevoke(template.id, recipient.roleId);
+                }}
+              >
+                <Ban />
+              </Button>
+            )}
+          </div>
+        );
+      },
+    },
+  ];
+
+  return (
+    <Dialog open={Boolean(template)} onOpenChange={props.onOpenChange}>
+      <DialogContent className="max-h-[calc(100vh-2rem)] overflow-y-auto sm:max-w-6xl">
+        <DialogHeader>
+          <DialogTitle>Public fill links</DialogTitle>
+          <DialogDescription>
+            Manage recipient-role links for {template?.name ?? "this template"}.
+            Regenerating a link makes the previous link inactive.
+          </DialogDescription>
+        </DialogHeader>
+        <DataTable
+          columns={columns}
+          data={template?.recipients ?? []}
+          getRowId={(recipient) => recipient.id}
+          caption={`Public fill links for ${template?.name ?? "template"}`}
+          emptyTitle="No recipient roles"
+          emptyDescription="Add a recipient role in the template editor before creating a fill link."
+          emptyIcon={<Link2 />}
+          className="shadow-none"
+        />
+        <DialogFooter showCloseButton />
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function ArchivedTemplateTable(props: {
   templates: TemplateSummary[];
   busyTemplateId: string | null;
   localTimeZone: string;
   onRestore: (template: TemplateSummary) => void;
   onViewSubmissions: (template: TemplateSummary) => void;
 }) {
-  if (props.templates.length === 0) {
-    return <EmptyState title="No archived templates" description="Templates you archive will appear here with their assignment and submission history." />;
-  }
+  const columns: DataTableColumn<TemplateSummary>[] = [
+    {
+      id: "template",
+      header: "Template",
+      className: "min-w-72 whitespace-normal",
+      cell: (template) => (
+        <div className="flex min-w-0 items-center gap-3">
+          <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-amber-100 text-amber-700">
+            <Archive className="size-4" />
+          </span>
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <p className="truncate font-medium">{template.name}</p>
+              <Badge className="bg-amber-100 text-amber-800 hover:bg-amber-100">
+                Archived
+              </Badge>
+            </div>
+            <p className="mt-0.5 max-w-72 truncate text-xs text-muted-foreground">
+              {template.description || template.fileName}
+            </p>
+          </div>
+        </div>
+      ),
+    },
+    {
+      id: "version",
+      header: "Version",
+      cell: (template) => (
+        <Badge variant="secondary">v{template.versionNumber}</Badge>
+      ),
+    },
+    {
+      id: "history",
+      header: "Saved history",
+      className: "min-w-36",
+      cell: (template) => (
+        <div className="space-y-1 text-xs">
+          <p>{template.assignmentCount} assignments</p>
+          <p className="text-muted-foreground">
+            {template.submissionCount} submissions
+          </p>
+        </div>
+      ),
+    },
+    {
+      id: "archived",
+      header: "Archived",
+      className: "min-w-40 text-xs text-muted-foreground",
+      cell: (template) =>
+        formatLocalDateTime(template.archivedAt ?? template.updatedAt, {
+          timeZone: props.localTimeZone,
+        }),
+    },
+    {
+      id: "actions",
+      header: <span className="sr-only">Actions</span>,
+      headerClassName: "text-right",
+      className: "text-right",
+      cell: (template) => (
+        <div className="flex justify-end gap-1">
+          {template.submissionCount > 0 && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => props.onViewSubmissions(template)}
+            >
+              <Inbox /> Submissions
+            </Button>
+          )}
+          <Button asChild variant="ghost" size="sm">
+            <a href={`/api/templates/${template.id}/pdf`}>
+              <Download /> PDF
+            </a>
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            disabled={props.busyTemplateId !== null}
+            onClick={() => props.onRestore(template)}
+          >
+            {props.busyTemplateId === template.id ? (
+              <LoaderCircle className="animate-spin" />
+            ) : (
+              <ArchiveRestore />
+            )}
+            Restore
+          </Button>
+        </div>
+      ),
+    },
+  ];
+
   return (
-    <div className="mt-5 grid items-start gap-4 lg:grid-cols-2">
-      {props.templates.map((template) => (
-        <Card key={template.id} className="gap-0 border-amber-200 py-0">
-          <CardHeader className="p-5 pb-4">
-            <div className="flex min-w-0 items-center gap-3">
-              <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-amber-100 text-amber-700"><Archive className="size-4" /></span>
-              <div className="min-w-0">
-                <div className="flex items-center gap-2"><CardTitle className="truncate text-base">{template.name}</CardTitle><Badge className="bg-amber-100 text-amber-800 hover:bg-amber-100">Archived</Badge></div>
-                <CardDescription className="mt-1 truncate text-xs">{template.fileName} · Version {template.versionNumber}</CardDescription>
-              </div>
-            </div>
-            <CardAction><Button type="button" size="sm" disabled={props.busyTemplateId !== null} onClick={() => props.onRestore(template)}>{props.busyTemplateId === template.id ? <LoaderCircle className="animate-spin" /> : <ArchiveRestore />} Restore</Button></CardAction>
-          </CardHeader>
-          <CardContent className="px-5 pb-5">
-            {template.description && <p className="mb-4 line-clamp-2 text-sm leading-6 text-muted-foreground">{template.description}</p>}
-            <div className="flex flex-wrap gap-2">
-              <Badge variant="outline">{template.assignmentCount} assignment{template.assignmentCount === 1 ? "" : "s"}</Badge>
-              <Badge variant="outline">{template.submissionCount} submission{template.submissionCount === 1 ? "" : "s"}</Badge>
-            </div>
-            <Alert role="note" className="mt-4 border-amber-200 bg-amber-50 text-amber-800"><ArchiveRestore /><AlertTitle>Safe to restore</AlertTitle><AlertDescription className="text-amber-700">Old links and cancelled assignments will remain inactive.</AlertDescription></Alert>
-          </CardContent>
-          <CardFooter className="flex-wrap justify-between gap-3 border-t bg-muted/30 px-5 py-3">
-            <span className="text-xs text-muted-foreground">Archived {formatLocalDateTime(template.archivedAt ?? template.updatedAt, { timeZone: props.localTimeZone })}</span>
-            <div className="flex gap-2">{template.submissionCount > 0 && <Button type="button" variant="ghost" size="sm" onClick={() => props.onViewSubmissions(template)}><Inbox /> Submissions</Button>}<Button asChild variant="ghost" size="sm"><a href={`/api/templates/${template.id}/pdf`}><Download /> PDF</a></Button></div>
-          </CardFooter>
-        </Card>
-      ))}
-    </div>
+    <DataTable
+      columns={columns}
+      data={props.templates}
+      getRowId={(template) => template.id}
+      caption="Archived PDF templates"
+      emptyTitle="No archived templates"
+      emptyDescription="Templates you archive will appear here with their assignment and submission history."
+      emptyIcon={<Archive />}
+      className="mt-5 border-amber-200"
+      rowClassName={() => "bg-amber-50/20"}
+    />
   );
 }
 
@@ -955,30 +1268,203 @@ function SubmissionFilterPanel(props: {
   );
 }
 
-function SubmissionList(props: {
+function SubmissionTable(props: {
   submissions: SubmissionSummary[];
   localTimeZone: string;
 }) {
-  if (props.submissions.length === 0) return <EmptyState title="No submissions yet" description="Completed recipient forms will appear here." />;
-  return <div className="mt-5 space-y-3">{props.submissions.map((submission) => (
-    <Card key={submission.id} className="gap-0 py-0">
-      <CardHeader className="p-5 pb-4">
+  const [detailSubmissionId, setDetailSubmissionId] = useState<string | null>(
+    null,
+  );
+  const detailSubmission = props.submissions.find(
+    (submission) => submission.id === detailSubmissionId,
+  );
+  const columns: DataTableColumn<SubmissionSummary>[] = [
+    {
+      id: "recipient",
+      header: "Recipient",
+      className: "min-w-56 whitespace-normal",
+      cell: (submission) => (
         <div className="flex min-w-0 items-center gap-3">
-          <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-700"><Check className="size-4" /></span>
-          <div className="min-w-0"><CardTitle className="truncate text-base">{submission.recipientName}</CardTitle><CardDescription className="mt-1 truncate">{submission.recipientEmail || "No email provided"}</CardDescription></div>
+          <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-700">
+            <Check className="size-4" />
+          </span>
+          <div className="min-w-0">
+            <p className="truncate font-medium">{submission.recipientName}</p>
+            <p className="mt-0.5 truncate text-xs text-muted-foreground">
+              {submission.recipientEmail || "No email provided"}
+            </p>
+          </div>
         </div>
-        <CardAction className="flex flex-wrap gap-2"><Button asChild variant="outline" size="sm"><a href={`/api/submissions/${submission.id}/excel?timeZone=${encodeURIComponent(props.localTimeZone)}`}><FileSpreadsheet /> Excel</a></Button>{submission.hasCompletedPdf && <Button asChild variant="outline" size="sm"><a href={`/api/submissions/${submission.id}/pdf`}><Download /> PDF</a></Button>}</CardAction>
-      </CardHeader>
-      <CardContent className="px-5 pb-5">
-        <div className="flex flex-wrap gap-2"><Badge variant="secondary">{submission.templateName} · v{submission.versionNumber}</Badge><Badge variant="outline"><span className="size-2 rounded-full" style={{ backgroundColor: submission.roleColor }} />{submission.roleName}</Badge><Badge variant="outline">{formatLocalDateTime(submission.submittedAt, { timeZone: props.localTimeZone })}</Badge></div>
-        <details className="mt-4 rounded-lg border bg-muted/25 p-3"><summary className="cursor-pointer text-sm font-medium">View submitted values</summary><dl className="mt-3 grid gap-2 sm:grid-cols-2">{submission.answers.map((answer) => <div key={answer.fieldId} className="rounded-md border bg-background p-3"><dt className="truncate text-xs font-medium text-muted-foreground">{answer.label}</dt><dd className="mt-1 break-words text-sm">{isPublicSubmissionImage(answer.value) ? <Image src={answer.value.url} alt={answer.label} width={Math.min(answer.value.width, 480)} height={Math.min(answer.value.height, 320)} unoptimized className="max-h-48 w-auto rounded-md object-contain" /> : formatValue(answer.value)}</dd><dd className="mt-1 font-mono text-[10px] text-muted-foreground">{answer.key}</dd></div>)}</dl></details>
-      </CardContent>
-    </Card>
-  ))}</div>;
+      ),
+    },
+    {
+      id: "template",
+      header: "Template",
+      className: "min-w-48 whitespace-normal",
+      cell: (submission) => (
+        <div>
+          <p className="font-medium">{submission.templateName}</p>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            Version {submission.versionNumber}
+          </p>
+        </div>
+      ),
+    },
+    {
+      id: "role",
+      header: "Recipient role",
+      cell: (submission) => (
+        <Badge variant="outline">
+          <span
+            className="size-2 rounded-full"
+            style={{ backgroundColor: submission.roleColor }}
+          />
+          {submission.roleName}
+        </Badge>
+      ),
+    },
+    {
+      id: "submitted",
+      header: "Submitted",
+      className: "min-w-40 text-xs text-muted-foreground",
+      cell: (submission) =>
+        formatLocalDateTime(submission.submittedAt, {
+          timeZone: props.localTimeZone,
+        }),
+    },
+    {
+      id: "actions",
+      header: <span className="sr-only">Actions</span>,
+      headerClassName: "text-right",
+      className: "text-right",
+      cell: (submission) => (
+        <div className="flex justify-end gap-1">
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => setDetailSubmissionId(submission.id)}
+          >
+            <FileText /> Details
+          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                aria-label={`Export submission from ${submission.recipientName}`}
+              >
+                <EllipsisVertical />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem asChild>
+                <a
+                  href={`/api/submissions/${submission.id}/excel?timeZone=${encodeURIComponent(props.localTimeZone)}`}
+                >
+                  <FileSpreadsheet /> Download Excel
+                </a>
+              </DropdownMenuItem>
+              {submission.hasCompletedPdf && (
+                <DropdownMenuItem asChild>
+                  <a href={`/api/submissions/${submission.id}/pdf`}>
+                    <Download /> Download PDF
+                  </a>
+                </DropdownMenuItem>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+      ),
+    },
+  ];
+
+  return (
+    <>
+      <DataTable
+        columns={columns}
+        data={props.submissions}
+        getRowId={(submission) => submission.id}
+        caption="Completed form submissions"
+        emptyTitle="No submissions yet"
+        emptyDescription="Completed recipient forms will appear here."
+        emptyIcon={<Inbox />}
+        className="mt-5"
+      />
+      <SubmissionDetailsDialog
+        submission={detailSubmission ?? null}
+        onOpenChange={(open) => {
+          if (!open) setDetailSubmissionId(null);
+        }}
+      />
+    </>
+  );
 }
 
-function EmptyState(props: { title: string; description: string }) {
-  return <Card className="mt-5 min-h-72 items-center justify-center border-dashed text-center shadow-none"><CardContent className="flex flex-col items-center"><span className="flex size-12 items-center justify-center rounded-xl bg-muted text-muted-foreground"><FolderOpen className="size-5" /></span><p className="mt-4 text-sm font-semibold">{props.title}</p><p className="mt-1 max-w-sm text-xs text-muted-foreground">{props.description}</p></CardContent></Card>;
+function SubmissionDetailsDialog(props: {
+  submission: SubmissionSummary | null;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const submission = props.submission;
+  const columns: DataTableColumn<SubmissionAnswer>[] = [
+    {
+      id: "field",
+      header: "Field",
+      className: "min-w-48 whitespace-normal",
+      cell: (answer) => <span className="font-medium">{answer.label}</span>,
+    },
+    {
+      id: "value",
+      header: "Submitted value",
+      className: "min-w-64 max-w-xl whitespace-normal",
+      cell: (answer) =>
+        isPublicSubmissionImage(answer.value) ? (
+          <Image
+            src={answer.value.url}
+            alt={answer.label}
+            width={Math.min(answer.value.width, 480)}
+            height={Math.min(answer.value.height, 320)}
+            unoptimized
+            className="max-h-48 w-auto rounded-md object-contain"
+          />
+        ) : (
+          <span className="break-words">{formatValue(answer.value)}</span>
+        ),
+    },
+    {
+      id: "key",
+      header: "Data key",
+      className: "font-mono text-xs text-muted-foreground",
+      cell: (answer) => answer.key,
+    },
+  ];
+
+  return (
+    <Dialog open={Boolean(submission)} onOpenChange={props.onOpenChange}>
+      <DialogContent className="max-h-[calc(100vh-2rem)] overflow-y-auto sm:max-w-4xl">
+        <DialogHeader>
+          <DialogTitle>{submission?.recipientName ?? "Submission"}</DialogTitle>
+          <DialogDescription>
+            {submission
+              ? `${submission.templateName} · Version ${submission.versionNumber} · ${submission.roleName}`
+              : "Submitted form values"}
+          </DialogDescription>
+        </DialogHeader>
+        <DataTable
+          columns={columns}
+          data={submission?.answers ?? []}
+          getRowId={(answer) => answer.fieldId}
+          caption={`Submitted values from ${submission?.recipientName ?? "recipient"}`}
+          emptyTitle="No submitted values"
+          emptyDescription="This submission does not contain any displayable answers."
+          emptyIcon={<FileText />}
+          className="shadow-none"
+        />
+        <DialogFooter showCloseButton />
+      </DialogContent>
+    </Dialog>
+  );
 }
 
 function formatValue(value: unknown) {

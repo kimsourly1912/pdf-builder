@@ -82,6 +82,61 @@ test("composes shadcn card slots without custom dashboard markup", async () => {
   assert.match(html, /data-slot="card-content"/);
 });
 
+test("composes the shared data table from shadcn card and table primitives", async () => {
+  const { DataTable } = await vite.ssrLoadModule(
+    "/components/ui/data-table.tsx",
+  );
+  const columns = [
+    {
+      id: "name",
+      header: "Template",
+      cell: (row) => row.name,
+    },
+    {
+      id: "status",
+      header: "Status",
+      cell: (row) => row.status,
+    },
+  ];
+  const html = renderToStaticMarkup(
+    React.createElement(DataTable, {
+      columns,
+      data: [{ id: "template-1", name: "Employee form", status: "Active" }],
+      getRowId: (row) => row.id,
+      caption: "Templates",
+      emptyTitle: "No templates",
+      emptyDescription: "Create your first template.",
+    }),
+  );
+
+  assert.match(html, /data-slot="card"/);
+  assert.match(html, /data-slot="table"/);
+  assert.match(html, /data-slot="table-header"/);
+  assert.match(html, /Employee form/);
+  assert.match(html, /Active/);
+});
+
+test("keeps the data table structure visible for empty results", async () => {
+  const { DataTable } = await vite.ssrLoadModule(
+    "/components/ui/data-table.tsx",
+  );
+  const html = renderToStaticMarkup(
+    React.createElement(DataTable, {
+      columns: [{ id: "name", header: "Template", cell: () => "" }],
+      data: [],
+      getRowId: (row) => row.id,
+      caption: "Templates",
+      emptyTitle: "No templates",
+      emptyDescription: "Create your first template.",
+    }),
+  );
+
+  assert.match(html, /data-slot="table-head"/);
+  assert.match(html, /colSpan="1"/);
+  assert.match(html, /No templates/);
+  assert.match(html, /Create your first template/);
+});
+
 test("emits chart themes for the starter's media dark mode", async () => {
   const { ChartStyle } = await vite.ssrLoadModule("/components/ui/chart.tsx");
   const html = renderToStaticMarkup(
