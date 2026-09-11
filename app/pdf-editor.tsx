@@ -62,6 +62,8 @@ import {
 import Image from "next/image";
 import khmerFontUrl from "@expo-google-fonts/noto-sans-khmer/400Regular/NotoSansKhmer_400Regular.ttf?url";
 import type { RecipientRole } from "@/features/templates/template.types";
+import { CANDIDATE_PREFILL_KEYS } from "@/features/resumes/resume.types";
+import type { CandidatePrefillKey } from "@/features/resumes/resume.types";
 import type { LabelBinding } from "@/features/templates/label-binding";
 import {
   annotationFieldKey,
@@ -211,6 +213,7 @@ type Annotation = {
   options?: FieldOption[];
   fieldName?: string;
   fieldKey?: string;
+  prefillKey?: CandidatePrefillKey;
   labelBinding?: LabelBinding;
   placeholder?: string;
   required?: boolean;
@@ -6111,6 +6114,18 @@ export function PdfEditor(props: { initialTemplateId?: string }) {
                         placeholder="customer_name"
                         className="mt-1.5 h-9 w-full rounded-lg border border-slate-200 bg-white px-3 font-mono text-xs font-normal text-slate-800 shadow-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                       />
+                    </label>
+                    <label className="block text-xs font-semibold text-slate-600">
+                      Candidate prefill
+                      <select
+                        value={selectedAnnotation.prefillKey ?? ""}
+                        onChange={(event) => updateSelected({ prefillKey: event.target.value ? event.target.value as CandidatePrefillKey : undefined })}
+                        className="mt-1.5 h-9 w-full rounded-lg border border-slate-200 bg-white px-3 font-mono text-xs font-normal text-slate-800 shadow-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                      >
+                        <option value="">No automatic prefill</option>
+                        {CANDIDATE_PREFILL_KEYS.map((key) => <option key={key} value={key}>{key}</option>)}
+                      </select>
+                      <span className="mt-1 block text-[10px] font-normal leading-4 text-slate-400">Copied as a snapshot when this form is assigned to a linked candidate account.</span>
                     </label>
                     <div className="rounded-lg border border-slate-200 bg-white p-3 shadow-sm">
                       <div className="flex items-start justify-between gap-2">

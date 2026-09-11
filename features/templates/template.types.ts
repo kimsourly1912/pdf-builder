@@ -21,6 +21,7 @@ export type TemplateAnnotation = {
   color: string;
   recipientRoleId?: string;
   fieldKey?: string;
+  prefillKey?: import("@/features/resumes/resume.types").CandidatePrefillKey;
   labelBinding?: import("@/features/templates/label-binding").LabelBinding;
   [key: string]: unknown;
 };
@@ -47,4 +48,5 @@ export type TemplateFillPayload = {
     email: string;
     accountType: "candidate" | "employee";
   };
+  initialValues?: Record<string, unknown>;
 };

@@ -2,7 +2,7 @@
 
 A browser-first PDF editor built with React, TypeScript, Vinext, PDF.js, PDF-Lib, Cloudflare Workers, D1, and R2.
 
-PDF editing and content extraction run locally in the browser. D1 and R2 are used only for reusable templates, recipient links, and completed submissions.
+PDF editing and selectable-text extraction run locally in the browser. D1 and private R2 storage persist reusable templates, candidate resumes, recipient links, and completed submissions.
 
 ## Features
 
@@ -18,6 +18,11 @@ PDF editing and content extraction run locally in the browser. D1 and R2 are use
 - Expiring and revocable recipient links with configurable submission limits
 - Idempotent submission retries that cannot create duplicate records
 - Mobile layout, pinch zoom, keyboard shortcuts, undo, and redo
+- Private, PDF-only Resume Library with multi-file intake and authorized preview/download
+- Automatic extraction of common candidate details from selectable PDF text
+- Candidate duplicate suggestions using normalized email and phone
+- Editable candidate review with confidence, source-page, and verification state
+- Explicit `candidate.*` template prefill keys copied as immutable assignment snapshots
 
 ## Requirements
 

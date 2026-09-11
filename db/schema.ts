@@ -213,6 +213,7 @@ export const formAssignments = sqliteTable(
     roleName: text("role_name").notNull(),
     roleColor: text("role_color").notNull(),
     accessToken: text("access_token").notNull(),
+    initialValuesJson: text("initial_values_json").notNull().default("{}"),
     status: text("status").notNull().default("assigned"),
     assignedAt: text("assigned_at").notNull(),
     completedAt: text("completed_at"),
@@ -227,6 +228,128 @@ export const formAssignments = sqliteTable(
     ),
     index("form_assignments_user_status_idx").on(table.userId, table.status),
     index("form_assignments_template_idx").on(table.templateId),
+  ],
+);
+
+export const candidates = sqliteTable(
+  "candidates",
+  {
+    id: text("id").primaryKey(),
+    ownerEmail: text("owner_email").notNull(),
+    userId: text("user_id").references(() => user.id, { onDelete: "set null" }),
+    fullName: text("full_name").notNull().default(""),
+    firstName: text("first_name").notNull().default(""),
+    lastName: text("last_name").notNull().default(""),
+    email: text("email").notNull().default(""),
+    normalizedEmail: text("normalized_email").notNull().default(""),
+    phone: text("phone").notNull().default(""),
+    normalizedPhone: text("normalized_phone").notNull().default(""),
+    address: text("address").notNull().default(""),
+    dateOfBirth: text("date_of_birth"),
+    gender: text("gender").notNull().default(""),
+    nationality: text("nationality").notNull().default(""),
+    currentTitle: text("current_title").notNull().default(""),
+    professionalSummary: text("professional_summary").notNull().default(""),
+    skillsJson: text("skills_json").notNull().default("[]"),
+    workExperienceJson: text("work_experience_json").notNull().default("[]"),
+    educationJson: text("education_json").notNull().default("[]"),
+    certificationsJson: text("certifications_json").notNull().default("[]"),
+    languagesJson: text("languages_json").notNull().default("[]"),
+    linksJson: text("links_json").notNull().default("[]"),
+    verificationStatus: text("verification_status").notNull().default("extracted"),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("candidates_user_unique").on(table.userId),
+    index("candidates_owner_updated_idx").on(table.ownerEmail, table.updatedAt),
+    index("candidates_owner_email_idx").on(table.ownerEmail, table.normalizedEmail),
+    index("candidates_owner_phone_idx").on(table.ownerEmail, table.normalizedPhone),
+  ],
+);
+
+export const resumes = sqliteTable(
+  "resumes",
+  {
+    id: text("id").primaryKey(),
+    ownerEmail: text("owner_email").notNull(),
+    candidateId: text("candidate_id").references(() => candidates.id, { onDelete: "set null" }),
+    duplicateCandidateId: text("duplicate_candidate_id").references(() => candidates.id, { onDelete: "set null" }),
+    fileKey: text("file_key").notNull(),
+    fileName: text("file_name").notNull(),
+    fileSize: integer("file_size").notNull(),
+    contentType: text("content_type").notNull(),
+    checksum: text("checksum").notNull(),
+    pageCount: integer("page_count").notNull(),
+    source: text("source").notNull(),
+    appliedPosition: text("applied_position").notNull().default(""),
+    receivedDate: text("received_date").notNull(),
+    note: text("note").notNull().default(""),
+    status: text("status").notNull(),
+    errorMessage: text("error_message"),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("resumes_file_key_unique").on(table.fileKey),
+    uniqueIndex("resumes_owner_checksum_unique").on(table.ownerEmail, table.checksum),
+    index("resumes_owner_status_updated_idx").on(table.ownerEmail, table.status, table.updatedAt),
+    index("resumes_owner_source_received_idx").on(table.ownerEmail, table.source, table.receivedDate),
+    index("resumes_candidate_idx").on(table.candidateId),
+  ],
+);
+
+export const resumeExtractions = sqliteTable(
+  "resume_extractions",
+  {
+    id: text("id").primaryKey(),
+    resumeId: text("resume_id").notNull().references(() => resumes.id, { onDelete: "cascade" }),
+    versionNumber: integer("version_number").notNull(),
+    engine: text("engine").notNull(),
+    status: text("status").notNull(),
+    fieldsJson: text("fields_json").notNull(),
+    pageCount: integer("page_count").notNull(),
+    scannedPageCount: integer("scanned_page_count").notNull(),
+    createdByEmail: text("created_by_email").notNull(),
+    createdAt: text("created_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("resume_extractions_version_unique").on(table.resumeId, table.versionNumber),
+    index("resume_extractions_resume_idx").on(table.resumeId),
+  ],
+);
+
+export const candidateResumeLinks = sqliteTable(
+  "candidate_resume_links",
+  {
+    id: text("id").primaryKey(),
+    candidateId: text("candidate_id").notNull().references(() => candidates.id, { onDelete: "cascade" }),
+    resumeId: text("resume_id").notNull().references(() => resumes.id, { onDelete: "cascade" }),
+    linkType: text("link_type").notNull(),
+    createdByEmail: text("created_by_email").notNull(),
+    createdAt: text("created_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("candidate_resume_links_resume_unique").on(table.resumeId),
+    index("candidate_resume_links_candidate_idx").on(table.candidateId),
+  ],
+);
+
+export const resumeProcessingJobs = sqliteTable(
+  "resume_processing_jobs",
+  {
+    id: text("id").primaryKey(),
+    resumeId: text("resume_id").notNull().references(() => resumes.id, { onDelete: "cascade" }),
+    attemptNumber: integer("attempt_number").notNull(),
+    status: text("status").notNull(),
+    errorCode: text("error_code"),
+    startedAt: text("started_at").notNull(),
+    completedAt: text("completed_at"),
+    createdAt: text("created_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("resume_processing_jobs_attempt_unique").on(table.resumeId, table.attemptNumber),
+    index("resume_processing_jobs_resume_idx").on(table.resumeId),
   ],
 );
 

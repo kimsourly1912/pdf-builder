@@ -1,7 +1,8 @@
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq, isNull } from "drizzle-orm";
 
 import { getDb } from "@/db";
 import {
+  candidates,
   formAssignments,
   recipientLinks,
   recipientProfiles,
@@ -9,6 +10,7 @@ import {
   templateVersions,
   user,
 } from "@/db/schema";
+import { normalizeEmail } from "@/features/resumes/resume-extraction";
 import { toUtcIsoString } from "@/features/templates/date-time";
 import {
   isRecipientAccountType,
@@ -142,14 +144,30 @@ export async function POST(request: Request) {
     });
     createdUserId = created.user.id;
     const now = new Date().toISOString();
-    await getDb().insert(recipientProfiles).values({
-      userId: created.user.id,
-      accountType,
-      mustChangePassword: true,
-      createdByEmail: ownerEmail,
-      createdAt: now,
-      updatedAt: now,
-    });
+    const db = getDb();
+    const [candidate] = accountType === "candidate"
+      ? await db.select({ id: candidates.id }).from(candidates).where(and(
+          eq(candidates.ownerEmail, ownerEmail),
+          eq(candidates.normalizedEmail, normalizeEmail(email)),
+          isNull(candidates.userId),
+        )).orderBy(desc(candidates.updatedAt)).limit(1)
+      : [];
+    const createProfile = db.insert(recipientProfiles).values({
+        userId: created.user.id,
+        accountType,
+        mustChangePassword: true,
+        createdByEmail: ownerEmail,
+        createdAt: now,
+        updatedAt: now,
+      });
+    if (candidate) {
+      await db.batch([
+        createProfile,
+        db.update(candidates).set({ userId: created.user.id, updatedAt: now }).where(and(eq(candidates.id, candidate.id), eq(candidates.ownerEmail, ownerEmail))),
+      ]);
+    } else {
+      await createProfile;
+    }
 
     return Response.json(
       {

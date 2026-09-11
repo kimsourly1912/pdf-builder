@@ -120,7 +120,10 @@ export function RecipientFill(props: { token: string }) {
         }
         setPdfBytes(bytes);
         setPdfDocument(document);
-        setValues(initialValues(nextPayload.template.annotations));
+        setValues({
+          ...initialValues(nextPayload.template.annotations),
+          ...(nextPayload.initialValues ?? {}),
+        });
       } catch (cause) {
         if (active) setError(cause instanceof Error ? cause.message : "This document could not be loaded.");
       } finally {

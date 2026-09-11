@@ -295,6 +295,7 @@ export function TemplatesDashboard(props: { displayName: string }) {
           <div className="flex items-center gap-2">
             <span className="hidden max-w-48 truncate text-xs text-slate-500 sm:block">{props.displayName}</span>
             <SignOutButton />
+            <Button asChild variant="outline" size="sm"><Link href="/resumes"><FileText className="size-4" /> Resumes</Link></Button>
             <Button asChild variant="outline" size="sm"><Link href="/accounts"><UsersRound className="size-4" /> Accounts</Link></Button>
             <Button asChild size="sm" className="bg-blue-600 hover:bg-blue-700"><Link href="/"><FileText className="size-4" /> New template</Link></Button>
           </div>

@@ -2,6 +2,7 @@ import { and, eq } from "drizzle-orm";
 
 import { getDatabaseBinding, getDb } from "@/db";
 import {
+  formAssignments,
   recipientLinks,
   submissions,
   templates,
@@ -93,6 +94,9 @@ export async function GET(
             email: assignedAccount.session.user.email,
             accountType: assignedAccount.profile.accountType,
           }
+        : undefined,
+      initialValues: assignedAccount
+        ? parseRecord(fillContext.assignment?.initialValuesJson)
         : undefined,
     };
     return Response.json(payload, {
@@ -379,6 +383,7 @@ async function findFillContext(token: string) {
       link: recipientLinks,
       template: templates,
       version: templateVersions,
+      assignment: formAssignments,
     })
     .from(recipientLinks)
     .innerJoin(templates, eq(recipientLinks.templateId, templates.id))
@@ -386,9 +391,25 @@ async function findFillContext(token: string) {
       templateVersions,
       eq(recipientLinks.templateVersionId, templateVersions.id),
     )
+    .leftJoin(
+      formAssignments,
+      eq(recipientLinks.id, formAssignments.recipientLinkId),
+    )
     .where(eq(recipientLinks.tokenHash, tokenHash))
     .limit(1);
   return row ?? null;
+}
+
+function parseRecord(value: string | null | undefined): Record<string, unknown> {
+  if (!value) return {};
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    return parsed && !Array.isArray(parsed) && typeof parsed === "object"
+      ? parsed as Record<string, unknown>
+      : {};
+  } catch {
+    return {};
+  }
 }
 
 async function findIdempotentSubmission(

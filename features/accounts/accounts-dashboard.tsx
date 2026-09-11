@@ -10,6 +10,7 @@ import {
   RefreshCw,
   Send,
   ShieldCheck,
+  FileText,
   UserPlus,
   UsersRound,
 } from "lucide-react";
@@ -266,6 +267,7 @@ export function AccountsDashboard(props: { displayName: string }) {
               {props.displayName}
             </span>
             <SignOutButton />
+            <Button asChild variant="outline" size="sm"><Link href="/resumes"><FileText className="size-4" /> Resumes</Link></Button>
           </div>
         </div>
       </header>

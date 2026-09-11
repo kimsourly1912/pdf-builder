@@ -2,6 +2,7 @@ import { and, eq } from "drizzle-orm";
 
 import { getDb } from "@/db";
 import {
+  candidates,
   formAssignments,
   recipientLinks,
   recipientProfiles,
@@ -9,6 +10,8 @@ import {
   templateVersions,
   user,
 } from "@/db/schema";
+import { buildCandidatePrefillValues } from "@/features/resumes/candidate-prefill";
+import type { TemplateAnnotation } from "@/features/templates/template.types";
 import {
   createRecipientToken,
   hashRecipientToken,
@@ -34,9 +37,10 @@ export async function POST(
 
     const db = getDb();
     const [account] = await db
-      .select({ id: user.id })
+      .select({ id: user.id, candidate: candidates })
       .from(recipientProfiles)
       .innerJoin(user, eq(recipientProfiles.userId, user.id))
+      .leftJoin(candidates, and(eq(candidates.userId, user.id), eq(candidates.ownerEmail, ownerEmail)))
       .where(
         and(
           eq(recipientProfiles.userId, userId),
@@ -70,6 +74,8 @@ export async function POST(
     const now = new Date().toISOString();
     const linkId = crypto.randomUUID();
     const assignmentId = crypto.randomUUID();
+    const annotations = parseArray<TemplateAnnotation>(template.version.annotationsJson);
+    const initialValues = buildCandidatePrefillValues(account.candidate, annotations);
     await db.batch([
       db.insert(recipientLinks).values({
         id: linkId,
@@ -97,6 +103,7 @@ export async function POST(
         roleName: role.name,
         roleColor: role.color,
         accessToken: token,
+        initialValuesJson: JSON.stringify(initialValues),
         status: "assigned",
         assignedAt: now,
         updatedAt: now,
@@ -130,5 +137,14 @@ export async function POST(
         : "The form could not be assigned.",
       duplicate ? 409 : 500,
     );
+  }
+}
+
+function parseArray<T>(value: string): T[] {
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    return Array.isArray(parsed) ? parsed as T[] : [];
+  } catch {
+    return [];
   }
 }

@@ -10,7 +10,7 @@
     "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\"",
     "build": "npm run clean && vinext build",
     "start": "vinext start",
-    "test": "npm run build && node --experimental-loader ./tests/cloudflare-loader.mjs --test tests/*.test.mjs",
+    "test": "npm run build && node --experimental-loader ./tests/cloudflare-loader.mjs --test --test-concurrency=1 tests/*.test.mjs",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
     "db:generate": "drizzle-kit generate",
     "db:migrate:local": "wrangler d1 migrations apply DB --local --config wrangler.dev.jsonc",
