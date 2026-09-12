@@ -78,6 +78,7 @@ type DataTableProps<TData extends RowData> = {
   initialPageSize?: number
   toolbarActions?: ReactNode
   hideColumnVisibility?: boolean
+  surface?: "card" | "embedded"
   className?: string
   rowClassName?: (row: TData) => string | undefined
 }
@@ -133,6 +134,7 @@ function DataTable<TData extends RowData>(props: DataTableProps<TData>) {
     initialPageSize = 10,
     toolbarActions,
     hideColumnVisibility = false,
+    surface = "card",
     className,
     rowClassName,
   } = props
@@ -196,9 +198,14 @@ function DataTable<TData extends RowData>(props: DataTableProps<TData>) {
   const pageCount = table.getPageCount()
   const pageIndex = table.state.pagination.pageIndex
 
-  return (
-    <Card className={cn("gap-4 overflow-hidden p-4", className)}>
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+  const content = (
+    <>
+      <div
+        className={cn(
+          "flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between",
+          surface === "embedded" && "px-4 py-3",
+        )}
+      >
         <div className="w-full sm:max-w-sm">
           {filter ? (
             <InputGroup>
@@ -249,7 +256,7 @@ function DataTable<TData extends RowData>(props: DataTableProps<TData>) {
         </div>
       </div>
 
-      <div className="overflow-x-auto rounded-md border">
+      <div className={cn("overflow-x-auto", surface === "card" && "rounded-md border")}>
         <Table>
           <TableCaption className="sr-only">{caption}</TableCaption>
           <TableHeader className="bg-muted/40">
@@ -262,7 +269,7 @@ function DataTable<TData extends RowData>(props: DataTableProps<TData>) {
                   return (
                     <TableHead
                       key={header.id}
-                      className={cn("h-11 px-4 text-xs", meta?.headerClassName)}
+                    className={cn("h-10 px-4 text-xs", meta?.headerClassName)}
                     >
                       {header.isPlaceholder
                         ? null
@@ -288,7 +295,7 @@ function DataTable<TData extends RowData>(props: DataTableProps<TData>) {
                     return (
                       <TableCell
                         key={cell.id}
-                        className={cn("px-4 py-3", meta?.className)}
+                        className={cn("px-4 py-2.5", meta?.className)}
                       >
                         <table.FlexRender cell={cell} />
                       </TableCell>
@@ -324,7 +331,7 @@ function DataTable<TData extends RowData>(props: DataTableProps<TData>) {
         </Table>
       </div>
 
-      <div className="flex flex-col gap-3 text-sm sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex flex-col gap-3 border-t px-4 py-3 text-sm sm:flex-row sm:items-center sm:justify-between">
         <p className="text-muted-foreground" aria-live="polite">
           {enableRowSelection
             ? `${table.getFilteredSelectedRowModel().rows.length} of ${filteredRows.length} row(s) selected.`
@@ -358,6 +365,20 @@ function DataTable<TData extends RowData>(props: DataTableProps<TData>) {
           </div>
         </div>
       </div>
+    </>
+  )
+
+  if (surface === "embedded") {
+    return (
+      <div className={cn("flex min-w-0 flex-col gap-0", className)}>
+        {content}
+      </div>
+    )
+  }
+
+  return (
+    <Card className={cn("gap-4 overflow-hidden p-4", className)}>
+      {content}
     </Card>
   )
 }

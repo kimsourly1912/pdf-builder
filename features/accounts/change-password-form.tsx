@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import { FormEvent, useState } from "react";
 
 import { Button } from "@/components/ui/button";
+import { FeedbackAlert } from "@/components/patterns/feedback-alert";
+import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
@@ -42,19 +44,21 @@ export function ChangePasswordForm(props: { name: string }) {
   }
 
   return (
-    <main className="flex min-h-[100dvh] items-center justify-center bg-slate-100 p-5 text-slate-950">
-      <section className="w-full max-w-md rounded-3xl border border-slate-200 bg-white p-8 shadow-xl shadow-slate-900/5">
-        <span className="flex size-12 items-center justify-center rounded-2xl bg-blue-50 text-blue-600"><KeyRound className="size-5" /></span>
-        <h1 className="mt-5 text-2xl font-bold tracking-tight">Create your private password</h1>
-        <p className="mt-2 text-sm leading-6 text-slate-500">Welcome, {props.name}. Replace the temporary password before opening assigned forms.</p>
+    <main className="flex min-h-[100dvh] items-center justify-center bg-background p-5 text-foreground">
+      <Card className="w-full max-w-md gap-0 py-0 shadow-sm">
+        <CardContent className="p-8">
+        <span className="flex size-11 items-center justify-center rounded-lg bg-primary/10 text-primary"><KeyRound className="size-5" /></span>
+        <h1 className="mt-5 text-2xl font-semibold tracking-tight">Create your private password</h1>
+        <p className="mt-2 text-sm leading-6 text-muted-foreground">Welcome, {props.name}. Replace the temporary password before opening assigned forms.</p>
         <form className="mt-7 space-y-4" onSubmit={submit}>
           <div className="space-y-2"><Label htmlFor="current-password">Temporary password</Label><Input id="current-password" type="password" autoComplete="current-password" minLength={12} required value={currentPassword} onChange={(event) => setCurrentPassword(event.target.value)} /></div>
-          <div className="space-y-2"><Label htmlFor="new-password">New password</Label><Input id="new-password" type="password" autoComplete="new-password" minLength={12} required value={newPassword} onChange={(event) => setNewPassword(event.target.value)} /><p className="text-xs leading-5 text-slate-400">Use at least 12 characters with uppercase, lowercase, number, and symbol.</p></div>
+          <div className="space-y-2"><Label htmlFor="new-password">New password</Label><Input id="new-password" type="password" autoComplete="new-password" minLength={12} required value={newPassword} onChange={(event) => setNewPassword(event.target.value)} /><p className="text-xs leading-5 text-muted-foreground">Use at least 12 characters with uppercase, lowercase, number, and symbol.</p></div>
           <div className="space-y-2"><Label htmlFor="confirm-password">Confirm new password</Label><Input id="confirm-password" type="password" autoComplete="new-password" minLength={12} required value={confirmation} onChange={(event) => setConfirmation(event.target.value)} /></div>
-          {error && <p role="alert" className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-medium text-rose-700">{error}</p>}
-          <Button type="submit" disabled={submitting} className="h-11 w-full bg-blue-600 hover:bg-blue-700">{submitting ? <LoaderCircle className="size-4 animate-spin" /> : <KeyRound className="size-4" />}{submitting ? "Changing password…" : "Save password and continue"}</Button>
+          {error && <FeedbackAlert tone="error" title="Password could not be changed" description={error} />}
+          <Button type="submit" disabled={submitting} className="h-11 w-full">{submitting ? <LoaderCircle className="size-4 animate-spin" /> : <KeyRound className="size-4" />}{submitting ? "Changing password…" : "Save password and continue"}</Button>
         </form>
-      </section>
+        </CardContent>
+      </Card>
     </main>
   );
 }

@@ -1,7 +1,6 @@
 "use client";
 
 import {
-  ArrowLeft,
   Check,
   ClipboardCopy,
   KeyRound,
@@ -10,15 +9,31 @@ import {
   RefreshCw,
   Send,
   ShieldCheck,
-  FileText,
   UserPlus,
   UsersRound,
 } from "lucide-react";
-import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-import { SignOutButton } from "@/components/auth/sign-out-button";
+import { AppShell } from "@/components/patterns/app-shell";
+import { FeedbackAlert } from "@/components/patterns/feedback-alert";
+import { MetricCard } from "@/components/patterns/metric-card";
+import { PageHeader } from "@/components/patterns/page-header";
+import { StatusBadge } from "@/components/patterns/status-badge";
 import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+} from "@/components/ui/card";
+import {
+  Empty,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from "@/components/ui/empty";
+import { Input } from "@/components/ui/input";
+import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   buildAccountCredentialMessage,
   buildTelegramShareUrl,
@@ -252,114 +267,87 @@ export function AccountsDashboard(props: { displayName: string }) {
   }
 
   return (
-    <main className="min-h-[100dvh] bg-slate-100 text-slate-950">
-      <header className="sticky top-0 z-20 border-b border-slate-200 bg-white/95 backdrop-blur">
-        <div className="mx-auto flex min-h-16 max-w-7xl items-center justify-between gap-3 px-4 py-2 sm:px-6">
-          <div className="flex min-w-0 items-center gap-3">
-            <Button asChild variant="ghost" size="icon-sm">
-              <Link href="/templates" aria-label="Back to templates">
-                <ArrowLeft />
-              </Link>
+    <AppShell displayName={props.displayName}>
+        <PageHeader
+          title="Accounts"
+          description="Create candidate and employee access, then assign published forms from one workspace."
+          actions={
+            <Button type="button" variant="outline" disabled={loading} onClick={() => void loadData()}>
+              <RefreshCw className={loading ? "animate-spin" : ""} /> Refresh
             </Button>
-            <div className="min-w-0">
-              <p className="text-sm font-bold text-slate-900">PDF Studio</p>
-              <p className="truncate text-xs text-slate-400">
-                Candidate and employee accounts
-              </p>
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="hidden max-w-48 truncate text-xs text-slate-500 sm:block">
-              {props.displayName}
-            </span>
-            <SignOutButton />
-            <Button asChild variant="outline" size="sm"><Link href="/resumes"><FileText className="size-4" /> Resumes</Link></Button>
-          </div>
-        </div>
-      </header>
-
-      <div className="mx-auto max-w-7xl px-4 py-7 sm:px-6">
+          }
+        />
         <section className="grid gap-3 sm:grid-cols-2">
-          <SummaryCard
+          <MetricCard
             icon={<UsersRound />}
             value={accounts.length}
             label="Recipient accounts"
+            tone="primary"
           />
-          <SummaryCard
+          <MetricCard
             icon={<ShieldCheck />}
             value={assignmentCount}
             label="Form assignments"
+            tone="success"
           />
         </section>
 
-        {(error || notice) && (
-          <p
-            role={error ? "alert" : "status"}
-            className={`mt-5 rounded-xl border px-4 py-3 text-sm font-medium ${
-              error
-                ? "border-rose-200 bg-rose-50 text-rose-700"
-                : "border-emerald-200 bg-emerald-50 text-emerald-700"
-            }`}
-          >
-            {error || notice}
-          </p>
-        )}
+        {error && <FeedbackAlert tone="error" title="Something went wrong" description={error} />}
+        {notice && <FeedbackAlert tone="success" title="Updated successfully" description={notice} />}
 
-        <div className="mt-5 grid items-start gap-5 xl:grid-cols-[360px_1fr]">
-          <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm xl:sticky xl:top-20">
+        <div className="grid items-start gap-5 xl:grid-cols-[360px_minmax(0,1fr)]">
+          <Card className="gap-0 py-0 shadow-none xl:sticky xl:top-20">
+            <CardContent className="p-5">
             <div className="flex items-center gap-3">
-              <span className="flex size-10 items-center justify-center rounded-xl bg-blue-50 text-blue-600">
-                <UserPlus className="size-5" />
+              <span className="flex size-9 items-center justify-center rounded-md bg-primary/10 text-primary">
+                <UserPlus className="size-4" />
               </span>
               <div>
-                <h1 className="text-base font-bold">Create account</h1>
-                <p className="text-xs text-slate-400">Temporary password required</p>
+                <h1 className="text-base font-semibold">Create account</h1>
+                <p className="text-xs text-muted-foreground">Temporary password required</p>
               </div>
             </div>
             <form className="mt-5 space-y-4" onSubmit={createAccount}>
-              <Field label="Full name">
-                <input
+              <FormField label="Full name">
+                <Input
                   value={name}
                   onChange={(event) => setName(event.target.value)}
                   maxLength={120}
                   required
                   autoComplete="off"
-                  className={inputClassName}
                 />
-              </Field>
-              <Field label="Email">
-                <input
+              </FormField>
+              <FormField label="Email">
+                <Input
                   type="email"
                   value={email}
                   onChange={(event) => setEmail(event.target.value)}
                   maxLength={254}
                   required
                   autoComplete="off"
-                  className={inputClassName}
                 />
-              </Field>
-              <Field label="Account type">
-                <select
+              </FormField>
+              <FormField label="Account type">
+                <NativeSelect
                   value={accountType}
                   onChange={(event) =>
                     setAccountType(event.target.value as RecipientAccountType)
                   }
-                  className={inputClassName}
+                  className="w-full"
                 >
-                  <option value="candidate">Candidate</option>
-                  <option value="employee">Employee</option>
-                </select>
-              </Field>
-              <Field label="Temporary password">
+                  <NativeSelectOption value="candidate">Candidate</NativeSelectOption>
+                  <NativeSelectOption value="employee">Employee</NativeSelectOption>
+                </NativeSelect>
+              </FormField>
+              <FormField label="Temporary password">
                 <div className="flex gap-2">
-                  <input
+                  <Input
                     value={password}
                     onChange={(event) => setPassword(event.target.value)}
                     minLength={12}
                     maxLength={128}
                     required
                     autoComplete="new-password"
-                    className={inputClassName}
                   />
                   <Button
                     type="button"
@@ -371,14 +359,14 @@ export function AccountsDashboard(props: { displayName: string }) {
                     <RefreshCw />
                   </Button>
                 </div>
-                <span className="mt-1.5 block text-[11px] font-normal leading-4 text-slate-400">
+                <span className="mt-1.5 block text-[11px] font-normal leading-4 text-muted-foreground">
                   At least 12 characters with uppercase, lowercase, number, and symbol.
                 </span>
-              </Field>
+              </FormField>
               <Button
                 type="submit"
                 disabled={creating || Boolean(credentials)}
-                className="h-10 w-full bg-blue-600 hover:bg-blue-700"
+                className="h-10 w-full"
               >
                 {creating ? (
                   <LoaderCircle className="size-4 animate-spin" />
@@ -394,20 +382,20 @@ export function AccountsDashboard(props: { displayName: string }) {
             </form>
 
             {credentials && (
-              <div className="mt-5 rounded-xl border border-amber-200 bg-amber-50 p-4">
+              <div className="mt-5 rounded-lg border border-warning/25 bg-warning/10 p-4">
                 <div className="flex items-start gap-3">
-                  <KeyRound className="mt-0.5 size-4 shrink-0 text-amber-700" />
+                  <KeyRound className="mt-0.5 size-4 shrink-0 text-warning" />
                   <div className="min-w-0">
-                    <p className="text-xs font-bold text-amber-900">
+                    <p className="text-xs font-semibold">
                       Save these credentials now
                     </p>
-                    <p className="mt-1 text-[11px] leading-4 text-amber-700">
+                    <p className="mt-1 text-xs leading-5 text-muted-foreground">
                       The temporary password will not be shown again after you
                       dismiss this card.
                     </p>
                   </div>
                 </div>
-                <dl className="mt-3 space-y-2 rounded-lg bg-white/80 p-3 text-xs">
+                <dl className="mt-3 space-y-2 rounded-md border bg-background p-3 text-xs">
                   <CredentialRow label="Email" value={credentials.email} />
                   <CredentialRow
                     label="Password"
@@ -419,7 +407,7 @@ export function AccountsDashboard(props: { displayName: string }) {
                   <Button type="button" variant="outline" size="sm" onClick={() => void copyCredentials()}>
                     <ClipboardCopy className="size-3.5" /> Copy
                   </Button>
-                  <Button type="button" size="sm" className="bg-sky-600 hover:bg-sky-700" onClick={openTelegram}>
+                  <Button type="button" size="sm" onClick={openTelegram}>
                     <Send className="size-3.5" /> Telegram
                   </Button>
                 </div>
@@ -428,30 +416,32 @@ export function AccountsDashboard(props: { displayName: string }) {
                 </Button>
               </div>
             )}
-          </section>
+            </CardContent>
+          </Card>
 
           <section className="min-w-0">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
-                <h2 className="text-lg font-bold">Accounts</h2>
-                <p className="mt-1 text-xs text-slate-400">
+                <h2 className="text-base font-semibold">Recipient accounts</h2>
+                <p className="mt-1 text-sm text-muted-foreground">
                   Assign published template roles to each person.
                 </p>
               </div>
-              <Button type="button" variant="outline" size="sm" disabled={loading} onClick={() => void loadData()}>
-                <RefreshCw className={`size-4 ${loading ? "animate-spin" : ""}`} /> Refresh
-              </Button>
             </div>
             {loading ? (
-              <div className="flex min-h-72 items-center justify-center text-slate-400">
-                <LoaderCircle className="size-6 animate-spin" />
+              <div className="mt-5 space-y-3">
+                {[0, 1].map((item) => <Skeleton key={item} className="h-48 w-full rounded-xl" />)}
               </div>
             ) : accounts.length === 0 ? (
-              <div className="mt-5 flex min-h-72 flex-col items-center justify-center rounded-2xl border-2 border-dashed border-slate-200 bg-white text-center">
-                <UsersRound className="size-7 text-slate-400" />
-                <p className="mt-4 text-sm font-bold text-slate-700">No accounts yet</p>
-                <p className="mt-1 text-xs text-slate-400">Create the first candidate or employee account.</p>
-              </div>
+              <Card className="mt-5 shadow-none">
+                <Empty className="min-h-72">
+                  <EmptyHeader>
+                    <EmptyMedia variant="icon"><UsersRound /></EmptyMedia>
+                    <EmptyTitle>No accounts yet</EmptyTitle>
+                    <EmptyDescription>Create the first candidate or employee account.</EmptyDescription>
+                  </EmptyHeader>
+                </Empty>
+              </Card>
             ) : (
               <div className="mt-5 space-y-4">
                 {accounts.map((account) => (
@@ -470,8 +460,7 @@ export function AccountsDashboard(props: { displayName: string }) {
             )}
           </section>
         </div>
-      </div>
-    </main>
+    </AppShell>
   );
 }
 
@@ -488,76 +477,72 @@ function AccountCard(props: {
     (template) => template.id === props.draft.templateId,
   );
   return (
-    <article className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+    <Card className="gap-0 overflow-hidden py-0 shadow-none">
       <div className="flex flex-wrap items-start justify-between gap-3 p-5">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
-            <h3 className="truncate text-base font-bold">{props.account.name}</h3>
-            <span className="rounded-full bg-blue-50 px-2 py-1 text-[10px] font-bold uppercase text-blue-700">
-              {props.account.accountType}
-            </span>
+            <h3 className="truncate text-base font-semibold">{props.account.name}</h3>
+            <StatusBadge label={props.account.accountType} tone="info" />
             {props.account.mustChangePassword && (
-              <span className="rounded-full bg-amber-50 px-2 py-1 text-[10px] font-bold uppercase text-amber-700">
-                Password change pending
-              </span>
+              <StatusBadge label="Password change pending" tone="warning" />
             )}
           </div>
-          <p className="mt-1 truncate text-xs text-slate-500">{props.account.email}</p>
-          <p className="mt-1 text-[11px] text-slate-400">
+          <p className="mt-1 truncate text-xs text-muted-foreground">{props.account.email}</p>
+          <p className="mt-1 text-[11px] text-muted-foreground">
             Created {formatLocalDateTime(props.account.createdAt, { timeZone: props.timeZone })}
           </p>
         </div>
-        <span className="text-xs font-semibold text-slate-400">
+        <span className="text-xs font-medium text-muted-foreground">
           {props.account.assignments.length} assigned
         </span>
       </div>
 
-      <div className="border-y border-slate-100 bg-slate-50/70 p-4">
-        <p className="text-xs font-bold text-slate-600">Assign a form</p>
+      <div className="border-y bg-muted/30 p-4">
+        <p className="text-xs font-semibold">Assign a form</p>
         <div className="mt-2 grid gap-2 sm:grid-cols-[1fr_1fr_auto]">
-          <select
+          <NativeSelect
             value={props.draft.templateId}
             onChange={(event) =>
               props.onDraftChange({ templateId: event.target.value, roleId: "" })
             }
-            className={inputClassName}
+            className="w-full"
           >
-            <option value="">Choose template</option>
+            <NativeSelectOption value="">Choose template</NativeSelectOption>
             {props.templates.map((template) => (
-              <option key={template.id} value={template.id}>
+              <NativeSelectOption key={template.id} value={template.id}>
                 {template.name} · v{template.versionNumber}
-              </option>
+              </NativeSelectOption>
             ))}
-          </select>
-          <select
+          </NativeSelect>
+          <NativeSelect
             value={props.draft.roleId}
             disabled={!selectedTemplate}
             onChange={(event) => props.onDraftChange({ roleId: event.target.value })}
-            className={inputClassName}
+            className="w-full"
           >
-            <option value="">Choose role</option>
+            <NativeSelectOption value="">Choose role</NativeSelectOption>
             {(selectedTemplate?.currentRoles ?? selectedTemplate?.filterRoles)?.map((role) => (
-              <option key={role.id} value={role.id}>{role.name}</option>
+              <NativeSelectOption key={role.id} value={role.id}>{role.name}</NativeSelectOption>
             ))}
-          </select>
+          </NativeSelect>
           <Button
             type="button"
             disabled={props.busy || !props.draft.templateId || !props.draft.roleId}
             onClick={props.onAssign}
-            className="h-10 bg-blue-600 hover:bg-blue-700"
+            className="h-9"
           >
             {props.busy ? <LoaderCircle className="size-4 animate-spin" /> : <Plus className="size-4" />}
             Assign
           </Button>
         </div>
         {props.templates.length === 0 && (
-          <p className="mt-2 text-[11px] text-amber-700">Create and save a template before assigning forms.</p>
+          <p className="mt-2 text-[11px] text-warning">Create and save a template before assigning forms.</p>
         )}
       </div>
 
       <div className="p-4">
         {props.account.assignments.length === 0 ? (
-          <p className="py-3 text-center text-xs text-slate-400">No forms assigned.</p>
+          <p className="py-3 text-center text-xs text-muted-foreground">No forms assigned.</p>
         ) : (
           <div className="space-y-2">
             {props.account.assignments.map((assignment) => (
@@ -570,7 +555,7 @@ function AccountCard(props: {
           </div>
         )}
       </div>
-    </article>
+    </Card>
   );
 }
 
@@ -579,48 +564,38 @@ function AccountAssignmentRow(props: {
   timeZone: string;
 }) {
   const display = assignmentDisplay(props.assignment.status);
-  const statusClassName =
+  const statusTone =
     display.state === "completed"
-      ? "bg-emerald-50 text-emerald-700"
+      ? "success"
       : display.state === "cancelled"
-        ? "bg-amber-50 text-amber-700"
+        ? "warning"
         : display.state === "active"
-          ? "bg-blue-50 text-blue-700"
-          : "bg-slate-100 text-slate-600";
+          ? "info"
+          : "neutral";
   return (
-    <div className="flex flex-wrap items-center gap-3 rounded-xl border border-slate-100 p-3">
+    <div className="flex flex-wrap items-center gap-3 rounded-lg border p-3">
       <span className="size-2.5 shrink-0 rounded-full" style={{ backgroundColor: props.assignment.roleColor }} />
       <div className="min-w-0 flex-1">
-        <p className="truncate text-xs font-bold text-slate-700">{props.assignment.templateName}</p>
-        <p className="mt-0.5 text-[11px] text-slate-400">v{props.assignment.versionNumber} · {props.assignment.roleName} · {formatLocalDateTime(props.assignment.assignedAt, { timeZone: props.timeZone })}</p>
+        <p className="truncate text-xs font-semibold">{props.assignment.templateName}</p>
+        <p className="mt-0.5 text-[11px] text-muted-foreground">v{props.assignment.versionNumber} · {props.assignment.roleName} · {formatLocalDateTime(props.assignment.assignedAt, { timeZone: props.timeZone })}</p>
       </div>
-      <span className={`flex items-center gap-1 rounded-full px-2 py-1 text-[10px] font-bold uppercase ${statusClassName}`} title={display.detail}>
-        {display.state === "completed" && <Check className="size-3" />}
-        {display.label}
-      </span>
+      <StatusBadge
+        label={display.label}
+        tone={statusTone}
+        icon={display.state === "completed" ? <Check /> : undefined}
+        className="text-[10px]"
+        title={display.detail}
+      />
     </div>
   );
 }
 
-function SummaryCard(props: {
-  icon: React.ReactNode;
-  value: number;
-  label: string;
-}) {
-  return (
-    <div className="flex items-center gap-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-      <span className="flex size-11 items-center justify-center rounded-xl bg-blue-50 text-blue-600 [&_svg]:size-5">{props.icon}</span>
-      <div><p className="text-2xl font-bold tabular-nums">{props.value}</p><p className="text-xs font-medium text-slate-400">{props.label}</p></div>
-    </div>
-  );
-}
-
-function Field(props: { label: string; children: React.ReactNode }) {
-  return <label className="block text-xs font-semibold text-slate-600">{props.label}{props.children}</label>;
+function FormField(props: { label: string; children: React.ReactNode }) {
+  return <label className="block space-y-1.5 text-xs font-semibold">{props.label}{props.children}</label>;
 }
 
 function CredentialRow(props: { label: string; value: string; mono?: boolean }) {
-  return <div><dt className="text-[10px] font-bold uppercase text-slate-400">{props.label}</dt><dd className={`mt-0.5 break-all text-slate-800 ${props.mono ? "font-mono" : ""}`}>{props.value}</dd></div>;
+  return <div><dt className="text-[10px] font-semibold uppercase text-muted-foreground">{props.label}</dt><dd className={`mt-0.5 break-all ${props.mono ? "font-mono" : ""}`}>{props.value}</dd></div>;
 }
 
 function buildCredentialMessage(
@@ -632,6 +607,3 @@ function buildCredentialMessage(
     loginUrl: `${origin}/sign-in?return_to=%2Fportal`,
   });
 }
-
-const inputClassName =
-  "mt-1.5 h-10 w-full min-w-0 rounded-lg border border-slate-200 bg-white px-3 text-sm font-normal text-slate-800 outline-none focus:border-blue-500 disabled:bg-slate-100 disabled:text-slate-400";

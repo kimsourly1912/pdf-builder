@@ -17,6 +17,7 @@ type StatusBadgeProps = {
   tone?: StatusTone;
   icon?: ReactNode;
   className?: string;
+  title?: string;
 };
 
 const toneClassNames: Record<StatusTone, string> = {
@@ -43,6 +44,7 @@ function StatusBadge(props: StatusBadgeProps) {
       data-slot="status-badge"
       variant="outline"
       className={cn("capitalize", toneClassNames[tone], props.className)}
+      title={props.title}
     >
       {props.icon ?? toneIcons[tone]}
       {props.label}

@@ -25,19 +25,19 @@ function MetricCard(props: MetricCardProps) {
   const tone = props.tone ?? "neutral";
 
   return (
-    <Card data-slot="metric-card" className={cn("gap-0 py-0", props.className)}>
-      <CardContent className="flex items-center gap-4 p-5">
+    <Card data-slot="metric-card" className={cn("gap-0 py-0 shadow-none", props.className)}>
+      <CardContent className="flex items-center gap-3 p-4">
         <span
           className={cn(
-            "flex size-10 shrink-0 items-center justify-center rounded-lg [&_svg]:size-4",
+            "flex size-9 shrink-0 items-center justify-center rounded-md [&_svg]:size-4",
             toneClassNames[tone],
           )}
         >
           {props.icon}
         </span>
         <div className="min-w-0">
-          <p className="text-2xl font-bold tabular-nums">{props.value}</p>
-          <p className="text-xs font-medium text-muted-foreground">
+          <p className="text-xl font-semibold leading-none tabular-nums">{props.value}</p>
+          <p className="mt-1 text-xs font-medium text-muted-foreground">
             {props.label}
           </p>
           {props.description && (

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { FormEvent, useState } from "react";
 
 import { Button } from "@/components/ui/button";
+import { FeedbackAlert } from "@/components/patterns/feedback-alert";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { authClient } from "@/lib/auth-client";
@@ -73,16 +74,11 @@ export function SignInForm(props: {
         />
       </div>
       {error && (
-        <p
-          role="alert"
-          className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-medium text-rose-700"
-        >
-          {error}
-        </p>
+        <FeedbackAlert tone="error" title="Sign in failed" description={error} />
       )}
       <Button
         type="submit"
-        className="h-11 w-full bg-blue-600 hover:bg-blue-700"
+        className="h-11 w-full"
         disabled={submitting}
       >
         {submitting ? (

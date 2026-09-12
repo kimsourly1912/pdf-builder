@@ -3,7 +3,6 @@
 import {
   Archive,
   ArchiveRestore,
-  ArrowLeft,
   Ban,
   Check,
   Copy,
@@ -22,7 +21,6 @@ import {
   SlidersHorizontal,
   Trash2,
   TriangleAlert,
-  UsersRound,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
@@ -30,6 +28,12 @@ import Image from "next/image";
 import type { ColumnDef } from "@tanstack/react-table";
 
 import { FeedbackAlert } from "@/components/patterns/feedback-alert";
+import { AppShell } from "@/components/patterns/app-shell";
+import {
+  DataView,
+  DataViewContent,
+  DataViewHeader,
+} from "@/components/patterns/data-view";
 import { MetricCard } from "@/components/patterns/metric-card";
 import { PageHeader } from "@/components/patterns/page-header";
 import { StatusBadge } from "@/components/patterns/status-badge";
@@ -91,7 +95,6 @@ import {
   PopoverTitle,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import { SignOutButton } from "@/components/auth/sign-out-button";
 import { formatCambodiaAddress } from "@/features/gazetteer/gazetteer";
 import {
   formatLocalDateTime,
@@ -463,33 +466,12 @@ export function TemplatesDashboard(props: { displayName: string }) {
   }
 
   return (
-    <main className="min-h-screen bg-background text-foreground">
-      <header className="sticky top-0 z-20 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
-        <div className="mx-auto flex min-h-16 max-w-7xl items-center justify-between gap-3 px-4 py-2 sm:px-6">
-          <div className="flex items-center gap-3">
-            <Button asChild variant="ghost" size="icon-sm"><Link href="/" aria-label="Back to editor"><ArrowLeft /></Link></Button>
-            <span className="flex size-9 items-center justify-center rounded-lg bg-primary text-primary-foreground"><FileText className="size-4" /></span>
-            <div className="min-w-0">
-              <p className="truncate text-sm font-semibold">PDF Studio</p>
-              <p className="hidden text-xs text-muted-foreground sm:block">Template workspace</p>
-            </div>
-          </div>
-          <div className="flex min-w-0 items-center gap-1 sm:gap-2">
-            <span className="hidden max-w-40 truncate text-xs text-muted-foreground lg:block">{props.displayName}</span>
-            <Button asChild variant="ghost" size="sm"><Link href="/resumes"><FileText className="size-4" /><span className="hidden sm:inline">Resumes</span></Link></Button>
-            <Button asChild variant="ghost" size="sm"><Link href="/accounts"><UsersRound className="size-4" /><span className="hidden sm:inline">Accounts</span></Link></Button>
-            <SignOutButton />
-          </div>
-        </div>
-      </header>
-
-      <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:py-10">
+    <AppShell displayName={props.displayName}>
         <PageHeader
-          eyebrow="HR forms"
           title="Templates"
           description="Create reusable PDF forms, manage recipient access, and review submissions from one workspace."
           actions={
-            <Button asChild size="lg">
+            <Button asChild>
               <Link href="/">
                 <FileText className="size-4" /> New template
               </Link>
@@ -497,7 +479,7 @@ export function TemplatesDashboard(props: { displayName: string }) {
           }
         />
 
-        <section className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <MetricCard label="Active templates" value={activeTemplates.length} icon={<FolderOpen />} tone="primary" />
           <MetricCard label="Archived templates" value={archivedTemplates.length} icon={<Archive />} tone="warning" />
           <MetricCard label="Recipient roles" value={totalRecipients} icon={<Link2 />} />
@@ -509,7 +491,6 @@ export function TemplatesDashboard(props: { displayName: string }) {
             tone="error"
             title="Something went wrong"
             description={error}
-            className="mt-6"
           />
         )}
         {notice && (
@@ -517,24 +498,25 @@ export function TemplatesDashboard(props: { displayName: string }) {
             tone="success"
             title="Updated successfully"
             description={notice}
-            className="mt-6"
           />
         )}
 
-        <Tabs value={activeView} onValueChange={(value) => { if (isDashboardView(value)) setActiveView(value); }} className="mt-8">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <TabsList className="grid h-auto w-full grid-cols-3 sm:w-auto">
+        <Tabs value={activeView} onValueChange={(value) => { if (isDashboardView(value)) setActiveView(value); }}>
+          <DataView>
+            <DataViewHeader>
+            <TabsList variant="line" className="grid h-auto w-full grid-cols-3 sm:w-auto">
               <TabsTrigger value="templates"><FolderOpen /> Templates <Badge variant="secondary" className="ml-1 hidden sm:inline-flex">{activeTemplates.length}</Badge></TabsTrigger>
               <TabsTrigger value="submissions"><Inbox /> Submissions <Badge variant="secondary" className="ml-1 hidden sm:inline-flex">{submissionTotal}</Badge></TabsTrigger>
               <TabsTrigger value="archived"><Archive /> Archived <Badge variant="secondary" className="ml-1 hidden sm:inline-flex">{archivedTemplates.length}</Badge></TabsTrigger>
             </TabsList>
             <Button type="button" variant="outline" size="sm" onClick={() => void loadData()} disabled={loading}><RefreshCw className={loading ? "animate-spin" : ""} /> Refresh</Button>
-          </div>
+            </DataViewHeader>
+            <DataViewContent>
 
-          <TabsContent value="templates" className="mt-2">
+          <TabsContent value="templates">
             {loading ? <DashboardSkeleton /> : <TemplateTable templates={activeTemplates} generatedLinks={generatedLinks} linkActionKey={linkActionKey} copiedLinkKey={copiedLinkKey} removingTemplateId={removingTemplateId} localTimeZone={localTimeZone} onRegenerate={regenerateLink} onRevoke={revokeLink} onCopy={copyGeneratedLink} onRequestRemove={setTemplatePendingRemoval} />}
           </TabsContent>
-          <TabsContent value="submissions" className="mt-2">
+          <TabsContent value="submissions">
             {loading ? <DashboardSkeleton /> : <div>
             <SubmissionFilterPanel
               templates={templates}
@@ -552,7 +534,7 @@ export function TemplatesDashboard(props: { displayName: string }) {
             <SubmissionTable submissions={submissions} localTimeZone={localTimeZone} />
             </div>}
           </TabsContent>
-          <TabsContent value="archived" className="mt-2">
+          <TabsContent value="archived">
             {loading ? <DashboardSkeleton /> : <ArchivedTemplateTable
             templates={archivedTemplates}
             busyTemplateId={removingTemplateId}
@@ -561,8 +543,9 @@ export function TemplatesDashboard(props: { displayName: string }) {
             onViewSubmissions={viewTemplateSubmissions}
             />}
           </TabsContent>
+            </DataViewContent>
+          </DataView>
         </Tabs>
-      </div>
       <TemplateRemovalDialog
         template={templatePendingRemoval}
         removing={removingTemplateId !== null}
@@ -571,12 +554,12 @@ export function TemplatesDashboard(props: { displayName: string }) {
         }}
         onConfirm={(template) => void removeTemplate(template)}
       />
-    </main>
+    </AppShell>
   );
 }
 
 function DashboardSkeleton() {
-  return <div className="mt-5 grid gap-4 lg:grid-cols-2">{[0, 1].map((item) => <Card key={item}><CardHeader><Skeleton className="h-5 w-2/5" /><Skeleton className="h-4 w-3/5" /></CardHeader><CardContent className="space-y-3"><Skeleton className="h-16 w-full" /><Skeleton className="h-16 w-full" /></CardContent></Card>)}</div>;
+  return <div className="grid gap-4 p-4 lg:grid-cols-2">{[0, 1].map((item) => <Card key={item} className="shadow-none"><CardHeader><Skeleton className="h-5 w-2/5" /><Skeleton className="h-4 w-3/5" /></CardHeader><CardContent className="space-y-3"><Skeleton className="h-16 w-full" /><Skeleton className="h-16 w-full" /></CardContent></Card>)}</div>;
 }
 
 function TemplateTable(props: {
@@ -736,7 +719,7 @@ function TemplateTable(props: {
         filterColumn="name"
         filterPlaceholder="Filter templates..."
         enableRowSelection
-        className="mt-5"
+        surface="embedded"
       />
       <TemplateLinksDialog
         template={linksTemplate ?? null}
@@ -794,7 +777,7 @@ function TemplateRowActions(props: {
           <DropdownMenuItem
             variant={willArchive ? "default" : "destructive"}
             className={
-              willArchive ? "text-amber-700 focus:text-amber-800" : undefined
+              willArchive ? "text-warning focus:text-warning" : undefined
             }
             onSelect={() => props.onRequestRemove(props.template)}
           >
@@ -1099,23 +1082,9 @@ function ArchivedTemplateTable(props: {
         const template = row.original;
         return (
         <div className="flex justify-end gap-1">
-          {template.submissionCount > 0 && (
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              onClick={() => props.onViewSubmissions(template)}
-            >
-              <Inbox /> Submissions
-            </Button>
-          )}
-          <Button asChild variant="ghost" size="sm">
-            <a href={`/api/templates/${template.id}/pdf`}>
-              <Download /> PDF
-            </a>
-          </Button>
           <Button
             type="button"
+            variant="outline"
             size="sm"
             disabled={props.busyTemplateId !== null}
             onClick={() => props.onRestore(template)}
@@ -1127,6 +1096,32 @@ function ArchivedTemplateTable(props: {
             )}
             Restore
           </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                aria-label={`More actions for ${template.name}`}
+              >
+                <EllipsisVertical />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              {template.submissionCount > 0 && (
+                <DropdownMenuItem
+                  onSelect={() => props.onViewSubmissions(template)}
+                >
+                  <Inbox /> View submissions
+                </DropdownMenuItem>
+              )}
+              <DropdownMenuItem asChild>
+                <a href={`/api/templates/${template.id}/pdf`}>
+                  <Download /> Download PDF
+                </a>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
         );
       },
@@ -1145,8 +1140,7 @@ function ArchivedTemplateTable(props: {
       filterColumn="name"
       filterPlaceholder="Filter archived templates..."
       enableRowSelection
-      className="mt-5 border-warning/25"
-      rowClassName={() => "bg-warning/5"}
+      surface="embedded"
     />
   );
 }
@@ -1249,8 +1243,7 @@ function SubmissionFilterPanel(props: {
   }
 
   return (
-    <Card className="mt-5 min-w-0 gap-0 overflow-hidden py-0">
-      <CardContent className="p-4">
+    <div className="min-w-0 border-b bg-muted/15 p-4">
       <form
         className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center"
         onSubmit={(event) => {
@@ -1354,8 +1347,7 @@ function SubmissionFilterPanel(props: {
           </div>
         </div>
       </div>
-      </CardContent>
-    </Card>
+    </div>
   );
 }
 
@@ -1499,7 +1491,7 @@ function SubmissionTable(props: {
         filterColumn="recipientName"
         filterPlaceholder="Filter recipients..."
         enableRowSelection
-        className="mt-5"
+        surface="embedded"
       />
       <SubmissionDetailsDialog
         submission={detailSubmission ?? null}

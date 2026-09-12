@@ -95,6 +95,8 @@ test("composes reusable dashboard patterns from shadcn primitives", async () => 
   const { StatusBadge } = await vite.ssrLoadModule(
     "/components/patterns/status-badge.tsx",
   );
+  const { DataView, DataViewContent, DataViewHeader } =
+    await vite.ssrLoadModule("/components/patterns/data-view.tsx");
 
   const html = renderToStaticMarkup(
     React.createElement(
@@ -120,6 +122,12 @@ test("composes reusable dashboard patterns from shadcn primitives", async () => 
         label: "Active",
         tone: "info",
       }),
+      React.createElement(
+        DataView,
+        null,
+        React.createElement(DataViewHeader, null, "Toolbar"),
+        React.createElement(DataViewContent, null, "Results"),
+      ),
     ),
   );
 
@@ -129,6 +137,9 @@ test("composes reusable dashboard patterns from shadcn primitives", async () => 
   assert.match(html, /role="status"/);
   assert.match(html, /data-slot="status-badge"/);
   assert.match(html, /Active/);
+  assert.match(html, /data-slot="data-view"/);
+  assert.match(html, /data-slot="data-view-header"/);
+  assert.match(html, /data-slot="data-view-content"/);
 });
 
 test("composes the shared data table from shadcn card and table primitives", async () => {

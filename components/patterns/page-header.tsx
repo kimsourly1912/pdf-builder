@@ -16,20 +16,20 @@ function PageHeader(props: PageHeaderProps) {
     <div
       data-slot="page-header"
       className={cn(
-        "flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between",
+        "flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between",
         props.className,
       )}
     >
       <div className="min-w-0">
         {props.eyebrow && (
-          <Badge variant="secondary" className="mb-3">
+          <Badge variant="secondary" className="mb-2 rounded-md font-medium">
             {props.eyebrow}
           </Badge>
         )}
-        <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">
+        <h1 className="text-2xl font-semibold tracking-tight">
           {props.title}
         </h1>
-        <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
+        <p className="mt-1.5 max-w-2xl text-sm leading-6 text-muted-foreground">
           {props.description}
         </p>
       </div>

@@ -13,7 +13,19 @@ import {
 import { useCallback, useEffect, useState } from "react";
 
 import { SignOutButton } from "@/components/auth/sign-out-button";
+import { FeedbackAlert } from "@/components/patterns/feedback-alert";
+import { MetricCard } from "@/components/patterns/metric-card";
+import { PageHeader } from "@/components/patterns/page-header";
+import { StatusBadge } from "@/components/patterns/status-badge";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import {
+  Empty,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from "@/components/ui/empty";
 import { assignmentDisplay } from "@/features/accounts/assignment-status";
 import {
   formatLocalDateTime,
@@ -80,24 +92,28 @@ export function RecipientPortal(props: {
     (assignment) => assignmentDisplay(assignment.status).state !== "active",
   );
   return (
-    <main className="min-h-[100dvh] bg-slate-100 text-slate-950">
-      <header className="border-b border-slate-200 bg-white">
+    <main className="min-h-[100dvh] bg-background text-foreground">
+      <header className="border-b bg-background">
         <div className="mx-auto flex min-h-16 max-w-5xl items-center justify-between gap-3 px-4 py-3 sm:px-6">
-          <div className="min-w-0"><p className="text-sm font-bold">PDF Builder</p><p className="truncate text-xs text-slate-400">{props.displayName} · {props.accountType}</p></div>
+          <div className="flex min-w-0 items-center gap-3">
+            <span className="flex size-8 items-center justify-center rounded-md bg-primary text-primary-foreground"><ClipboardList className="size-4" /></span>
+            <div className="min-w-0"><p className="text-sm font-semibold">PDF Studio</p><p className="truncate text-xs text-muted-foreground">{props.displayName} · {props.accountType}</p></div>
+          </div>
           <SignOutButton />
         </div>
       </header>
       <div className="mx-auto max-w-5xl px-4 py-8 sm:px-6">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div><h1 className="text-2xl font-bold tracking-tight">My assigned forms</h1><p className="mt-1 text-sm text-slate-500">Signed in as {props.email}</p></div>
-          <Button type="button" variant="outline" size="sm" disabled={loading} onClick={() => void loadAssignments()}><RefreshCw className={`size-4 ${loading ? "animate-spin" : ""}`} /> Refresh</Button>
-        </div>
-        <div className="mt-6 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"><p className="text-2xl font-bold tabular-nums">{activeAssignments.length}</p><p className="text-xs font-medium text-slate-400">Forms waiting for submission</p></div>
-        {error && <p role="alert" className="mt-5 rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm font-medium text-rose-700">{error}</p>}
+        <PageHeader
+          title="My assigned forms"
+          description={`Signed in as ${props.email}`}
+          actions={<Button type="button" variant="outline" disabled={loading} onClick={() => void loadAssignments()}><RefreshCw className={loading ? "animate-spin" : ""} /> Refresh</Button>}
+        />
+        <MetricCard className="mt-6" label="Forms waiting for submission" value={activeAssignments.length} icon={<Clock3 />} tone="primary" />
+        {error && <FeedbackAlert className="mt-5" tone="error" title="Forms could not be loaded" description={error} />}
         {loading ? (
-          <div className="flex min-h-64 items-center justify-center text-slate-400"><LoaderCircle className="size-6 animate-spin" /></div>
+          <div className="flex min-h-64 items-center justify-center text-muted-foreground"><LoaderCircle className="size-6 animate-spin" /></div>
         ) : assignments.length === 0 ? (
-          <div className="mt-5 flex min-h-64 flex-col items-center justify-center rounded-2xl border-2 border-dashed border-slate-200 bg-white text-center"><ClipboardList className="size-7 text-slate-400" /><p className="mt-4 text-sm font-bold text-slate-700">No forms assigned yet</p><p className="mt-1 text-xs text-slate-400">New assignments will appear here.</p></div>
+          <Card className="mt-5 shadow-none"><Empty className="min-h-64"><EmptyHeader><EmptyMedia variant="icon"><ClipboardList /></EmptyMedia><EmptyTitle>No forms assigned yet</EmptyTitle><EmptyDescription>New assignments will appear here.</EmptyDescription></EmptyHeader></Empty></Card>
         ) : (
           <div className="mt-6 space-y-8">
             <AssignmentSection
@@ -132,12 +148,12 @@ function AssignmentSection(props: {
   return (
     <section>
       <div className="flex items-center gap-2">
-        {props.history ? <History className="size-4 text-slate-500" /> : <Clock3 className="size-4 text-blue-600" />}
-        <h2 className="text-sm font-bold text-slate-700">{props.title}</h2>
-        <span className="rounded-full bg-slate-200 px-2 py-0.5 text-[10px] font-bold text-slate-600">{props.assignments.length}</span>
+        {props.history ? <History className="size-4 text-muted-foreground" /> : <Clock3 className="size-4 text-primary" />}
+        <h2 className="text-sm font-semibold">{props.title}</h2>
+        <span className="rounded-md bg-muted px-2 py-0.5 text-[10px] font-semibold text-muted-foreground">{props.assignments.length}</span>
       </div>
       {props.assignments.length === 0 ? (
-        <p className="mt-3 rounded-xl border border-dashed border-slate-200 bg-white p-5 text-center text-xs text-slate-500">{props.emptyMessage}</p>
+        <p className="mt-3 rounded-lg border border-dashed bg-card p-5 text-center text-xs text-muted-foreground">{props.emptyMessage}</p>
       ) : (
         <div className="mt-3 grid gap-4 md:grid-cols-2">
           {props.assignments.map((assignment) => (
@@ -157,40 +173,51 @@ function AssignmentCard(props: {
   const display = assignmentDisplay(assignment.status);
   const tone = assignmentTone(display.state);
   return (
-    <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+    <Card className="gap-0 py-0 shadow-none">
+      <CardContent className="p-5">
       <div className="flex items-start gap-3">
         <span className="mt-1 size-3 shrink-0 rounded-full" style={{ backgroundColor: assignment.roleColor }} />
         <div className="min-w-0 flex-1">
-          <h3 className="truncate text-base font-bold">{assignment.templateName}</h3>
-          <p className="mt-1 text-xs text-slate-400">Version {assignment.versionNumber} · {assignment.roleName}</p>
+          <h3 className="truncate text-base font-semibold">{assignment.templateName}</h3>
+          <p className="mt-1 text-xs text-muted-foreground">Version {assignment.versionNumber} · {assignment.roleName}</p>
         </div>
-        <span className={`rounded-full px-2 py-1 text-[10px] font-bold uppercase ${tone.badge}`}>{display.label}</span>
+        <StatusBadge label={display.label} tone={tone} className="text-[10px]" />
       </div>
-      {assignment.description && <p className="mt-4 text-sm leading-6 text-slate-600">{assignment.description}</p>}
-      <p className="mt-4 text-xs text-slate-400">Assigned {formatLocalDateTime(assignment.assignedAt, { timeZone: props.timeZone })}</p>
+      {assignment.description && <p className="mt-4 text-sm leading-6 text-muted-foreground">{assignment.description}</p>}
+      <p className="mt-4 text-xs text-muted-foreground">Assigned {formatLocalDateTime(assignment.assignedAt, { timeZone: props.timeZone })}</p>
       {assignment.url ? (
-        <Button asChild className="mt-4 w-full bg-blue-600 hover:bg-blue-700"><a href={assignment.url}><ExternalLink className="size-4" /> Open form</a></Button>
+        <Button asChild className="mt-4 w-full"><a href={assignment.url}><ExternalLink className="size-4" /> Open form</a></Button>
       ) : (
-        <div className={`mt-4 flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold ${tone.panel}`}>
+        <div className={`mt-4 flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold ${assignmentPanelClassName(display.state)}`}>
           {display.state === "completed" ? <CheckCircle2 className="size-4" /> : <Ban className="size-4" />}
           {display.state === "completed" && assignment.completedAt
             ? `Submitted ${formatLocalDateTime(assignment.completedAt, { timeZone: props.timeZone })}`
             : display.detail}
         </div>
       )}
-    </article>
+      </CardContent>
+    </Card>
   );
 }
 
 function assignmentTone(state: ReturnType<typeof assignmentDisplay>["state"]) {
   if (state === "active") {
-    return { badge: "bg-blue-50 text-blue-700", panel: "bg-blue-50 text-blue-700" };
+    return "info" as const;
   }
   if (state === "completed") {
-    return { badge: "bg-emerald-50 text-emerald-700", panel: "bg-emerald-50 text-emerald-700" };
+    return "success" as const;
   }
   if (state === "cancelled") {
-    return { badge: "bg-amber-50 text-amber-700", panel: "bg-amber-50 text-amber-700" };
+    return "warning" as const;
   }
-  return { badge: "bg-slate-100 text-slate-600", panel: "bg-slate-100 text-slate-600" };
+  return "neutral" as const;
+}
+
+function assignmentPanelClassName(
+  state: ReturnType<typeof assignmentDisplay>["state"],
+) {
+  if (state === "completed") return "bg-success/10 text-success-foreground";
+  if (state === "cancelled") return "bg-warning/10 text-warning-foreground";
+  if (state === "active") return "bg-info/10 text-info-foreground";
+  return "bg-muted text-muted-foreground";
 }
