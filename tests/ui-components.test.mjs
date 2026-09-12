@@ -82,6 +82,55 @@ test("composes shadcn card slots without custom dashboard markup", async () => {
   assert.match(html, /data-slot="card-content"/);
 });
 
+test("composes reusable dashboard patterns from shadcn primitives", async () => {
+  const { FeedbackAlert } = await vite.ssrLoadModule(
+    "/components/patterns/feedback-alert.tsx",
+  );
+  const { MetricCard } = await vite.ssrLoadModule(
+    "/components/patterns/metric-card.tsx",
+  );
+  const { PageHeader } = await vite.ssrLoadModule(
+    "/components/patterns/page-header.tsx",
+  );
+  const { StatusBadge } = await vite.ssrLoadModule(
+    "/components/patterns/status-badge.tsx",
+  );
+
+  const html = renderToStaticMarkup(
+    React.createElement(
+      "div",
+      null,
+      React.createElement(PageHeader, {
+        eyebrow: "HR forms",
+        title: "Templates",
+        description: "Manage reusable forms.",
+      }),
+      React.createElement(MetricCard, {
+        label: "Submissions",
+        value: 12,
+        icon: React.createElement("span", null, "S"),
+        tone: "success",
+      }),
+      React.createElement(FeedbackAlert, {
+        title: "Updated successfully",
+        description: "The template was archived.",
+        tone: "success",
+      }),
+      React.createElement(StatusBadge, {
+        label: "Active",
+        tone: "info",
+      }),
+    ),
+  );
+
+  assert.match(html, /data-slot="page-header"/);
+  assert.match(html, /data-slot="metric-card"/);
+  assert.match(html, /data-slot="feedback-alert"/);
+  assert.match(html, /role="status"/);
+  assert.match(html, /data-slot="status-badge"/);
+  assert.match(html, /Active/);
+});
+
 test("composes the shared data table from shadcn card and table primitives", async () => {
   const { DataTable } = await vite.ssrLoadModule(
     "/components/ui/data-table.tsx",
@@ -141,6 +190,7 @@ test("keeps the data table structure visible for empty results", async () => {
   assert.match(html, /colSpan="1"/);
   assert.match(html, /No templates/);
   assert.match(html, /Create your first template/);
+  assert.match(html, /data-slot="empty"/);
 });
 
 test("emits chart themes for the starter's media dark mode", async () => {

@@ -34,6 +34,12 @@
   --popover-foreground: #171717;
   --primary: #2563eb;
   --primary-foreground: #fafafa;
+  --info: #2563eb;
+  --info-foreground: #1e3a8a;
+  --success: #059669;
+  --success-foreground: #065f46;
+  --warning: #d97706;
+  --warning-foreground: #92400e;
   --secondary: #f5f5f5;
   --secondary-foreground: #171717;
   --muted: #f5f5f5;
@@ -41,6 +47,7 @@
   --accent: #f5f5f5;
   --accent-foreground: #171717;
   --destructive: #e7000b;
+  --destructive-foreground: #991b1b;
   --border: #e5e5e5;
   --input: #e5e5e5;
   --ring: #60a5fa;
@@ -69,6 +76,12 @@
   --color-popover-foreground: var(--popover-foreground);
   --color-primary: var(--primary);
   --color-primary-foreground: var(--primary-foreground);
+  --color-info: var(--info);
+  --color-info-foreground: var(--info-foreground);
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
   --color-secondary: var(--secondary);
   --color-secondary-foreground: var(--secondary-foreground);
   --color-muted: var(--muted);
@@ -76,6 +89,7 @@
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
   --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);

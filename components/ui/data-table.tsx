@@ -8,6 +8,8 @@ import {
   ChevronDown,
   ChevronLeft,
   ChevronRight,
+  Search,
+  Settings2,
 } from "lucide-react"
 import { useState } from "react"
 import type {
@@ -29,12 +31,23 @@ import {
 } from "@/components/ui/data-table-features"
 import type { DataTableFeatures } from "@/components/ui/data-table-features"
 import {
+  Empty,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from "@/components/ui/empty"
+import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { Input } from "@/components/ui/input"
+import {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupInput,
+} from "@/components/ui/input-group"
 import {
   Table,
   TableBody,
@@ -63,6 +76,8 @@ type DataTableProps<TData extends RowData> = {
   filterPlaceholder?: string
   enableRowSelection?: boolean
   initialPageSize?: number
+  toolbarActions?: ReactNode
+  hideColumnVisibility?: boolean
   className?: string
   rowClassName?: (row: TData) => string | undefined
 }
@@ -116,6 +131,8 @@ function DataTable<TData extends RowData>(props: DataTableProps<TData>) {
     filterPlaceholder = "Filter results...",
     enableRowSelection = false,
     initialPageSize = 10,
+    toolbarActions,
+    hideColumnVisibility = false,
     className,
     rowClassName,
   } = props
@@ -184,45 +201,55 @@ function DataTable<TData extends RowData>(props: DataTableProps<TData>) {
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="w-full sm:max-w-sm">
           {filter ? (
-            <Input
-              value={(filter.getFilterValue() as string) ?? ""}
-              onChange={(event) => filter.setFilterValue(event.target.value)}
-              placeholder={filterPlaceholder}
-              aria-label={filterPlaceholder}
-            />
+            <InputGroup>
+              <InputGroupAddon>
+                <Search />
+              </InputGroupAddon>
+              <InputGroupInput
+                value={(filter.getFilterValue() as string) ?? ""}
+                onChange={(event) => filter.setFilterValue(event.target.value)}
+                placeholder={filterPlaceholder}
+                aria-label={filterPlaceholder}
+              />
+            </InputGroup>
           ) : (
             <p className="text-sm text-muted-foreground">
               {filteredRows.length} row{filteredRows.length === 1 ? "" : "s"}
             </p>
           )}
         </div>
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button type="button" variant="outline" className="sm:ml-auto">
-              Columns <ChevronDown />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="min-w-44">
-            {table
-              .getAllColumns()
-              .filter((column) => column.getCanHide())
-              .map((column) => (
-                <DropdownMenuCheckboxItem
-                  key={column.id}
-                  className="capitalize"
-                  checked={column.getIsVisible()}
-                  onCheckedChange={(value) =>
-                    column.toggleVisibility(Boolean(value))
-                  }
-                >
-                  {formatColumnLabel(column.id)}
-                </DropdownMenuCheckboxItem>
-              ))}
-          </DropdownMenuContent>
-        </DropdownMenu>
+        <div className="flex flex-wrap items-center gap-2 sm:ml-auto">
+          {toolbarActions}
+          {!hideColumnVisibility && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button type="button" variant="outline">
+                  <Settings2 /> Columns <ChevronDown />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="min-w-44">
+                {table
+                  .getAllColumns()
+                  .filter((column) => column.getCanHide())
+                  .map((column) => (
+                    <DropdownMenuCheckboxItem
+                      key={column.id}
+                      className="capitalize"
+                      checked={column.getIsVisible()}
+                      onCheckedChange={(value) =>
+                        column.toggleVisibility(Boolean(value))
+                      }
+                    >
+                      {formatColumnLabel(column.id)}
+                    </DropdownMenuCheckboxItem>
+                  ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
+        </div>
       </div>
 
-      <div className="overflow-hidden rounded-md border">
+      <div className="overflow-x-auto rounded-md border">
         <Table>
           <TableCaption className="sr-only">{caption}</TableCaption>
           <TableHeader className="bg-muted/40">
@@ -275,21 +302,21 @@ function DataTable<TData extends RowData>(props: DataTableProps<TData>) {
                   colSpan={visibleColumnCount}
                   className="h-64 text-center"
                 >
-                  <div className="mx-auto flex max-w-sm flex-col items-center">
-                    {emptyIcon && (
-                      <span className="mb-4 flex size-11 items-center justify-center rounded-lg bg-muted text-muted-foreground [&_svg]:size-5">
-                        {emptyIcon}
-                      </span>
-                    )}
-                    <p className="font-medium">
-                      {data.length > 0 ? "No matching results" : emptyTitle}
-                    </p>
-                    <p className="mt-1 whitespace-normal text-sm leading-6 text-muted-foreground">
-                      {data.length > 0
-                        ? "Try changing or clearing the table filter."
-                        : emptyDescription}
-                    </p>
-                  </div>
+                  <Empty className="border-0 py-10">
+                    <EmptyHeader>
+                      {emptyIcon && (
+                        <EmptyMedia variant="icon">{emptyIcon}</EmptyMedia>
+                      )}
+                      <EmptyTitle className="text-base">
+                        {data.length > 0 ? "No matching results" : emptyTitle}
+                      </EmptyTitle>
+                      <EmptyDescription>
+                        {data.length > 0
+                          ? "Try changing or clearing the table filter."
+                          : emptyDescription}
+                      </EmptyDescription>
+                    </EmptyHeader>
+                  </Empty>
                 </TableCell>
               </TableRow>
             )}

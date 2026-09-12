@@ -29,6 +29,11 @@ import Link from "next/link";
 import Image from "next/image";
 import type { ColumnDef } from "@tanstack/react-table";
 
+import { FeedbackAlert } from "@/components/patterns/feedback-alert";
+import { MetricCard } from "@/components/patterns/metric-card";
+import { PageHeader } from "@/components/patterns/page-header";
+import { StatusBadge } from "@/components/patterns/status-badge";
+import type { StatusTone } from "@/components/patterns/status-badge";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -62,7 +67,6 @@ import {
   InputGroupButton,
   InputGroupInput,
 } from "@/components/ui/input-group";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Input } from "@/components/ui/input";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { Separator } from "@/components/ui/separator";
@@ -480,24 +484,42 @@ export function TemplatesDashboard(props: { displayName: string }) {
       </header>
 
       <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:py-10">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <Badge variant="secondary" className="mb-3">HR forms</Badge>
-            <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">Templates</h1>
-            <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">Create reusable PDF forms, manage recipient access, and review submissions from one workspace.</p>
-          </div>
-          <Button asChild size="lg"><Link href="/"><FileText className="size-4" /> New template</Link></Button>
-        </div>
+        <PageHeader
+          eyebrow="HR forms"
+          title="Templates"
+          description="Create reusable PDF forms, manage recipient access, and review submissions from one workspace."
+          actions={
+            <Button asChild size="lg">
+              <Link href="/">
+                <FileText className="size-4" /> New template
+              </Link>
+            </Button>
+          }
+        />
 
         <section className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <StatCard label="Active templates" value={activeTemplates.length} icon={<FolderOpen />} />
-          <StatCard label="Archived templates" value={archivedTemplates.length} icon={<Archive />} />
-          <StatCard label="Recipient roles" value={totalRecipients} icon={<Link2 />} />
-          <StatCard label="Submissions" value={submissionTotal} icon={<Inbox />} />
+          <MetricCard label="Active templates" value={activeTemplates.length} icon={<FolderOpen />} tone="primary" />
+          <MetricCard label="Archived templates" value={archivedTemplates.length} icon={<Archive />} tone="warning" />
+          <MetricCard label="Recipient roles" value={totalRecipients} icon={<Link2 />} />
+          <MetricCard label="Submissions" value={submissionTotal} icon={<Inbox />} tone="success" />
         </section>
 
-        {error && <Alert variant="destructive" className="mt-6"><TriangleAlert /><AlertTitle>Something went wrong</AlertTitle><AlertDescription>{error}</AlertDescription></Alert>}
-        {notice && <Alert role="status" className="mt-6 border-emerald-200 bg-emerald-50 text-emerald-800"><Check /><AlertTitle>Updated successfully</AlertTitle><AlertDescription className="text-emerald-700">{notice}</AlertDescription></Alert>}
+        {error && (
+          <FeedbackAlert
+            tone="error"
+            title="Something went wrong"
+            description={error}
+            className="mt-6"
+          />
+        )}
+        {notice && (
+          <FeedbackAlert
+            tone="success"
+            title="Updated successfully"
+            description={notice}
+            className="mt-6"
+          />
+        )}
 
         <Tabs value={activeView} onValueChange={(value) => { if (isDashboardView(value)) setActiveView(value); }} className="mt-8">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -551,10 +573,6 @@ export function TemplatesDashboard(props: { displayName: string }) {
       />
     </main>
   );
-}
-
-function StatCard(props: { label: string; value: number; icon: React.ReactNode }) {
-  return <Card className="gap-0 py-0"><CardContent className="flex items-center gap-4 p-5"><span className="flex size-10 items-center justify-center rounded-lg bg-primary/10 text-primary [&_svg]:size-4">{props.icon}</span><div><p className="text-2xl font-bold tabular-nums">{props.value}</p><p className="text-xs font-medium text-muted-foreground">{props.label}</p></div></CardContent></Card>;
 }
 
 function DashboardSkeleton() {
@@ -827,12 +845,10 @@ function TemplateLinksDialog(props: {
         <DataTableColumnHeader column={column} title="Status" />
       ),
       cell: ({ row }) => (
-        <Badge
-          variant="outline"
-          className={linkStatusClassName(row.original.status)}
-        >
-          {row.original.status}
-        </Badge>
+        <StatusBadge
+          label={row.original.status}
+          tone={linkStatusTone(row.original.status)}
+        />
       ),
     },
     {
@@ -879,14 +895,14 @@ function TemplateLinksDialog(props: {
         return (
           <InputGroup
             className={
-              copied ? "border-emerald-300 bg-emerald-50" : "bg-background"
+              copied ? "border-success/30 bg-success/10" : "bg-background"
             }
           >
             <InputGroupInput
               readOnly
               value={url}
               aria-label={`${recipient.roleName} fill link`}
-              className={copied ? "text-emerald-700" : "text-muted-foreground"}
+              className={copied ? "text-success-foreground" : "text-muted-foreground"}
             />
             <InputGroupAddon align="inline-end">
               <InputGroupButton
@@ -1018,15 +1034,13 @@ function ArchivedTemplateTable(props: {
         const template = row.original;
         return (
           <div className="flex min-w-0 items-center gap-3">
-            <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-amber-100 text-amber-700">
+            <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-warning/10 text-warning">
               <Archive className="size-4" />
             </span>
             <div className="min-w-0">
               <div className="flex items-center gap-2">
                 <p className="truncate font-medium">{template.name}</p>
-                <Badge className="bg-amber-100 text-amber-800 hover:bg-amber-100">
-                  Archived
-                </Badge>
+                <StatusBadge label="Archived" tone="warning" />
               </div>
               <p className="mt-0.5 max-w-72 truncate text-xs text-muted-foreground">
                 {template.description || template.fileName}
@@ -1131,8 +1145,8 @@ function ArchivedTemplateTable(props: {
       filterColumn="name"
       filterPlaceholder="Filter archived templates..."
       enableRowSelection
-      className="mt-5 border-amber-200"
-      rowClassName={() => "bg-amber-50/20"}
+      className="mt-5 border-warning/25"
+      rowClassName={() => "bg-warning/5"}
     />
   );
 }
@@ -1154,8 +1168,8 @@ function TemplateRemovalDialog(props: {
           <AlertDialogMedia
             className={
               willArchive
-                ? "bg-amber-100 text-amber-700"
-                : "bg-rose-100 text-rose-700"
+                ? "bg-warning/10 text-warning"
+                : "bg-destructive/10 text-destructive"
             }
           >
             {willArchive ? <Archive /> : <TriangleAlert />}
@@ -1264,14 +1278,14 @@ function SubmissionFilterPanel(props: {
               </Button>
             </PopoverTrigger>
             <PopoverContent align="end" className="w-[calc(100vw-2rem)] max-w-sm p-0">
-              <PopoverHeader className="border-b border-slate-100 p-4">
+              <PopoverHeader className="border-b p-4">
                 <PopoverTitle>Filter submissions</PopoverTitle>
                 <PopoverDescription>
                   Narrow the results before reviewing or exporting them.
                 </PopoverDescription>
               </PopoverHeader>
               <div className="grid gap-4 p-4">
-                <label className="text-xs font-semibold text-slate-600 [&_[data-slot=native-select-wrapper]]:w-full">
+                <label className="text-xs font-semibold text-foreground [&_[data-slot=native-select-wrapper]]:w-full">
                   Template
                   <NativeSelect
                     value={props.draft.templateId}
@@ -1282,7 +1296,7 @@ function SubmissionFilterPanel(props: {
                     {props.templates.map((template) => <NativeSelectOption key={template.id} value={template.id}>{template.name}{template.archivedAt ? " (Archived)" : ""}</NativeSelectOption>)}
                   </NativeSelect>
                 </label>
-                <label className="text-xs font-semibold text-slate-600 [&_[data-slot=native-select-wrapper]]:w-full">
+                <label className="text-xs font-semibold text-foreground [&_[data-slot=native-select-wrapper]]:w-full">
                   Recipient role
                   <NativeSelect
                     value={props.draft.roleId}
@@ -1294,20 +1308,20 @@ function SubmissionFilterPanel(props: {
                   </NativeSelect>
                 </label>
                 <fieldset>
-                  <legend className="text-xs font-semibold text-slate-600">Submitted date</legend>
+                  <legend className="text-xs font-semibold text-foreground">Submitted date</legend>
                   <div className="mt-1.5 grid grid-cols-2 gap-3">
-                    <label className="text-[11px] font-medium text-slate-500">
+                    <label className="text-[11px] font-medium text-muted-foreground">
                       From
                       <Input type="date" value={props.draft.fromDate} onChange={(event) => update({ fromDate: event.target.value })} className="mt-1 h-10" />
                     </label>
-                    <label className="text-[11px] font-medium text-slate-500">
+                    <label className="text-[11px] font-medium text-muted-foreground">
                       To
                       <Input type="date" value={props.draft.toDate} onChange={(event) => update({ toDate: event.target.value })} className="mt-1 h-10" />
                     </label>
                   </div>
                 </fieldset>
               </div>
-              <div className="flex items-center justify-between gap-2 border-t border-slate-100 p-4">
+              <div className="flex items-center justify-between gap-2 border-t p-4">
                 <Button type="button" variant="ghost" size="sm" onClick={() => { props.onClear(); setFiltersOpen(false); }}>Clear all</Button>
                 <Button type="button" size="sm" onClick={() => { props.onApply(); setFiltersOpen(false); }}>Apply filters</Button>
               </div>
@@ -1317,19 +1331,19 @@ function SubmissionFilterPanel(props: {
       </form>
       {appliedFilterLabels.length > 0 && (
         <div className="mt-3 flex flex-wrap items-center gap-2" aria-label="Applied filters">
-          <span className="text-[11px] font-semibold text-slate-400">Applied:</span>
+          <span className="text-[11px] font-semibold text-muted-foreground">Applied:</span>
           {appliedFilterLabels.map((label) => (
-            <Badge key={label} variant="secondary" className="bg-blue-50 text-blue-700">{label}</Badge>
+            <Badge key={label} variant="secondary">{label}</Badge>
           ))}
-          <Button type="button" variant="ghost" size="xs" className="h-7 text-xs text-slate-500" onClick={props.onClear}>Clear</Button>
+          <Button type="button" variant="ghost" size="xs" className="h-7 text-xs text-muted-foreground" onClick={props.onClear}>Clear</Button>
         </div>
       )}
       <Separator className="my-4" />
       <div className="flex min-w-0 flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-        <p className="text-xs text-slate-500">{props.total} matching submission{props.total === 1 ? "" : "s"}</p>
+        <p className="text-xs text-muted-foreground">{props.total} matching submission{props.total === 1 ? "" : "s"}</p>
         <div className="min-w-0 sm:max-w-xl sm:text-right">
-          <p className="text-xs font-bold text-slate-700">Bulk export</p>
-          <p id="bulk-export-description" aria-live="polite" className="mt-1 text-xs leading-5 text-slate-500">{exportDescription}</p>
+          <p className="text-xs font-bold text-foreground">Bulk export</p>
+          <p id="bulk-export-description" aria-live="polite" className="mt-1 text-xs leading-5 text-muted-foreground">{exportDescription}</p>
           <div className="mt-2 grid min-w-0 grid-cols-2 gap-2 sm:flex sm:justify-end">
             <Button asChild={canExport} disabled={!canExport} variant="outline" size="sm" className="min-w-0" aria-describedby="bulk-export-description">
               {canExport ? <a href={`/api/submissions/export?${withFormat(exportParams, "xlsx")}`}><FileSpreadsheet className="size-3.5" /> Bulk Excel</a> : <span><FileSpreadsheet className="size-3.5" /> Bulk Excel</span>}
@@ -1366,7 +1380,7 @@ function SubmissionTable(props: {
         const submission = row.original;
         return (
           <div className="flex min-w-0 items-center gap-3">
-            <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-700">
+            <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-success/10 text-success">
               <Check className="size-4" />
             </span>
             <div className="min-w-0">
@@ -1603,11 +1617,11 @@ function isDashboardView(value: string): value is DashboardView {
   return value === "templates" || value === "submissions" || value === "archived";
 }
 
-function linkStatusClassName(status: string) {
-  if (status === "active") return "border-blue-200 bg-blue-50 text-blue-700";
-  if (status === "completed") return "border-emerald-200 bg-emerald-50 text-emerald-700";
-  if (status === "revoked") return "border-amber-200 bg-amber-50 text-amber-700";
-  return "bg-muted text-muted-foreground";
+function linkStatusTone(status: string): StatusTone {
+  if (status === "active") return "info";
+  if (status === "completed") return "success";
+  if (status === "revoked") return "warning";
+  return "neutral";
 }
 
 function submissionFilterParams(filters: DashboardFilters) {
