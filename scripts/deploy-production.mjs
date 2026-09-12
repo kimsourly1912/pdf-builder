@@ -181,48 +181,25 @@ async function deleteWorkerSecret(name) {
 
 async function bootstrapAndSignInOwner(hostname, bootstrapToken) {
   const origin = `https://${hostname}`;
-  const signUpResponse = await fetch(`${origin}/api/auth/sign-up/email`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Origin: origin,
-      "x-pdf-builder-bootstrap": bootstrapToken,
-    },
-    body: JSON.stringify({
-      name: "PDF Builder Owner",
-      email: MANAGEMENT_EMAIL,
-      password: OWNER_PASSWORD,
-    }),
-  });
-  if (!signUpResponse.ok && signUpResponse.status !== 422) {
-    throw new Error(
-      `Owner bootstrap failed with HTTP ${signUpResponse.status}: ${await signUpResponse.text()}`,
-    );
-  }
-  console.log(
-    signUpResponse.ok
-      ? "Created the Better Auth owner account."
-      : "The Better Auth owner account already exists.",
-  );
-
   let signInResponse = await signInOwner(origin);
   if (!signInResponse.ok) {
-    const rotationResponse = await fetch(`${origin}/api/internal/bootstrap-owner`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Origin: origin,
-        "x-pdf-builder-bootstrap": bootstrapToken,
-      },
-      body: JSON.stringify({ password: OWNER_PASSWORD }),
-    });
-    if (!rotationResponse.ok) {
+    const rotationResponse = await rotateOwnerPassword(origin, bootstrapToken);
+    const rotationBody = await rotationResponse.text();
+    if (rotationResponse.ok) {
+      console.log("Rotated the Better Auth owner password and revoked old sessions.");
+    } else if (
+      rotationResponse.status === 404 &&
+      rotationBody.includes("Owner account not found")
+    ) {
+      await createOwner(origin, bootstrapToken);
+    } else {
       throw new Error(
-        `Owner password rotation failed with HTTP ${rotationResponse.status}: ${await rotationResponse.text()}`,
+        `Owner password rotation failed with HTTP ${rotationResponse.status}: ${rotationBody}`,
       );
     }
-    console.log("Rotated the Better Auth owner password and revoked old sessions.");
     signInResponse = await signInOwner(origin);
+  } else {
+    console.log("The Better Auth owner account already exists and the configured password is valid.");
   }
   if (!signInResponse.ok) {
     throw new Error(
@@ -243,6 +220,40 @@ async function bootstrapAndSignInOwner(hostname, bootstrapToken) {
   }
   console.log("Verified the Better Auth owner session.");
   return cookie;
+}
+
+async function createOwner(origin, bootstrapToken) {
+  const response = await fetch(`${origin}/api/auth/sign-up/email`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Origin: origin,
+      "x-pdf-builder-bootstrap": bootstrapToken,
+    },
+    body: JSON.stringify({
+      name: "PDF Builder Owner",
+      email: MANAGEMENT_EMAIL,
+      password: OWNER_PASSWORD,
+    }),
+  });
+  if (!response.ok) {
+    throw new Error(
+      `Owner bootstrap failed with HTTP ${response.status}: ${await response.text()}`,
+    );
+  }
+  console.log("Created the Better Auth owner account.");
+}
+
+function rotateOwnerPassword(origin, bootstrapToken) {
+  return fetch(`${origin}/api/internal/bootstrap-owner`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Origin: origin,
+      "x-pdf-builder-bootstrap": bootstrapToken,
+    },
+    body: JSON.stringify({ password: OWNER_PASSWORD }),
+  });
 }
 
 function signInOwner(origin) {
