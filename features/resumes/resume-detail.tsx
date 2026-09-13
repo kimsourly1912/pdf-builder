@@ -40,6 +40,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { DatePicker } from "@/components/ui/date-picker";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -449,7 +450,7 @@ export function ResumeDetailView(props: { resumeId: string }) {
                       />
                       <TextField
                         label="Date of birth"
-                        type="date"
+                        date
                         value={draft.dateOfBirth ?? ""}
                         onChange={(value) =>
                           setDraft({ ...draft, dateOfBirth: value || null })
@@ -692,18 +693,28 @@ function Meta(props: { label: string; value: string }) {
 function TextField(props: {
   label: string;
   value: string;
-  type?: string;
+  type?: "email";
+  date?: boolean;
   onChange: (value: string) => void;
   meta?: ResumeExtractionFields[keyof ResumeExtractionFields];
 }) {
   return (
     <div className="space-y-1.5">
       <Label>{props.label}</Label>
-      <Input
-        type={props.type ?? "text"}
-        value={props.value}
-        onChange={(event) => props.onChange(event.target.value)}
-      />
+      {props.date ? (
+        <DatePicker
+          value={props.value}
+          onValueChange={props.onChange}
+          placeholder="Pick a date"
+          aria-label={props.label}
+        />
+      ) : (
+        <Input
+          type={props.type ?? "text"}
+          value={props.value}
+          onChange={(event) => props.onChange(event.target.value)}
+        />
+      )}
       <Confidence meta={props.meta} />
     </div>
   );

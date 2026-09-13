@@ -71,8 +71,14 @@ import {
   InputGroupButton,
   InputGroupInput,
 } from "@/components/ui/input-group";
-import { Input } from "@/components/ui/input";
-import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
+import { DatePicker } from "@/components/ui/date-picker";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -1278,39 +1284,77 @@ function SubmissionFilterPanel(props: {
                 </PopoverDescription>
               </PopoverHeader>
               <div className="grid gap-4 p-4">
-                <label className="text-xs font-semibold text-foreground [&_[data-slot=native-select-wrapper]]:w-full">
-                  Template
-                  <NativeSelect
-                    value={props.draft.templateId}
-                    onChange={(event) => update({ templateId: event.target.value, roleId: "" })}
-                    className="mt-1.5 h-10 w-full"
+                <div className="space-y-1.5">
+                  <span className="text-xs font-semibold text-foreground">Template</span>
+                  <Select
+                    value={props.draft.templateId || "all-templates"}
+                    onValueChange={(value) =>
+                      update({
+                        templateId: value === "all-templates" ? "" : value,
+                        roleId: "",
+                      })
+                    }
                   >
-                    <NativeSelectOption value="">All templates</NativeSelectOption>
-                    {props.templates.map((template) => <NativeSelectOption key={template.id} value={template.id}>{template.name}{template.archivedAt ? " (Archived)" : ""}</NativeSelectOption>)}
-                  </NativeSelect>
-                </label>
-                <label className="text-xs font-semibold text-foreground [&_[data-slot=native-select-wrapper]]:w-full">
-                  Recipient role
-                  <NativeSelect
-                    value={props.draft.roleId}
-                    onChange={(event) => update({ roleId: event.target.value })}
-                    className="mt-1.5 h-10 w-full"
+                    <SelectTrigger className="h-10 w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent align="start">
+                      <SelectItem value="all-templates">All templates</SelectItem>
+                      {props.templates.map((template) => (
+                        <SelectItem key={template.id} value={template.id}>
+                          {template.name}
+                          {template.archivedAt ? " (Archived)" : ""}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <span className="text-xs font-semibold text-foreground">Recipient role</span>
+                  <Select
+                    value={props.draft.roleId || "all-roles"}
+                    onValueChange={(value) =>
+                      update({ roleId: value === "all-roles" ? "" : value })
+                    }
                   >
-                    <NativeSelectOption value="">All roles</NativeSelectOption>
-                    {roles.map((role) => <NativeSelectOption key={role.roleId} value={role.roleId}>{role.roleName}</NativeSelectOption>)}
-                  </NativeSelect>
-                </label>
+                    <SelectTrigger className="h-10 w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent align="start">
+                      <SelectItem value="all-roles">All roles</SelectItem>
+                      {roles.map((role) => (
+                        <SelectItem key={role.roleId} value={role.roleId}>
+                          {role.roleName}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
                 <fieldset>
                   <legend className="text-xs font-semibold text-foreground">Submitted date</legend>
                   <div className="mt-1.5 grid grid-cols-2 gap-3">
-                    <label className="text-[11px] font-medium text-muted-foreground">
-                      From
-                      <Input type="date" value={props.draft.fromDate} onChange={(event) => update({ fromDate: event.target.value })} className="mt-1 h-10" />
-                    </label>
-                    <label className="text-[11px] font-medium text-muted-foreground">
-                      To
-                      <Input type="date" value={props.draft.toDate} onChange={(event) => update({ toDate: event.target.value })} className="mt-1 h-10" />
-                    </label>
+                    <div className="space-y-1">
+                      <span className="text-[11px] font-medium text-muted-foreground">From</span>
+                      <DatePicker
+                        value={props.draft.fromDate}
+                        max={props.draft.toDate || undefined}
+                        onValueChange={(fromDate) => update({ fromDate })}
+                        placeholder="From date"
+                        aria-label="Submitted from date"
+                        className="h-10"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <span className="text-[11px] font-medium text-muted-foreground">To</span>
+                      <DatePicker
+                        value={props.draft.toDate}
+                        min={props.draft.fromDate || undefined}
+                        onValueChange={(toDate) => update({ toDate })}
+                        placeholder="To date"
+                        aria-label="Submitted to date"
+                        className="h-10"
+                      />
+                    </div>
                   </div>
                 </fieldset>
               </div>

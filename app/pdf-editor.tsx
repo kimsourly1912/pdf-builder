@@ -95,11 +95,15 @@ import {
 import { formatLocalDateTime } from "@/features/templates/date-time";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import { DatePicker } from "@/components/ui/date-picker";
 import { Input } from "@/components/ui/input";
 import {
-  NativeSelect,
-  NativeSelectOption,
-} from "@/components/ui/native-select";
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Slider } from "@/components/ui/slider";
 import { Textarea } from "@/components/ui/textarea";
 import { PdfExtractionDialog } from "@/features/extraction/pdf-extraction-dialog";
@@ -1284,11 +1288,10 @@ function GazetteerFieldEditor(props: {
       </label>
       <label className="block text-[11px] font-semibold text-slate-500">
         <span className={props.compact ? "sr-only" : "block"}>Display language</span>
-        <NativeSelect
-          aria-label="Cambodia address display language"
+        <Select
           value={props.annotation.gazetteerLanguage ?? "bilingual"}
-          onChange={(event) => {
-            const gazetteerLanguage = event.target.value as GazetteerLanguage;
+          onValueChange={(value) => {
+            const gazetteerLanguage = value as GazetteerLanguage;
             props.onChange({
               gazetteerLanguage,
               text: formatCambodiaAddress(
@@ -1297,20 +1300,26 @@ function GazetteerFieldEditor(props: {
               ),
             });
           }}
-          className={`${props.compact ? "h-8 w-32 rounded-md px-2 text-xs" : "mt-1.5 h-9 w-full rounded-lg px-3 text-sm shadow-sm"} border border-slate-200 bg-white font-normal text-slate-800 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100`}
         >
-          <NativeSelectOption value="bilingual">Khmer + English</NativeSelectOption>
-          <NativeSelectOption value="km">Khmer</NativeSelectOption>
-          <NativeSelectOption value="en">English</NativeSelectOption>
-        </NativeSelect>
+          <SelectTrigger
+            aria-label="Cambodia address display language"
+            className={props.compact ? "h-8 w-32 text-xs" : "mt-1.5 h-9 w-full"}
+          >
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="bilingual">Khmer + English</SelectItem>
+            <SelectItem value="km">Khmer</SelectItem>
+            <SelectItem value="en">English</SelectItem>
+          </SelectContent>
+        </Select>
       </label>
       <label className="block text-[11px] font-semibold text-slate-500">
         <span className={props.compact ? "sr-only" : "block"}>Address depth</span>
-        <NativeSelect
-          aria-label="Cambodia address depth"
+        <Select
           value={props.annotation.gazetteerLevel ?? "village"}
-          onChange={(event) => {
-            const gazetteerLevel = event.target.value as GazetteerLevel;
+          onValueChange={(value) => {
+            const gazetteerLevel = value as GazetteerLevel;
             const address = truncateCambodiaAddress(
               props.annotation.address,
               gazetteerLevel,
@@ -1324,13 +1333,20 @@ function GazetteerFieldEditor(props: {
               ),
             });
           }}
-          className={`${props.compact ? "h-8 w-32 rounded-md px-2 text-xs" : "mt-1.5 h-9 w-full rounded-lg px-3 text-sm shadow-sm"} border border-slate-200 bg-white font-normal text-slate-800 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100`}
         >
-          <NativeSelectOption value="province">Province</NativeSelectOption>
-          <NativeSelectOption value="district">District</NativeSelectOption>
-          <NativeSelectOption value="commune">Commune</NativeSelectOption>
-          <NativeSelectOption value="village">Village</NativeSelectOption>
-        </NativeSelect>
+          <SelectTrigger
+            aria-label="Cambodia address depth"
+            className={props.compact ? "h-8 w-32 text-xs" : "mt-1.5 h-9 w-full"}
+          >
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="province">Province</SelectItem>
+            <SelectItem value="district">District</SelectItem>
+            <SelectItem value="commune">Commune</SelectItem>
+            <SelectItem value="village">Village</SelectItem>
+          </SelectContent>
+        </Select>
       </label>
     </div>
   );
@@ -5996,17 +6012,13 @@ export function PdfEditor(props: { initialTemplateId?: string }) {
                 {selectedAnnotation.type === "date" && (
                   <label className="block rounded-xl border border-slate-200 bg-slate-50/70 p-3 text-xs font-semibold text-slate-600">
                     Date
-                    <div className="relative mt-2">
-                      <Input
-                        type="date"
-                        value={selectedAnnotation.text ?? ""}
-                        onChange={(event) =>
-                          updateSelected({ text: event.target.value })
-                        }
-                        className="h-9 w-full rounded-lg border border-slate-200 bg-white px-3 pr-10 text-sm font-normal text-slate-800 shadow-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-                      />
-                      <CalendarDays className="pointer-events-none absolute right-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
-                    </div>
+                    <DatePicker
+                      value={selectedAnnotation.text ?? ""}
+                      onValueChange={(text) => updateSelected({ text })}
+                      placeholder="Pick a date"
+                      aria-label="Field date"
+                      className="mt-2 h-9"
+                    />
                     <span className="mt-1.5 block font-normal text-slate-400">
                       {formatDateValue(selectedAnnotation.text)}
                     </span>
@@ -6092,15 +6104,23 @@ export function PdfEditor(props: { initialTemplateId?: string }) {
                     )}
                     <label className="block text-xs font-semibold text-slate-600">
                       Recipient
-                      <NativeSelect
+                      <Select
                         value={selectedAnnotation.recipientRoleId ?? recipientRoles[0]?.id ?? ""}
-                        onChange={(event) => updateSelected({ recipientRoleId: event.target.value })}
-                        className="mt-1.5 h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm font-normal text-slate-800 shadow-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                        onValueChange={(recipientRoleId) =>
+                          updateSelected({ recipientRoleId })
+                        }
                       >
-                        {recipientRoles.map((role) => (
-                          <NativeSelectOption key={role.id} value={role.id}>{role.name}</NativeSelectOption>
-                        ))}
-                      </NativeSelect>
+                        <SelectTrigger className="mt-1.5 h-9 w-full">
+                          <SelectValue placeholder="Choose recipient" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {recipientRoles.map((role) => (
+                            <SelectItem key={role.id} value={role.id}>
+                              {role.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                     </label>
                     <label className="block text-xs font-semibold text-slate-600">
                       Field name
@@ -6122,14 +6142,27 @@ export function PdfEditor(props: { initialTemplateId?: string }) {
                     </label>
                     <label className="block text-xs font-semibold text-slate-600">
                       Candidate prefill
-                      <NativeSelect
-                        value={selectedAnnotation.prefillKey ?? ""}
-                        onChange={(event) => updateSelected({ prefillKey: event.target.value ? event.target.value as CandidatePrefillKey : undefined })}
-                        className="mt-1.5 h-9 w-full rounded-lg border border-slate-200 bg-white px-3 font-mono text-xs font-normal text-slate-800 shadow-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                      <Select
+                        value={selectedAnnotation.prefillKey ?? "no-prefill"}
+                        onValueChange={(value) =>
+                          updateSelected({
+                            prefillKey:
+                              value === "no-prefill"
+                                ? undefined
+                                : value as CandidatePrefillKey,
+                          })
+                        }
                       >
-                        <NativeSelectOption value="">No automatic prefill</NativeSelectOption>
-                        {CANDIDATE_PREFILL_KEYS.map((key) => <NativeSelectOption key={key} value={key}>{key}</NativeSelectOption>)}
-                      </NativeSelect>
+                        <SelectTrigger className="mt-1.5 h-9 w-full font-mono text-xs">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="no-prefill">No automatic prefill</SelectItem>
+                          {CANDIDATE_PREFILL_KEYS.map((key) => (
+                            <SelectItem key={key} value={key}>{key}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                       <span className="mt-1 block text-[10px] font-normal leading-4 text-slate-400">Copied as a snapshot when this form is assigned to a linked candidate account.</span>
                     </label>
                     <div className="rounded-lg border border-slate-200 bg-white p-3 shadow-sm">
@@ -6177,12 +6210,24 @@ export function PdfEditor(props: { initialTemplateId?: string }) {
                       <>
                         <label className="block text-xs font-semibold text-slate-600">
                           Validation
-                          <NativeSelect value={selectedAnnotation.validation ?? "none"} onChange={(event) => updateSelected({ validation: event.target.value as Annotation["validation"] })} className="mt-1.5 h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm font-normal text-slate-800 shadow-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100">
-                            <NativeSelectOption value="none">Any text</NativeSelectOption>
-                            <NativeSelectOption value="email">Email</NativeSelectOption>
-                            <NativeSelectOption value="number">Number</NativeSelectOption>
-                            <NativeSelectOption value="phone">Phone</NativeSelectOption>
-                          </NativeSelect>
+                          <Select
+                            value={selectedAnnotation.validation ?? "none"}
+                            onValueChange={(value) =>
+                              updateSelected({
+                                validation: value as Annotation["validation"],
+                              })
+                            }
+                          >
+                            <SelectTrigger className="mt-1.5 h-9 w-full">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="none">Any text</SelectItem>
+                              <SelectItem value="email">Email</SelectItem>
+                              <SelectItem value="number">Number</SelectItem>
+                              <SelectItem value="phone">Phone</SelectItem>
+                            </SelectContent>
+                          </Select>
                         </label>
                         <label className="flex items-center gap-2 text-xs font-medium text-slate-600">
                           <Checkbox checked={selectedAnnotation.multiline ?? false} onCheckedChange={(checked) => updateSelected({ multiline: checked === true })} />

@@ -32,7 +32,13 @@ import {
   EmptyTitle,
 } from "@/components/ui/empty";
 import { Input } from "@/components/ui/input";
-import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   buildAccountCredentialMessage,
@@ -328,16 +334,20 @@ export function AccountsDashboard(props: { displayName: string }) {
                 />
               </FormField>
               <FormField label="Account type">
-                <NativeSelect
+                <Select
                   value={accountType}
-                  onChange={(event) =>
-                    setAccountType(event.target.value as RecipientAccountType)
+                  onValueChange={(value) =>
+                    setAccountType(value as RecipientAccountType)
                   }
-                  className="w-full"
                 >
-                  <NativeSelectOption value="candidate">Candidate</NativeSelectOption>
-                  <NativeSelectOption value="employee">Employee</NativeSelectOption>
-                </NativeSelect>
+                  <SelectTrigger className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="candidate">Candidate</SelectItem>
+                    <SelectItem value="employee">Employee</SelectItem>
+                  </SelectContent>
+                </Select>
               </FormField>
               <FormField label="Temporary password">
                 <div className="flex gap-2">
@@ -500,31 +510,46 @@ function AccountCard(props: {
       <div className="border-y bg-muted/30 p-4">
         <p className="text-xs font-semibold">Assign a form</p>
         <div className="mt-2 grid gap-2 sm:grid-cols-[1fr_1fr_auto]">
-          <NativeSelect
-            value={props.draft.templateId}
-            onChange={(event) =>
-              props.onDraftChange({ templateId: event.target.value, roleId: "" })
+          <Select
+            value={props.draft.templateId || "choose-template"}
+            onValueChange={(value) =>
+              props.onDraftChange({
+                templateId: value === "choose-template" ? "" : value,
+                roleId: "",
+              })
             }
-            className="w-full"
           >
-            <NativeSelectOption value="">Choose template</NativeSelectOption>
-            {props.templates.map((template) => (
-              <NativeSelectOption key={template.id} value={template.id}>
-                {template.name} · v{template.versionNumber}
-              </NativeSelectOption>
-            ))}
-          </NativeSelect>
-          <NativeSelect
-            value={props.draft.roleId}
+            <SelectTrigger className="w-full">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="choose-template">Choose template</SelectItem>
+              {props.templates.map((template) => (
+                <SelectItem key={template.id} value={template.id}>
+                  {template.name} · v{template.versionNumber}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Select
+            value={props.draft.roleId || "choose-role"}
             disabled={!selectedTemplate}
-            onChange={(event) => props.onDraftChange({ roleId: event.target.value })}
-            className="w-full"
+            onValueChange={(value) =>
+              props.onDraftChange({
+                roleId: value === "choose-role" ? "" : value,
+              })
+            }
           >
-            <NativeSelectOption value="">Choose role</NativeSelectOption>
-            {(selectedTemplate?.currentRoles ?? selectedTemplate?.filterRoles)?.map((role) => (
-              <NativeSelectOption key={role.id} value={role.id}>{role.name}</NativeSelectOption>
-            ))}
-          </NativeSelect>
+            <SelectTrigger className="w-full">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="choose-role">Choose role</SelectItem>
+              {(selectedTemplate?.currentRoles ?? selectedTemplate?.filterRoles)?.map((role) => (
+                <SelectItem key={role.id} value={role.id}>{role.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
           <Button
             type="button"
             disabled={props.busy || !props.draft.templateId || !props.draft.roleId}

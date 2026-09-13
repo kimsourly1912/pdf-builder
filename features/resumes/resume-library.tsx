@@ -50,13 +50,20 @@ import {
   EmptyMedia,
   EmptyTitle,
 } from "@/components/ui/empty";
+import { DatePicker } from "@/components/ui/date-picker";
 import { Input } from "@/components/ui/input";
 import {
   InputGroup,
   InputGroupAddon,
   InputGroupInput,
 } from "@/components/ui/input-group";
-import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   Popover,
   PopoverContent,
@@ -323,28 +330,60 @@ function ResumeLibrary(props: { displayName: string }) {
                 </PopoverHeader>
                 <div className="grid gap-4 p-4">
                   <FormField label="Status">
-                    <NativeSelect value={status} onChange={(event) => setStatus(event.target.value as ResumeStatus | "")} className="w-full">
-                      <NativeSelectOption value="">All statuses</NativeSelectOption>
-                      <NativeSelectOption value="ready">Ready</NativeSelectOption>
-                      <NativeSelectOption value="needs_attention">Needs attention</NativeSelectOption>
-                      <NativeSelectOption value="possible_duplicate">Possible duplicate</NativeSelectOption>
-                      <NativeSelectOption value="failed">Failed</NativeSelectOption>
-                    </NativeSelect>
+                    <Select
+                      value={status || "all-statuses"}
+                      onValueChange={(value) =>
+                        setStatus(value === "all-statuses" ? "" : value as ResumeStatus)
+                      }
+                    >
+                      <SelectTrigger className="w-full">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all-statuses">All statuses</SelectItem>
+                        <SelectItem value="ready">Ready</SelectItem>
+                        <SelectItem value="needs_attention">Needs attention</SelectItem>
+                        <SelectItem value="possible_duplicate">Possible duplicate</SelectItem>
+                        <SelectItem value="failed">Failed</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </FormField>
                   <FormField label="Source">
-                    <NativeSelect value={source} onChange={(event) => setSource(event.target.value as ResumeSource | "")} className="w-full">
-                      <NativeSelectOption value="">All sources</NativeSelectOption>
-                      {Object.entries(SOURCE_LABELS).map(([value, label]) => (
-                        <NativeSelectOption key={value} value={value}>{label}</NativeSelectOption>
-                      ))}
-                    </NativeSelect>
+                    <Select
+                      value={source || "all-sources"}
+                      onValueChange={(value) =>
+                        setSource(value === "all-sources" ? "" : value as ResumeSource)
+                      }
+                    >
+                      <SelectTrigger className="w-full">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all-sources">All sources</SelectItem>
+                        {Object.entries(SOURCE_LABELS).map(([value, label]) => (
+                          <SelectItem key={value} value={value}>{label}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </FormField>
                   <div className="grid grid-cols-2 gap-3">
                     <FormField label="Received from">
-                      <Input type="date" value={receivedFrom} onChange={(event) => setReceivedFrom(event.target.value)} />
+                      <DatePicker
+                        value={receivedFrom}
+                        max={receivedTo || undefined}
+                        onValueChange={setReceivedFrom}
+                        placeholder="From date"
+                        aria-label="Received from date"
+                      />
                     </FormField>
                     <FormField label="Received to">
-                      <Input type="date" value={receivedTo} min={receivedFrom || undefined} onChange={(event) => setReceivedTo(event.target.value)} />
+                      <DatePicker
+                        value={receivedTo}
+                        min={receivedFrom || undefined}
+                        onValueChange={setReceivedTo}
+                        placeholder="To date"
+                        aria-label="Received to date"
+                      />
                     </FormField>
                   </div>
                 </div>
@@ -554,11 +593,28 @@ function UploadDialog(props: UploadDialogProps) {
           )}
           <div className="mt-5 grid gap-4 sm:grid-cols-2">
             <FormField label="Source">
-              <NativeSelect value={source} onChange={(event) => setSource(event.target.value as ResumeSource)} className="w-full">
-                {Object.entries(SOURCE_LABELS).map(([value, label]) => <NativeSelectOption key={value} value={value}>{label}</NativeSelectOption>)}
-              </NativeSelect>
+              <Select
+                value={source}
+                onValueChange={(value) => setSource(value as ResumeSource)}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {Object.entries(SOURCE_LABELS).map(([value, label]) => (
+                    <SelectItem key={value} value={value}>{label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </FormField>
-            <FormField label="Received date"><Input type="date" required value={receivedDate} onChange={(event) => setReceivedDate(event.target.value)} /></FormField>
+            <FormField label="Received date">
+              <DatePicker
+                value={receivedDate}
+                onValueChange={setReceivedDate}
+                aria-label="Resume received date"
+                required
+              />
+            </FormField>
             <FormField label="Applied position (optional)"><Input value={appliedPosition} maxLength={120} onChange={(event) => setAppliedPosition(event.target.value)} /></FormField>
             <FormField label="HR note (optional)"><Input value={note} maxLength={2000} onChange={(event) => setNote(event.target.value)} /></FormField>
           </div>
