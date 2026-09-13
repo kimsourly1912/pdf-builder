@@ -39,6 +39,7 @@ import {
   RotateCcw,
   RotateCw,
   Signature,
+  Sparkles,
   Save,
   Square,
   TextCursorInput,
@@ -108,6 +109,12 @@ import { Slider } from "@/components/ui/slider";
 import { Textarea } from "@/components/ui/textarea";
 import { PdfExtractionDialog } from "@/features/extraction/pdf-extraction-dialog";
 import { extractPdfContent } from "@/features/extraction/pdf-extraction";
+import { AiFieldDetectionDialog } from "@/features/ai-field-detection/ai-field-detection-dialog";
+import { buildDetectedAnnotations } from "@/features/ai-field-detection/field-detection";
+import type {
+  DetectedFieldCandidate,
+  FieldDetectionResult,
+} from "@/features/ai-field-detection/field-detection";
 import { CambodiaAddressField } from "@/features/gazetteer/cambodia-address-field";
 import {
   formatCambodiaAddress,
@@ -1780,6 +1787,10 @@ export function PdfEditor(props: { initialTemplateId?: string }) {
     total: 0,
   });
   const [extractionError, setExtractionError] = useState("");
+  const [aiDetectionOpen, setAiDetectionOpen] = useState(false);
+  const [aiCandidates, setAiCandidates] = useState<DetectedFieldCandidate[]>([]);
+  const [isDetectingFields, setIsDetectingFields] = useState(false);
+  const [aiDetectionError, setAiDetectionError] = useState("");
   const [error, setError] = useState("");
 
   const selectedId = selectedIds.at(-1) ?? null;
@@ -2505,6 +2516,9 @@ export function PdfEditor(props: { initialTemplateId?: string }) {
     setExtractionResult(null);
     setExtractionError("");
     setExtractionProgress({ current: 0, total: 0 });
+    setAiCandidates([]);
+    setAiDetectionError("");
+    setAiDetectionOpen(false);
   }
 
   async function loadSavedTemplate(templateId: string) {
@@ -4455,6 +4469,64 @@ export function PdfEditor(props: { initialTemplateId?: string }) {
     }
   }
 
+  async function detectFieldsWithAi() {
+    if (!fileBytes) return;
+    setIsDetectingFields(true);
+    setAiDetectionError("");
+    try {
+      const formData = new FormData();
+      formData.set(
+        "pdf",
+        new File([fileBytes.slice()], fileName || "document.pdf", {
+          type: "application/pdf",
+        }),
+      );
+      const response = await fetch("/api/ai-field-detection", {
+        method: "POST",
+        body: formData,
+      });
+      const payload = (await response.json()) as {
+        error?: string;
+        detection?: FieldDetectionResult;
+      };
+      if (!response.ok || !payload.detection) {
+        throw new Error(payload.error || "The PDF could not be analyzed.");
+      }
+      setAiCandidates(payload.detection.candidates);
+    } catch (cause) {
+      setAiDetectionError(
+        cause instanceof Error
+          ? cause.message
+          : "The PDF could not be analyzed.",
+      );
+    } finally {
+      setIsDetectingFields(false);
+    }
+  }
+
+  function applyDetectedFields(candidates: DetectedFieldCandidate[]) {
+    const result = buildDetectedAnnotations({
+      candidates,
+      annotations,
+      pageOrder,
+      recipientRoleId: recipientRoles[0]?.id,
+      idFactory: createAnnotationId,
+    });
+    const nextAnnotations = result.annotations as unknown as Annotation[];
+    commit(nextAnnotations);
+    setSelectedIds(result.addedIds);
+    const firstAdded = nextAnnotations.find((annotation) =>
+      result.addedIds.includes(annotation.id),
+    );
+    if (firstAdded) setPageNumber(firstAdded.page);
+    setAiDetectionOpen(false);
+    if (result.skippedCount > 0) {
+      setError(
+        `${result.skippedCount} detected field${result.skippedCount === 1 ? "" : "s"} could not be mapped to the current page order.`,
+      );
+    }
+  }
+
   async function extractContent() {
     if (!document) return;
     setIsExtracting(true);
@@ -4712,6 +4784,32 @@ export function PdfEditor(props: { initialTemplateId?: string }) {
                 event.currentTarget.value = "";
               }}
             />
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              title="Detect fields with AI"
+              aria-label="Detect fields with AI"
+              disabled={
+                isDetectingFields ||
+                isExtracting ||
+                isConvertingHtml ||
+                isExporting ||
+                editorMode !== "build"
+              }
+              onClick={() => {
+                setAiDetectionOpen(true);
+                if (aiCandidates.length === 0) void detectFieldsWithAi();
+              }}
+              className="px-2 sm:px-3"
+            >
+              {isDetectingFields ? (
+                <LoaderCircle className="size-4 animate-spin" />
+              ) : (
+                <Sparkles className="size-4" />
+              )}
+              <span className="hidden xl:inline">AI fields</span>
+            </Button>
             <Button
               type="button"
               variant="outline"
@@ -6350,6 +6448,16 @@ export function PdfEditor(props: { initialTemplateId?: string }) {
       <ShortcutsDialog
         open={shortcutsOpen}
         onOpenChange={setShortcutsOpen}
+      />
+      <AiFieldDetectionDialog
+        key={aiCandidates.map((candidate) => candidate.candidateId).join(",")}
+        open={aiDetectionOpen}
+        onOpenChange={setAiDetectionOpen}
+        candidates={aiCandidates}
+        isDetecting={isDetectingFields}
+        error={aiDetectionError}
+        onDetect={() => void detectFieldsWithAi()}
+        onApply={applyDetectedFields}
       />
       <PdfExtractionDialog
         open={extractionOpen}

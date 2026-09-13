@@ -12,6 +12,7 @@
     "start": "vinext start",
     "test": "npm run build && node --experimental-loader ./tests/cloudflare-loader.mjs --test --test-concurrency=1 tests/*.test.mjs",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
+    "ai:evaluate": "node scripts/evaluate-ai-field-detection.mjs",
     "db:generate": "drizzle-kit generate",
     "db:migrate:local": "wrangler d1 migrations apply DB --local --config wrangler.dev.jsonc",
     "db:migrate:remote": "wrangler d1 migrations apply DB --remote",
@@ -73,3 +74,4 @@
   "type": "module",
   "displayName": "PDF Studio"
 }
+
