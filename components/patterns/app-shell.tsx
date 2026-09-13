@@ -123,8 +123,8 @@ function AppShell(props: AppShellProps) {
         <SidebarRail />
       </Sidebar>
 
-      <SidebarInset className="min-w-0 overflow-hidden border border-border/70 md:min-h-[calc(100svh-1rem)]">
-        <header className="sticky top-0 z-30 flex h-14 shrink-0 items-center gap-2 border-b bg-background/90 px-4 backdrop-blur supports-[backdrop-filter]:bg-background/75">
+      <SidebarInset className="min-w-0 overflow-hidden border border-border/70 shadow-xs md:min-h-[calc(100svh-1rem)]">
+        <header className="sticky top-0 z-30 flex h-14 shrink-0 items-center gap-2 border-b border-border/70 bg-card/90 px-4 backdrop-blur supports-[backdrop-filter]:bg-card/75">
           <SidebarTrigger className="-ml-1" />
           <Separator orientation="vertical" className="mx-1 h-4" />
           <div className="min-w-0 flex-1">

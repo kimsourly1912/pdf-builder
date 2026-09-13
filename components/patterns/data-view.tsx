@@ -22,7 +22,7 @@ function DataView(props: DataViewProps) {
   return (
     <Card
       data-slot="data-view"
-      className={cn("gap-0 overflow-hidden py-0 shadow-none", props.className)}
+      className={cn("gap-0 overflow-hidden border-border/80 bg-card py-0 shadow-none", props.className)}
     >
       {props.children}
     </Card>
@@ -34,7 +34,7 @@ function DataViewHeader(props: DataViewHeaderProps) {
     <div
       data-slot="data-view-header"
       className={cn(
-        "flex flex-col gap-3 border-b px-4 py-3 sm:flex-row sm:items-center sm:justify-between",
+        "flex flex-col gap-3 border-b border-border/70 bg-card px-4 py-3 sm:flex-row sm:items-center sm:justify-between",
         props.className,
       )}
     >
