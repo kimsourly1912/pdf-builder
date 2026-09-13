@@ -27,6 +27,7 @@ jobs:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       # Used only to create or verify the single production owner.
       OWNER_PASSWORD: ${{ secrets.PDF_BUILDER_OWNER_PASSWORD || secrets.OWNER_PASSWORD }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       MANAGEMENT_EMAIL: kimsur61@gmail.com
 
     steps:

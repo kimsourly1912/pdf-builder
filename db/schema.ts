@@ -354,6 +354,47 @@ export const resumeProcessingJobs = sqliteTable(
   ],
 );
 
+export const aiFieldDetectionRuns = sqliteTable(
+  "ai_field_detection_runs",
+  {
+    id: text("id").primaryKey(),
+    ownerEmail: text("owner_email").notNull(),
+    fileKey: text("file_key").notNull(),
+    fileName: text("file_name").notNull(),
+    fileSize: integer("file_size").notNull(),
+    pageCount: integer("page_count").notNull(),
+    status: text("status").notNull().default("queued"),
+    provider: text("provider").notNull().default("openai"),
+    model: text("model").notNull(),
+    promptVersion: text("prompt_version").notNull(),
+    schemaVersion: integer("schema_version").notNull().default(1),
+    resultJson: text("result_json"),
+    reviewedCandidatesJson: text("reviewed_candidates_json"),
+    providerResponseId: text("provider_response_id"),
+    inputTokens: integer("input_tokens"),
+    outputTokens: integer("output_tokens"),
+    totalTokens: integer("total_tokens"),
+    attemptCount: integer("attempt_count").notNull().default(0),
+    errorCode: text("error_code"),
+    errorMessage: text("error_message"),
+    createdAt: text("created_at").notNull(),
+    startedAt: text("started_at"),
+    completedAt: text("completed_at"),
+    reviewedAt: text("reviewed_at"),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (table) => [
+    index("ai_field_detection_runs_owner_updated_idx").on(
+      table.ownerEmail,
+      table.updatedAt,
+    ),
+    index("ai_field_detection_runs_status_updated_idx").on(
+      table.status,
+      table.updatedAt,
+    ),
+  ],
+);
+
 export const submissions = sqliteTable(
   "submissions",
   {

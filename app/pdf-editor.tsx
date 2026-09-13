@@ -115,6 +115,10 @@ import type {
   DetectedFieldCandidate,
   FieldDetectionResult,
 } from "@/features/ai-field-detection/field-detection";
+import type {
+  AiFieldDetectionRun,
+  AiFieldDetectionRunStatus,
+} from "@/features/ai-field-detection/run-types";
 import { CambodiaAddressField } from "@/features/gazetteer/cambodia-address-field";
 import {
   formatCambodiaAddress,
@@ -262,6 +266,7 @@ type EditorDraft = {
   templateName?: string;
   templateDescription?: string;
   recipientRoles?: RecipientRole[];
+  aiFieldDetectionRunId?: string;
 };
 type Interaction =
   | {
@@ -1790,8 +1795,13 @@ export function PdfEditor(props: { initialTemplateId?: string }) {
   const [aiDetectionOpen, setAiDetectionOpen] = useState(false);
   const [aiCandidates, setAiCandidates] = useState<DetectedFieldCandidate[]>([]);
   const [isDetectingFields, setIsDetectingFields] = useState(false);
+  const [isApplyingDetectedFields, setIsApplyingDetectedFields] = useState(false);
+  const [aiDetectionRunId, setAiDetectionRunId] = useState<string | null>(null);
+  const [aiDetectionStatus, setAiDetectionStatus] =
+    useState<AiFieldDetectionRunStatus | null>(null);
   const [aiDetectionError, setAiDetectionError] = useState("");
   const [error, setError] = useState("");
+  const aiDetectionPollTokenRef = useRef(0);
 
   const selectedId = selectedIds.at(-1) ?? null;
 
@@ -1894,6 +1904,7 @@ export function PdfEditor(props: { initialTemplateId?: string }) {
         templateName: templateName || undefined,
         templateDescription: templateDescription || undefined,
         recipientRoles: recipientRoles.map((role) => ({ ...role })),
+        aiFieldDetectionRunId: aiDetectionRunId ?? undefined,
       };
       void writeDraft(draft)
         .then(() => {
@@ -1903,7 +1914,7 @@ export function PdfEditor(props: { initialTemplateId?: string }) {
         .catch(() => setDraftStatus("saved"));
     }, 700);
     return () => window.clearTimeout(timer);
-  }, [annotations, document, editingTemplateId, editingVersionNumber, fileBytes, fileName, pageOrder, recipientRoles, templateDescription, templateName]);
+  }, [aiDetectionRunId, annotations, document, editingTemplateId, editingVersionNumber, fileBytes, fileName, pageOrder, recipientRoles, templateDescription, templateName]);
 
   const fitToScreen = useCallback(() => {
     const viewport = viewportRef.current;
@@ -2517,8 +2528,11 @@ export function PdfEditor(props: { initialTemplateId?: string }) {
     setExtractionError("");
     setExtractionProgress({ current: 0, total: 0 });
     setAiCandidates([]);
+    setAiDetectionRunId(null);
+    setAiDetectionStatus(null);
     setAiDetectionError("");
     setAiDetectionOpen(false);
+    aiDetectionPollTokenRef.current += 1;
   }
 
   async function loadSavedTemplate(templateId: string) {
@@ -2635,6 +2649,12 @@ export function PdfEditor(props: { initialTemplateId?: string }) {
         setRecipientRoles(
           availableDraft.recipientRoles.map((role) => ({ ...role })),
         );
+      }
+      if (availableDraft.aiFieldDetectionRunId) {
+        const runId = availableDraft.aiFieldDetectionRunId;
+        setAiDetectionRunId(runId);
+        setAiDetectionOpen(true);
+        void resumeAiFieldDetectionRun(runId);
       }
     } catch {
       setError("This saved draft could not be restored.");
@@ -4471,7 +4491,11 @@ export function PdfEditor(props: { initialTemplateId?: string }) {
 
   async function detectFieldsWithAi() {
     if (!fileBytes) return;
+    const pollToken = aiDetectionPollTokenRef.current + 1;
+    aiDetectionPollTokenRef.current = pollToken;
     setIsDetectingFields(true);
+    setAiCandidates([]);
+    setAiDetectionStatus("queued");
     setAiDetectionError("");
     try {
       const formData = new FormData();
@@ -4481,32 +4505,133 @@ export function PdfEditor(props: { initialTemplateId?: string }) {
           type: "application/pdf",
         }),
       );
-      const response = await fetch("/api/ai-field-detection", {
+      const response = await fetch("/api/ai-field-detection/runs", {
         method: "POST",
         body: formData,
       });
       const payload = (await response.json()) as {
         error?: string;
-        detection?: FieldDetectionResult;
+        run?: AiFieldDetectionRun;
       };
-      if (!response.ok || !payload.detection) {
-        throw new Error(payload.error || "The PDF could not be analyzed.");
+      if (!response.ok || !payload.run) {
+        throw new Error(payload.error || "AI analysis could not be started.");
       }
-      setAiCandidates(payload.detection.candidates);
+      setAiDetectionRunId(payload.run.id);
+      setAiDetectionStatus(payload.run.status);
+      const detection = await pollAiFieldDetectionRun(payload.run.id, pollToken);
+      if (detection && aiDetectionPollTokenRef.current === pollToken) {
+        setAiCandidates(detection.candidates);
+      }
+    } catch (cause) {
+      if (aiDetectionPollTokenRef.current === pollToken) {
+        setAiDetectionError(
+          cause instanceof Error
+            ? cause.message
+            : "The PDF could not be analyzed.",
+        );
+      }
+    } finally {
+      if (aiDetectionPollTokenRef.current === pollToken) {
+        setIsDetectingFields(false);
+      }
+    }
+  }
+
+  async function resumeAiFieldDetectionRun(runId: string) {
+    const pollToken = aiDetectionPollTokenRef.current + 1;
+    aiDetectionPollTokenRef.current = pollToken;
+    setIsDetectingFields(true);
+    setAiDetectionError("");
+    try {
+      const detection = await pollAiFieldDetectionRun(runId, pollToken);
+      if (detection && aiDetectionPollTokenRef.current === pollToken) {
+        setAiCandidates(detection.candidates);
+      }
+    } catch (cause) {
+      if (aiDetectionPollTokenRef.current === pollToken) {
+        setAiDetectionError(
+          cause instanceof Error
+            ? cause.message
+            : "The PDF analysis could not be resumed.",
+        );
+      }
+    } finally {
+      if (aiDetectionPollTokenRef.current === pollToken) {
+        setIsDetectingFields(false);
+      }
+    }
+  }
+
+  async function pollAiFieldDetectionRun(
+    runId: string,
+    pollToken: number,
+  ): Promise<FieldDetectionResult | null> {
+    for (let pollCount = 0; pollCount < 150; pollCount += 1) {
+      if (aiDetectionPollTokenRef.current !== pollToken) return null;
+      const response = await fetch(
+        `/api/ai-field-detection/runs/${encodeURIComponent(runId)}`,
+        { cache: "no-store" },
+      );
+      const payload = (await response.json()) as {
+        error?: string;
+        run?: AiFieldDetectionRun;
+      };
+      if (!response.ok || !payload.run) {
+        throw new Error(payload.error || "The AI analysis could not be loaded.");
+      }
+      setAiDetectionStatus(payload.run.status);
+      if (payload.run.status === "ready_for_review" && payload.run.detection) {
+        return payload.run.detection;
+      }
+      if (payload.run.status === "reviewed" && payload.run.detection) {
+        return payload.run.detection;
+      }
+      if (payload.run.status === "failed") {
+        throw new Error(payload.run.errorMessage || "The PDF could not be analyzed.");
+      }
+      if (payload.run.status === "cancelled") {
+        throw new Error("The AI analysis was cancelled.");
+      }
+      await new Promise((resolve) => window.setTimeout(resolve, 2_000));
+    }
+    throw new Error("The AI analysis is taking longer than expected. Reopen this draft to resume it.");
+  }
+
+  async function applyDetectedFields(candidates: DetectedFieldCandidate[]) {
+    setIsApplyingDetectedFields(true);
+    setAiDetectionError("");
+    let acceptedCandidates = candidates;
+    try {
+      if (aiDetectionRunId) {
+        const response = await fetch(
+          `/api/ai-field-detection/runs/${encodeURIComponent(aiDetectionRunId)}`,
+          {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ acceptedCandidates: candidates }),
+          },
+        );
+        const payload = (await response.json()) as {
+          error?: string;
+          acceptedCandidates?: DetectedFieldCandidate[];
+        };
+        if (!response.ok || !payload.acceptedCandidates) {
+          throw new Error(payload.error || "The field review could not be saved.");
+        }
+        acceptedCandidates = payload.acceptedCandidates;
+      }
     } catch (cause) {
       setAiDetectionError(
         cause instanceof Error
           ? cause.message
-          : "The PDF could not be analyzed.",
+          : "The field review could not be saved.",
       );
-    } finally {
-      setIsDetectingFields(false);
+      setIsApplyingDetectedFields(false);
+      return;
     }
-  }
 
-  function applyDetectedFields(candidates: DetectedFieldCandidate[]) {
     const result = buildDetectedAnnotations({
-      candidates,
+      candidates: acceptedCandidates,
       annotations,
       pageOrder,
       recipientRoleId: recipientRoles[0]?.id,
@@ -4519,7 +4644,10 @@ export function PdfEditor(props: { initialTemplateId?: string }) {
       result.addedIds.includes(annotation.id),
     );
     if (firstAdded) setPageNumber(firstAdded.page);
+    setAiDetectionRunId(null);
+    setAiDetectionStatus("reviewed");
     setAiDetectionOpen(false);
+    setIsApplyingDetectedFields(false);
     if (result.skippedCount > 0) {
       setError(
         `${result.skippedCount} detected field${result.skippedCount === 1 ? "" : "s"} could not be mapped to the current page order.`,
@@ -6455,6 +6583,8 @@ export function PdfEditor(props: { initialTemplateId?: string }) {
         onOpenChange={setAiDetectionOpen}
         candidates={aiCandidates}
         isDetecting={isDetectingFields}
+        isApplying={isApplyingDetectedFields}
+        status={aiDetectionStatus}
         error={aiDetectionError}
         onDetect={() => void detectFieldsWithAi()}
         onApply={applyDetectedFields}

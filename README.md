@@ -23,6 +23,7 @@ PDF editing and selectable-text extraction run locally in the browser. D1 and pr
 - Candidate duplicate suggestions using normalized email and phone
 - Editable candidate review with confidence, source-page, and verification state
 - Explicit `candidate.*` template prefill keys copied as immutable assignment snapshots
+- Durable AI field-detection runs with private R2 inputs, D1 status, queue retries, and review-before-apply
 
 ## Requirements
 
@@ -55,6 +56,7 @@ Configure these secrets in the GitHub Actions `production` environment:
 - `CLOUDFLARE_ACCOUNT_ID`
 - `CLOUDFLARE_API_TOKEN`
 - `PDF_BUILDER_OWNER_PASSWORD` (at least 12 characters)
+- `OPENAI_API_KEY` (required for AI field detection)
 
 The owner password is used only by the deployment runner to create or verify
 the configured owner account. The workflow generates the persistent Better

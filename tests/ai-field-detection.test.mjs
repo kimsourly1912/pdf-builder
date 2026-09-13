@@ -18,6 +18,9 @@ after(async () => vite.close());
 const detection = await vite.ssrLoadModule(
   "/features/ai-field-detection/field-detection.ts",
 );
+const review = await vite.ssrLoadModule(
+  "/features/ai-field-detection/field-detection-review.ts",
+);
 
 function rawField(overrides = {}) {
   return {
@@ -112,6 +115,80 @@ test("classifies confidence bands used by the review UI", () => {
   assert.equal(detection.confidenceBand(0.91), "high");
   assert.equal(detection.confidenceBand(0.7), "review");
   assert.equal(detection.confidenceBand(0.4), "low");
+});
+
+test("persists only reviewed edits while preserving detected geometry", () => {
+  let id = 0;
+  const normalized = detection.normalizeFieldDetectionResult({
+    value: {
+      fields: [
+        rawField(),
+        rawField({ label: "Email", suggestedKey: "email", tool: "input" }),
+      ],
+    },
+    pageCount: 1,
+    engine: "test",
+    idFactory: () => `candidate-${++id}`,
+  });
+  const reviewed = review.parseReviewedFieldCandidates({
+    detected: normalized.candidates,
+    value: [
+      {
+        candidateId: "candidate-1",
+        label: "Birth date (required)",
+        suggestedKey: "birth date",
+        tool: "input",
+        fieldBox: { x: 0, y: 0, width: 1, height: 1 },
+      },
+    ],
+  });
+
+  assert.equal(reviewed.length, 1);
+  assert.equal(reviewed[0].label, "Birth date (required)");
+  assert.equal(reviewed[0].suggestedKey, "birth_date");
+  assert.equal(reviewed[0].tool, "input");
+  assert.deepEqual(
+    reviewed[0].fieldBox,
+    normalized.candidates[0].fieldBox,
+    "client review cannot move the server-detected geometry",
+  );
+});
+
+test("rejects unknown, duplicate, and unsafe reviewed candidates", () => {
+  const normalized = detection.normalizeFieldDetectionResult({
+    value: { fields: [rawField()] },
+    pageCount: 1,
+    engine: "test",
+    idFactory: () => "candidate-1",
+  });
+  const valid = {
+    candidateId: "candidate-1",
+    label: "Date of Birth",
+    suggestedKey: "date_of_birth",
+    tool: "date",
+  };
+
+  assert.equal(
+    review.parseReviewedFieldCandidates({
+      detected: normalized.candidates,
+      value: [{ ...valid, candidateId: "unknown" }],
+    }),
+    null,
+  );
+  assert.equal(
+    review.parseReviewedFieldCandidates({
+      detected: normalized.candidates,
+      value: [valid, valid],
+    }),
+    null,
+  );
+  assert.equal(
+    review.parseReviewedFieldCandidates({
+      detected: normalized.candidates,
+      value: [{ ...valid, tool: "dropdown" }],
+    }),
+    null,
+  );
 });
 
 test("calculates reproducible evaluation metrics", () => {

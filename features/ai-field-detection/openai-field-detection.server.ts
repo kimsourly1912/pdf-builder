@@ -53,7 +53,7 @@ export async function detectPdfFieldsWithOpenAi(options: {
   const { bytes, fileName, pageCount } = options;
   const runtime = env as unknown as OpenAiRuntime;
   const apiKey = runtime.OPENAI_API_KEY?.trim();
-  const model = runtime.OPENAI_FIELD_DETECTION_MODEL?.trim() || "gpt-5.6";
+  const model = getFieldDetectionModel();
   if (!apiKey) {
     throw new FieldDetectionProviderError({
       message: "OPENAI_API_KEY is not configured.",
@@ -157,6 +157,11 @@ export async function detectPdfFieldsWithOpenAi(options: {
     usage,
     providerResponseId: payload.id,
   };
+}
+
+export function getFieldDetectionModel(): string {
+  const runtime = env as unknown as OpenAiRuntime;
+  return runtime.OPENAI_FIELD_DETECTION_MODEL?.trim() || "gpt-5.6";
 }
 
 const FIELD_DETECTION_INSTRUCTIONS = `You analyze PDF forms for PDF Studio.

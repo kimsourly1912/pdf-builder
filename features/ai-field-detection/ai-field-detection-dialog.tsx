@@ -29,21 +29,26 @@ import type {
   AiFieldTool,
   DetectedFieldCandidate,
 } from "@/features/ai-field-detection/field-detection";
+import type { AiFieldDetectionRunStatus } from "@/features/ai-field-detection/run-types";
 
 export function AiFieldDetectionDialog(props: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   candidates: DetectedFieldCandidate[];
   isDetecting: boolean;
+  isApplying: boolean;
+  status: AiFieldDetectionRunStatus | null;
   error: string;
   onDetect: () => void;
-  onApply: (candidates: DetectedFieldCandidate[]) => void;
+  onApply: (candidates: DetectedFieldCandidate[]) => Promise<void>;
 }) {
   const {
     open,
     onOpenChange,
     candidates,
     isDetecting,
+    isApplying,
+    status,
     error,
     onDetect,
     onApply,
@@ -107,7 +112,9 @@ export function AiFieldDetectionDialog(props: {
               <div>
                 <p className="font-medium">Analyzing labels and field areas</p>
                 <p className="mt-1 text-sm text-muted-foreground">
-                  Phase 1 analyzes up to 20 pages. Keep this dialog open.
+                  {status === "queued"
+                    ? "Queued securely. You can close this dialog and resume from the saved draft."
+                    : "Processing in the background. This draft can resume the analysis after a reload."}
                 </p>
               </div>
             </div>
@@ -261,23 +268,32 @@ export function AiFieldDetectionDialog(props: {
           <Button
             type="button"
             variant="outline"
+            disabled={isApplying}
             onClick={() => onOpenChange(false)}
           >
             Cancel
           </Button>
           {error && (
-            <Button type="button" onClick={onDetect}>
+            <Button type="button" disabled={isApplying} onClick={onDetect}>
               Try again
             </Button>
           )}
           {drafts.length > 0 && !isDetecting && (
             <Button
               type="button"
-              disabled={selectedCandidates.length === 0}
-              onClick={() => onApply(selectedCandidates)}
+              disabled={selectedCandidates.length === 0 || isApplying}
+              onClick={() => void onApply(selectedCandidates)}
             >
-              Add {selectedCandidates.length} field
-              {selectedCandidates.length === 1 ? "" : "s"}
+              {isApplying ? (
+                <>
+                  <LoaderCircle className="size-4 animate-spin" /> Saving review
+                </>
+              ) : (
+                <>
+                  Add {selectedCandidates.length} field
+                  {selectedCandidates.length === 1 ? "" : "s"}
+                </>
+              )}
             </Button>
           )}
         </DialogFooter>

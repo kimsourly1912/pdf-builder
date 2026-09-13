@@ -22,5 +22,21 @@
       "binding": "FILES",
       "bucket_name": "pdf-builder-files"
     }
-  ]
+  ],
+  "queues": {
+    "producers": [
+      {
+        "binding": "AI_FIELD_DETECTION_QUEUE",
+        "queue": "pdf-builder-ai-field-detection-dev"
+      }
+    ],
+    "consumers": [
+      {
+        "queue": "pdf-builder-ai-field-detection-dev",
+        "max_batch_size": 1,
+        "max_batch_timeout": 1,
+        "max_retries": 3
+      }
+    ]
+  }
 }

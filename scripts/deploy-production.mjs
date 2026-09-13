@@ -5,10 +5,12 @@ const ACCOUNT_ID = requiredEnvironmentVariable("CLOUDFLARE_ACCOUNT_ID");
 const API_TOKEN = requiredEnvironmentVariable("CLOUDFLARE_API_TOKEN");
 const MANAGEMENT_EMAIL = requiredEnvironmentVariable("MANAGEMENT_EMAIL");
 const OWNER_PASSWORD = requiredEnvironmentVariable("OWNER_PASSWORD");
+const OPENAI_API_KEY = requiredEnvironmentVariable("OPENAI_API_KEY");
 
 const WORKER_NAME = "pdf-builder";
 const DATABASE_NAME = "pdf-builder-db";
 const BUCKET_NAME = "pdf-builder-files";
+const AI_FIELD_DETECTION_QUEUE_NAME = "pdf-builder-ai-field-detection";
 const WRANGLER_CONFIG_PATH = "wrangler.jsonc";
 const ACCESS_APPLICATION_NAMES = [
   "PDF Builder production",
@@ -29,6 +31,7 @@ async function main() {
     getWorkersSubdomain(),
   ]);
   await ensureR2Bucket();
+  ensureAiFieldDetectionQueue();
 
   const hostname = `${WORKER_NAME}.${workersSubdomain}.workers.dev`;
   await ensureAuthenticationBypass(hostname);
@@ -46,6 +49,7 @@ async function main() {
   ]);
 
   await ensurePersistentAuthSecret();
+  await putWorkerSecret("OPENAI_API_KEY", OPENAI_API_KEY);
   const bootstrapToken = randomSecret();
   await putWorkerSecret("AUTH_BOOTSTRAP_TOKEN", bootstrapToken);
   run("npx", ["wrangler", "deploy", "--config", WRANGLER_CONFIG_PATH]);
@@ -99,6 +103,38 @@ async function ensureR2Bucket() {
     body: JSON.stringify({ name: BUCKET_NAME, locationHint: "apac" }),
   });
   console.log(`Created R2 bucket: ${BUCKET_NAME}`);
+}
+
+function ensureAiFieldDetectionQueue() {
+  const result = spawnSync(
+    "npx",
+    [
+      "wrangler",
+      "queues",
+      "create",
+      AI_FIELD_DETECTION_QUEUE_NAME,
+      "--config",
+      WRANGLER_CONFIG_PATH,
+    ],
+    {
+      env: process.env,
+      encoding: "utf8",
+      shell: process.platform === "win32",
+    },
+  );
+  const output = `${result.stdout ?? ""}\n${result.stderr ?? ""}`;
+  if (result.status === 0) {
+    console.log(`Created Cloudflare Queue: ${AI_FIELD_DETECTION_QUEUE_NAME}`);
+    return;
+  }
+  if (/already exists|already been taken/iu.test(output)) {
+    console.log(`Using existing Cloudflare Queue: ${AI_FIELD_DETECTION_QUEUE_NAME}`);
+    return;
+  }
+  process.stderr.write(output);
+  throw new Error(
+    `Could not create Cloudflare Queue ${AI_FIELD_DETECTION_QUEUE_NAME}.`,
+  );
 }
 
 async function getWorkersSubdomain() {
