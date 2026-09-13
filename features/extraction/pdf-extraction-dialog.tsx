@@ -18,6 +18,7 @@ import { useMemo, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
   Dialog,
   DialogContent,
@@ -99,11 +100,11 @@ export function PdfExtractionDialog(props: PdfExtractionDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="flex max-h-[92dvh] w-[calc(100vw-1rem)] max-w-5xl flex-col overflow-hidden p-0 sm:w-full">
-        <DialogHeader className="border-b border-slate-200 px-5 pb-4 pt-5 sm:px-6">
+        <DialogHeader className="border-b border-border px-5 pb-4 pt-5 sm:px-6">
           <div className="flex items-start justify-between gap-4 pr-8">
             <div>
               <DialogTitle className="flex items-center gap-2">
-                <TextSelect className="size-5 text-blue-600" /> Extract PDF content
+                <TextSelect className="size-5 text-primary" /> Extract PDF content
               </DialogTitle>
               <DialogDescription className="mt-1.5">
                 Review or export the text, structure, fields, notes, and attachments found in this PDF.
@@ -119,16 +120,16 @@ export function PdfExtractionDialog(props: PdfExtractionDialogProps) {
 
         {isExtracting ? (
           <div className="flex min-h-[420px] flex-col items-center justify-center px-6 text-center">
-            <span className="flex size-14 items-center justify-center rounded-2xl bg-blue-50 text-blue-600">
+            <span className="flex size-14 items-center justify-center rounded-2xl bg-primary/10 text-primary">
               <LoaderCircle className="size-6 animate-spin" />
             </span>
-            <p className="mt-4 text-base font-semibold text-slate-900">Reading every page</p>
-            <p className="mt-1 text-sm text-slate-500">
+            <p className="mt-4 text-base font-semibold text-foreground">Reading every page</p>
+            <p className="mt-1 text-sm text-muted-foreground">
               Page {progress.current || 1} of {progress.total || 1}
             </p>
-            <div className="mt-4 h-2 w-56 overflow-hidden rounded-full bg-slate-100">
+            <div className="mt-4 h-2 w-56 overflow-hidden rounded-full bg-muted">
               <div
-                className="h-full rounded-full bg-blue-600 transition-[width]"
+                className="h-full rounded-full bg-primary transition-[width]"
                 style={{ width: `${Math.max(4, progress.total ? (progress.current / progress.total) * 100 : 4)}%` }}
               />
             </div>
@@ -138,13 +139,13 @@ export function PdfExtractionDialog(props: PdfExtractionDialogProps) {
             <span className="flex size-14 items-center justify-center rounded-2xl bg-rose-50 text-rose-600">
               <Info className="size-6" />
             </span>
-            <p className="mt-4 font-semibold text-slate-900">Content could not be extracted</p>
-            <p className="mt-1 max-w-md text-sm leading-6 text-slate-500">{error}</p>
+            <p className="mt-4 font-semibold text-foreground">Content could not be extracted</p>
+            <p className="mt-1 max-w-md text-sm leading-6 text-muted-foreground">{error}</p>
             <Button type="button" className="mt-5" onClick={onExtract}>Try again</Button>
           </div>
         ) : result ? (
           <Tabs defaultValue="pages" className="min-h-0 flex-1 gap-0 overflow-hidden">
-            <div className="border-b border-slate-200 px-4 sm:px-6">
+            <div className="border-b border-border px-4 sm:px-6">
               <TabsList variant="line" className="h-11 max-w-full justify-start overflow-x-auto">
                 <TabsTrigger value="pages">Pages</TabsTrigger>
                 <TabsTrigger value="overview">Overview</TabsTrigger>
@@ -155,45 +156,47 @@ export function PdfExtractionDialog(props: PdfExtractionDialogProps) {
 
             <TabsContent value="pages" className="min-h-0 overflow-hidden p-0">
               <div className="grid h-[min(62dvh,620px)] min-h-0 md:grid-cols-[220px_1fr]">
-                <aside className="flex min-h-0 flex-col border-b border-slate-200 bg-slate-50 md:border-b-0 md:border-r">
+                <aside className="flex min-h-0 flex-col border-b border-border bg-muted/40 md:border-b-0 md:border-r">
                   <label className="relative m-3 block">
-                    <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
-                    <input
+                    <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                    <Input
                       value={query}
                       onChange={(event) => setQuery(event.target.value)}
                       placeholder="Search extracted text"
-                      className="h-10 w-full rounded-lg border border-slate-200 bg-white pl-9 pr-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                      className="h-10 bg-card pl-9"
                     />
                   </label>
                   <ScrollArea className="min-h-0 flex-1 px-3 pb-3">
                     <div className="grid grid-cols-4 gap-2 md:grid-cols-1">
                       {result.pages.map((entry) => (
-                        <button
+                        <Button
                           key={entry.pageNumber}
                           type="button"
+                          variant="ghost"
+                          size="sm"
                           onClick={() => setSelectedPage(entry.pageNumber)}
-                          className={`flex min-w-0 items-center justify-between rounded-lg border px-3 py-2 text-left text-sm transition-colors ${safeSelectedPage === entry.pageNumber ? "border-blue-300 bg-blue-50 text-blue-800" : "border-transparent bg-white text-slate-600 hover:border-slate-200"}`}
+                          className={`h-auto min-w-0 justify-between border px-3 py-2 text-left ${safeSelectedPage === entry.pageNumber ? "border-primary/30 bg-primary/10 text-primary hover:bg-primary/10" : "border-transparent bg-card text-muted-foreground hover:border-border"}`}
                         >
                           <span className="truncate font-semibold">Page {entry.label}</span>
                           <span className="flex items-center gap-1.5">
-                            {query && matchingPages.has(entry.pageNumber) && <span className="size-1.5 rounded-full bg-blue-500" />}
-                            <span className="hidden text-xs text-slate-400 md:inline">{entry.wordCount}</span>
+                            {query && matchingPages.has(entry.pageNumber) && <span className="size-1.5 rounded-full bg-primary/100" />}
+                            <span className="hidden text-xs text-muted-foreground md:inline">{entry.wordCount}</span>
                           </span>
-                        </button>
+                        </Button>
                       ))}
                     </div>
                   </ScrollArea>
                 </aside>
-                <section className="flex min-h-0 flex-col bg-white">
+                <section className="flex min-h-0 flex-col bg-card">
                   <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 px-4 py-3 sm:px-5">
                     <div>
-                      <p className="text-sm font-semibold text-slate-900">Page {page?.label}</p>
-                      <p className="text-xs text-slate-400">{page?.wordCount.toLocaleString()} words · {page?.characterCount.toLocaleString()} characters · {page?.imageObjectCount} image objects</p>
+                      <p className="text-sm font-semibold text-foreground">Page {page?.label}</p>
+                      <p className="text-xs text-muted-foreground">{page?.wordCount.toLocaleString()} words · {page?.characterCount.toLocaleString()} characters · {page?.imageObjectCount} image objects</p>
                     </div>
                     {page && !page.text && <Badge variant="outline" className="border-amber-200 bg-amber-50 text-amber-700">No text layer</Badge>}
                   </div>
                   <ScrollArea className="min-h-0 flex-1">
-                    <pre lang={containsKhmer(page?.text ?? "") ? "km" : undefined} className="min-h-full whitespace-pre-wrap break-words p-4 font-sans text-sm leading-7 text-slate-700 sm:p-6">{page?.text || "No selectable text was found on this page. It may be a scanned image and need OCR."}</pre>
+                    <pre lang={containsKhmer(page?.text ?? "") ? "km" : undefined} className="min-h-full whitespace-pre-wrap break-words p-4 font-sans text-sm leading-7 text-foreground sm:p-6">{page?.text || "No selectable text was found on this page. It may be a scanned image and need OCR."}</pre>
                   </ScrollArea>
                 </section>
               </div>
@@ -216,20 +219,20 @@ export function PdfExtractionDialog(props: PdfExtractionDialogProps) {
                     </div>
                   )}
                   <section>
-                    <h3 className="text-sm font-semibold text-slate-900">Document metadata</h3>
-                    <div className="mt-3 overflow-hidden rounded-xl border border-slate-200">
+                    <h3 className="text-sm font-semibold text-foreground">Document metadata</h3>
+                    <div className="mt-3 overflow-hidden rounded-xl border border-border">
                       {Object.entries(result.metadata).filter(([, value]) => value !== undefined && value !== "").length > 0 ? Object.entries(result.metadata).filter(([, value]) => value !== undefined && value !== "").map(([key, value]) => (
                         <div key={key} className="grid gap-1 border-b border-slate-100 px-4 py-3 last:border-b-0 sm:grid-cols-[180px_1fr]">
-                          <dt className="text-xs font-semibold text-slate-500">{key}</dt>
-                          <dd className="break-words text-sm text-slate-700">{formatValue(value)}</dd>
+                          <dt className="text-xs font-semibold text-muted-foreground">{key}</dt>
+                          <dd className="break-words text-sm text-foreground">{formatValue(value)}</dd>
                         </div>
-                      )) : <p className="p-4 text-sm text-slate-500">No document metadata was found.</p>}
+                      )) : <p className="p-4 text-sm text-muted-foreground">No document metadata was found.</p>}
                     </div>
                   </section>
                   <section>
-                    <h3 className="text-sm font-semibold text-slate-900">Bookmarks</h3>
-                    <div className="mt-3 rounded-xl border border-slate-200 p-4">
-                      {result.outline.length > 0 ? <ol className="space-y-2">{result.outline.map((item, index) => <li key={`${item.title}-${index}`} className="text-sm text-slate-700" style={{ paddingLeft: item.depth * 18 }}>{item.title}</li>)}</ol> : <p className="text-sm text-slate-500">No bookmarks were found.</p>}
+                    <h3 className="text-sm font-semibold text-foreground">Bookmarks</h3>
+                    <div className="mt-3 rounded-xl border border-border p-4">
+                      {result.outline.length > 0 ? <ol className="space-y-2">{result.outline.map((item, index) => <li key={`${item.title}-${index}`} className="text-sm text-foreground" style={{ paddingLeft: item.depth * 18 }}>{item.title}</li>)}</ol> : <p className="text-sm text-muted-foreground">No bookmarks were found.</p>}
                     </div>
                   </section>
                 </div>
@@ -240,13 +243,13 @@ export function PdfExtractionDialog(props: PdfExtractionDialogProps) {
               <ScrollArea className="h-full">
                 <div className="space-y-4 p-5 sm:p-6">
                   {result.pages.flatMap((entry) => entry.annotations.map((annotation, index) => ({ page: entry.label, annotation, index }))).map((item) => (
-                    <div key={`${item.page}-${item.index}`} className="rounded-xl border border-slate-200 p-4">
-                      <div className="flex flex-wrap items-center gap-2"><Badge variant="outline">Page {item.page}</Badge><span className="text-sm font-semibold text-slate-900">{item.annotation.fieldName || item.annotation.subtype}</span>{item.annotation.fieldType && <span className="text-xs text-slate-400">{item.annotation.fieldType}</span>}</div>
-                      {(item.annotation.contents || item.annotation.alternativeText || item.annotation.value !== undefined || item.annotation.url) && <p className="mt-2 break-words text-sm leading-6 text-slate-600">{item.annotation.contents || item.annotation.alternativeText || formatValue(item.annotation.value) || item.annotation.url}</p>}
+                    <div key={`${item.page}-${item.index}`} className="rounded-xl border border-border p-4">
+                      <div className="flex flex-wrap items-center gap-2"><Badge variant="outline">Page {item.page}</Badge><span className="text-sm font-semibold text-foreground">{item.annotation.fieldName || item.annotation.subtype}</span>{item.annotation.fieldType && <span className="text-xs text-muted-foreground">{item.annotation.fieldType}</span>}</div>
+                      {(item.annotation.contents || item.annotation.alternativeText || item.annotation.value !== undefined || item.annotation.url) && <p className="mt-2 break-words text-sm leading-6 text-muted-foreground">{item.annotation.contents || item.annotation.alternativeText || formatValue(item.annotation.value) || item.annotation.url}</p>}
                     </div>
                   ))}
                   {result.annotationCount === 0 && result.editorAnnotations.length === 0 && <EmptyMessage title="No fields or notes found" description="This PDF does not contain native form fields or PDF annotations." />}
-                  {result.editorAnnotations.length > 0 && <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-800"><strong>{result.editorAnnotations.length} editor item{result.editorAnnotations.length === 1 ? "" : "s"}</strong> are included in the JSON export.</div>}
+                  {result.editorAnnotations.length > 0 && <div className="rounded-xl border border-blue-200 bg-primary/10 p-4 text-sm text-primary"><strong>{result.editorAnnotations.length} editor item{result.editorAnnotations.length === 1 ? "" : "s"}</strong> are included in the JSON export.</div>}
                 </div>
               </ScrollArea>
             </TabsContent>
@@ -262,14 +265,14 @@ export function PdfExtractionDialog(props: PdfExtractionDialogProps) {
           </Tabs>
         ) : null}
 
-        <DialogFooter className="border-t border-slate-200 px-4 py-3 sm:px-6">
+        <DialogFooter className="border-t border-border px-4 py-3 sm:px-6">
           {result && !isExtracting && (
             <div className="flex w-full flex-wrap items-center justify-between gap-2">
-              <p className="hidden text-xs text-slate-400 sm:block">Extraction stays in this browser.</p>
+              <p className="hidden text-xs text-muted-foreground sm:block">Extraction stays in this browser.</p>
               <div className="ml-auto flex flex-wrap gap-2">
                 <Button type="button" variant="outline" size="sm" onClick={() => void copyText()}>{copied ? <Check className="size-4 text-emerald-600" /> : <Clipboard className="size-4" />}{copied ? "Copied" : "Copy text"}</Button>
                 <Button type="button" variant="outline" size="sm" onClick={downloadText}><FileText className="size-4" /> TXT</Button>
-                <Button type="button" size="sm" onClick={downloadJson} className="bg-blue-600 hover:bg-blue-700"><Braces className="size-4" /> JSON</Button>
+                <Button type="button" size="sm" onClick={downloadJson} className="bg-primary hover:bg-blue-700"><Braces className="size-4" /> JSON</Button>
               </div>
             </div>
           )}
@@ -280,7 +283,7 @@ export function PdfExtractionDialog(props: PdfExtractionDialogProps) {
 }
 
 function Stat(props: { icon: React.ReactNode; label: string; value: number }) {
-  return <div className="rounded-xl border border-slate-200 bg-slate-50 p-3"><span className="text-blue-600 [&_svg]:size-4">{props.icon}</span><p className="mt-3 text-xl font-bold text-slate-900">{props.value.toLocaleString()}</p><p className="text-xs text-slate-500">{props.label}</p></div>;
+  return <div className="rounded-xl border border-border bg-muted/40 p-3"><span className="text-primary [&_svg]:size-4">{props.icon}</span><p className="mt-3 text-xl font-bold text-foreground">{props.value.toLocaleString()}</p><p className="text-xs text-muted-foreground">{props.label}</p></div>;
 }
 
 function AttachmentRow(props: { attachment: PdfExtractedAttachment }) {
@@ -288,11 +291,11 @@ function AttachmentRow(props: { attachment: PdfExtractedAttachment }) {
   function download() {
     downloadBlob(new Blob([attachment.content]), attachment.fileName);
   }
-  return <div className="flex items-center gap-3 rounded-xl border border-slate-200 p-4"><span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-500"><Paperclip className="size-4" /></span><div className="min-w-0 flex-1"><p className="truncate text-sm font-semibold text-slate-900">{attachment.fileName}</p><p className="text-xs text-slate-400">{formatBytes(attachment.size)}</p></div><Button type="button" variant="outline" size="sm" onClick={download}><Download className="size-4" /> Download</Button></div>;
+  return <div className="flex items-center gap-3 rounded-xl border border-border p-4"><span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground"><Paperclip className="size-4" /></span><div className="min-w-0 flex-1"><p className="truncate text-sm font-semibold text-foreground">{attachment.fileName}</p><p className="text-xs text-muted-foreground">{formatBytes(attachment.size)}</p></div><Button type="button" variant="outline" size="sm" onClick={download}><Download className="size-4" /> Download</Button></div>;
 }
 
 function EmptyMessage(props: { title: string; description: string }) {
-  return <div className="flex min-h-56 flex-col items-center justify-center rounded-xl border border-dashed border-slate-200 p-6 text-center"><Info className="size-6 text-slate-300" /><p className="mt-3 text-sm font-semibold text-slate-700">{props.title}</p><p className="mt-1 text-sm text-slate-400">{props.description}</p></div>;
+  return <div className="flex min-h-56 flex-col items-center justify-center rounded-xl border border-dashed border-border p-6 text-center"><Info className="size-6 text-slate-300" /><p className="mt-3 text-sm font-semibold text-foreground">{props.title}</p><p className="mt-1 text-sm text-muted-foreground">{props.description}</p></div>;
 }
 
 function downloadBlob(blob: Blob, fileName: string) {

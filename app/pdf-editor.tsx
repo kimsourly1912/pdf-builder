@@ -94,6 +94,14 @@ import {
 } from "@/features/templates/editor-shortcuts";
 import { formatLocalDateTime } from "@/features/templates/date-time";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
+import {
+  NativeSelect,
+  NativeSelectOption,
+} from "@/components/ui/native-select";
+import { Slider } from "@/components/ui/slider";
+import { Textarea } from "@/components/ui/textarea";
 import { PdfExtractionDialog } from "@/features/extraction/pdf-extraction-dialog";
 import { extractPdfContent } from "@/features/extraction/pdf-extraction";
 import { CambodiaAddressField } from "@/features/gazetteer/cambodia-address-field";
@@ -1040,13 +1048,13 @@ function ColorControl(props: {
   return (
     <div className="flex flex-wrap items-center gap-2.5">
       {COLORS.map((item) => (
-        <button
+        <Button variant="ghost"
           key={item}
           type="button"
           aria-label={`Use ${item} color`}
           aria-pressed={value === item}
           onClick={() => onChange(item)}
-          className={`${sizeClass} shrink-0 rounded-full border-2 transition ${
+          className={`${sizeClass} shrink-0 rounded-full border-2 p-0 transition ${
             value === item
               ? "scale-105 border-slate-900 shadow-sm"
               : "border-white ring-1 ring-slate-300"
@@ -1084,7 +1092,7 @@ function FontSizeControl(props: {
     <div className={compact ? "w-80 shrink-0" : "w-full"}>
       <div className="grid grid-cols-4 gap-1.5 sm:grid-cols-7 xl:grid-cols-4">
         {FONT_SIZE_PRESETS.map((size) => (
-          <button
+          <Button variant="ghost"
             key={size}
             type="button"
             aria-label={`Set font size to ${size} points`}
@@ -1097,24 +1105,24 @@ function FontSizeControl(props: {
             }`}
           >
             {size}
-          </button>
+          </Button>
         ))}
       </div>
       <div className="mt-2 flex items-center gap-2">
-        <input
-          type="range"
+        <Slider
           min={MIN_FONT_SIZE}
-          max="72"
-          value={value}
+          max={72}
+          step={1}
+          value={[value]}
           aria-label="Custom font size"
-          onChange={(event) =>
-            onChange(clampFontSize(Number(event.target.value)))
+          onValueChange={(values) =>
+            onChange(clampFontSize(values[0] ?? value))
           }
-          className="min-w-0 flex-1 accent-blue-600"
+          className="min-w-0 flex-1"
         />
         <label className="flex shrink-0 items-center gap-1 text-[11px] font-medium text-slate-500">
           <span className="sr-only">Exact font size</span>
-          <input
+          <Input
             type="number"
             min={MIN_FONT_SIZE}
             max={MAX_FONT_SIZE}
@@ -1193,7 +1201,7 @@ function GroupFieldEditor(props: {
           : "space-y-3"
       }
     >
-      <input
+      <Input
         aria-label="Group label"
         value={props.annotation.label ?? ""}
         onChange={(event) => props.onChange({ label: event.target.value })}
@@ -1203,7 +1211,7 @@ function GroupFieldEditor(props: {
       <div className={props.compact ? "flex items-center gap-2" : "space-y-2"}>
         {options.map((option) => (
           <div key={option.id} className="flex items-center gap-2">
-            <button
+            <Button variant="ghost"
               type="button"
               aria-label={`${option.checked ? "Unselect" : "Select"} ${option.label}`}
               onClick={() => toggleOption(option.id)}
@@ -1223,8 +1231,8 @@ function GroupFieldEditor(props: {
                     strokeWidth={3}
                   />
                 ))}
-            </button>
-            <input
+            </Button>
+            <Input
               aria-label="Option label"
               value={option.label}
               onChange={(event) =>
@@ -1232,7 +1240,7 @@ function GroupFieldEditor(props: {
               }
               className={`${props.compact ? "h-8 w-28 rounded-md px-2 text-xs" : "h-9 min-w-0 flex-1 rounded-lg px-3 text-sm shadow-sm"} border border-slate-200 bg-white text-slate-800 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100`}
             />
-            <button
+            <Button variant="ghost"
               type="button"
               aria-label={`Remove ${option.label}`}
               disabled={options.length <= 1}
@@ -1240,7 +1248,7 @@ function GroupFieldEditor(props: {
               className="flex size-9 shrink-0 items-center justify-center rounded-lg text-slate-400 transition hover:bg-rose-50 hover:text-rose-600 focus-visible:outline-2 focus-visible:outline-rose-500 disabled:opacity-30"
             >
               <Minus className="size-3.5" />
-            </button>
+            </Button>
           </div>
         ))}
       </div>
@@ -1266,7 +1274,7 @@ function GazetteerFieldEditor(props: {
     <div className={props.compact ? "flex min-w-max items-center gap-2" : "space-y-3"}>
       <label className="block text-[11px] font-semibold text-slate-500">
         <span className={props.compact ? "sr-only" : "block"}>Field label</span>
-        <input
+        <Input
           aria-label="Cambodia address field label"
           value={props.annotation.label ?? ""}
           onChange={(event) => props.onChange({ label: event.target.value })}
@@ -1276,7 +1284,7 @@ function GazetteerFieldEditor(props: {
       </label>
       <label className="block text-[11px] font-semibold text-slate-500">
         <span className={props.compact ? "sr-only" : "block"}>Display language</span>
-        <select
+        <NativeSelect
           aria-label="Cambodia address display language"
           value={props.annotation.gazetteerLanguage ?? "bilingual"}
           onChange={(event) => {
@@ -1291,14 +1299,14 @@ function GazetteerFieldEditor(props: {
           }}
           className={`${props.compact ? "h-8 w-32 rounded-md px-2 text-xs" : "mt-1.5 h-9 w-full rounded-lg px-3 text-sm shadow-sm"} border border-slate-200 bg-white font-normal text-slate-800 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100`}
         >
-          <option value="bilingual">Khmer + English</option>
-          <option value="km">Khmer</option>
-          <option value="en">English</option>
-        </select>
+          <NativeSelectOption value="bilingual">Khmer + English</NativeSelectOption>
+          <NativeSelectOption value="km">Khmer</NativeSelectOption>
+          <NativeSelectOption value="en">English</NativeSelectOption>
+        </NativeSelect>
       </label>
       <label className="block text-[11px] font-semibold text-slate-500">
         <span className={props.compact ? "sr-only" : "block"}>Address depth</span>
-        <select
+        <NativeSelect
           aria-label="Cambodia address depth"
           value={props.annotation.gazetteerLevel ?? "village"}
           onChange={(event) => {
@@ -1318,11 +1326,11 @@ function GazetteerFieldEditor(props: {
           }}
           className={`${props.compact ? "h-8 w-32 rounded-md px-2 text-xs" : "mt-1.5 h-9 w-full rounded-lg px-3 text-sm shadow-sm"} border border-slate-200 bg-white font-normal text-slate-800 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100`}
         >
-          <option value="province">Province</option>
-          <option value="district">District</option>
-          <option value="commune">Commune</option>
-          <option value="village">Village</option>
-        </select>
+          <NativeSelectOption value="province">Province</NativeSelectOption>
+          <NativeSelectOption value="district">District</NativeSelectOption>
+          <NativeSelectOption value="commune">Commune</NativeSelectOption>
+          <NativeSelectOption value="village">Village</NativeSelectOption>
+        </NativeSelect>
       </label>
     </div>
   );
@@ -1613,12 +1621,12 @@ function PageThumbnail(props: {
           <span className="absolute -left-0.5 top-1/2 size-2 -translate-y-1/2 rounded-full bg-blue-500" />
         </span>
       )}
-      <button
+      <Button variant="ghost"
         type="button"
         onClick={props.onClick}
         aria-label={`Open page ${props.displayNumber}`}
         aria-current={props.active ? "page" : undefined}
-        className="block w-full text-left"
+        className="h-auto w-full justify-start p-0 text-left hover:bg-transparent"
       >
         <div className="mx-auto overflow-hidden rounded-md bg-white shadow-sm ring-1 ring-slate-200">
           <canvas ref={canvasRef} className="h-auto w-full" />
@@ -1626,7 +1634,7 @@ function PageThumbnail(props: {
         <span className={`mt-2 block text-center text-xs font-medium ${props.active ? "text-blue-700" : "text-slate-500"}`}>
           Page {props.displayNumber}
         </span>
-      </button>
+      </Button>
       {props.active && (
         <div className="mt-2 grid grid-cols-5 gap-1 border-t border-blue-100 pt-2">
           {[
@@ -1636,16 +1644,16 @@ function PageThumbnail(props: {
             ["Duplicate", props.onDuplicate, <Copy key="copy" />],
             ["Delete", props.onDelete, <Trash2 key="delete" />],
           ].map(([label, action, icon]) => (
-            <button
+            <Button variant="ghost"
               key={label as string}
               type="button"
               title={label as string}
               aria-label={`${label} page ${props.displayNumber}`}
               onClick={action as () => void}
-              className="flex size-6 items-center justify-center rounded text-slate-500 hover:bg-white hover:text-blue-700 [&_svg]:size-3"
+              className="size-6 p-0 text-slate-500 hover:bg-white hover:text-blue-700 [&_svg]:size-3"
             >
               {icon as React.ReactNode}
-            </button>
+            </Button>
           ))}
         </div>
       )}
@@ -5013,17 +5021,16 @@ export function PdfEditor(props: { initialTemplateId?: string }) {
                 >
                   <ZoomOut />
                 </ToolButton>
-                <input
-                  type="range"
+                <Slider
                   aria-label="Zoom level"
                   min={MIN_ZOOM * 100}
                   max={MAX_ZOOM * 100}
-                  step="5"
-                  value={Math.round(zoom * 100)}
-                  onChange={(event) =>
-                    setManualZoom(Number(event.target.value) / 100)
+                  step={5}
+                  value={[Math.round(zoom * 100)]}
+                  onValueChange={(values) =>
+                    setManualZoom((values[0] ?? Math.round(zoom * 100)) / 100)
                   }
-                  className="hidden w-24 cursor-ew-resize accent-blue-600 sm:block"
+                  className="hidden w-24 cursor-ew-resize sm:flex"
                 />
                 <span className="w-11 text-center text-xs font-semibold tabular-nums text-slate-500">
                   {Math.round(zoom * 100)}%
@@ -5078,7 +5085,7 @@ export function PdfEditor(props: { initialTemplateId?: string }) {
                   selectedAnnotation.type === "date" ||
                   selectedAnnotation.type === "initials") && (
                   selectedAnnotation.type === "textarea" ? (
-                    <textarea
+                    <Textarea
                       aria-label="Textarea value"
                       value={selectedAnnotation.text}
                       onChange={(event) =>
@@ -5088,7 +5095,7 @@ export function PdfEditor(props: { initialTemplateId?: string }) {
                       className="h-14 min-w-56 flex-1 resize-none rounded-md border border-slate-200 bg-slate-50 px-2 py-1.5 text-sm outline-none focus:border-blue-500"
                     />
                   ) : (
-                    <input
+                    <Input
                       type={selectedAnnotation.type === "date" ? "date" : "text"}
                       aria-label={
                         selectedAnnotation.type === "input"
@@ -5152,7 +5159,7 @@ export function PdfEditor(props: { initialTemplateId?: string }) {
                 )}
                 {selectedAnnotation.type === "image-placeholder" && (
                   <>
-                    <input
+                    <Input
                       aria-label="Image placeholder label"
                       value={selectedAnnotation.label ?? ""}
                       onChange={(event) =>
@@ -5218,7 +5225,7 @@ export function PdfEditor(props: { initialTemplateId?: string }) {
                       </Button>
                     )}
                     <label className="flex shrink-0 items-center gap-1.5 text-xs font-semibold text-slate-600">
-                      <input type="checkbox" checked={selectedAnnotation.required ?? false} onChange={(event) => updateSelected({ required: event.target.checked })} className="size-4 accent-blue-600" />
+                      <Checkbox checked={selectedAnnotation.required ?? false} onCheckedChange={(checked) => updateSelected({ required: checked === true })} />
                       Required
                     </label>
                     <Button type="button" variant="outline" size="sm" onClick={duplicateSelectedAcrossPages} disabled={pageOrder.length < 2}>
@@ -5976,7 +5983,7 @@ export function PdfEditor(props: { initialTemplateId?: string }) {
                       : selectedAnnotation.type === "initials"
                           ? "Initials"
                           : "Text"}
-                    <textarea
+                    <Textarea
                       value={selectedAnnotation.text}
                       onChange={(event) =>
                         updateSelected({ text: event.target.value })
@@ -5990,7 +5997,7 @@ export function PdfEditor(props: { initialTemplateId?: string }) {
                   <label className="block rounded-xl border border-slate-200 bg-slate-50/70 p-3 text-xs font-semibold text-slate-600">
                     Date
                     <div className="relative mt-2">
-                      <input
+                      <Input
                         type="date"
                         value={selectedAnnotation.text ?? ""}
                         onChange={(event) =>
@@ -6031,14 +6038,12 @@ export function PdfEditor(props: { initialTemplateId?: string }) {
                   selectedAnnotation.type === "radio") && (
                   <label className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50/70 p-3 text-xs font-semibold text-slate-600">
                     Selected
-                    <input
-                      type="checkbox"
+                    <Checkbox
                       aria-label={`Toggle ${selectedAnnotation.type}`}
                       checked={selectedAnnotation.checked ?? false}
-                      onChange={(event) =>
-                        updateSelected({ checked: event.target.checked })
+                      onCheckedChange={(checked) =>
+                        updateSelected({ checked: checked === true })
                       }
-                      className="size-4 accent-blue-600"
                     />
                   </label>
                 )}
@@ -6087,19 +6092,19 @@ export function PdfEditor(props: { initialTemplateId?: string }) {
                     )}
                     <label className="block text-xs font-semibold text-slate-600">
                       Recipient
-                      <select
+                      <NativeSelect
                         value={selectedAnnotation.recipientRoleId ?? recipientRoles[0]?.id ?? ""}
                         onChange={(event) => updateSelected({ recipientRoleId: event.target.value })}
                         className="mt-1.5 h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm font-normal text-slate-800 shadow-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                       >
                         {recipientRoles.map((role) => (
-                          <option key={role.id} value={role.id}>{role.name}</option>
+                          <NativeSelectOption key={role.id} value={role.id}>{role.name}</NativeSelectOption>
                         ))}
-                      </select>
+                      </NativeSelect>
                     </label>
                     <label className="block text-xs font-semibold text-slate-600">
                       Field name
-                      <input
+                      <Input
                         value={selectedAnnotation.fieldName ?? ""}
                         onChange={(event) => updateSelected({ fieldName: event.target.value })}
                         placeholder="Customer name"
@@ -6108,7 +6113,7 @@ export function PdfEditor(props: { initialTemplateId?: string }) {
                     </label>
                     <label className="block text-xs font-semibold text-slate-600">
                       Field key
-                      <input
+                      <Input
                         value={selectedAnnotation.fieldKey ?? createFieldKey(selectedAnnotation.fieldName || selectedAnnotation.label || selectedAnnotation.type)}
                         onChange={(event) => updateSelected({ fieldKey: createFieldKey(event.target.value) })}
                         placeholder="customer_name"
@@ -6117,14 +6122,14 @@ export function PdfEditor(props: { initialTemplateId?: string }) {
                     </label>
                     <label className="block text-xs font-semibold text-slate-600">
                       Candidate prefill
-                      <select
+                      <NativeSelect
                         value={selectedAnnotation.prefillKey ?? ""}
                         onChange={(event) => updateSelected({ prefillKey: event.target.value ? event.target.value as CandidatePrefillKey : undefined })}
                         className="mt-1.5 h-9 w-full rounded-lg border border-slate-200 bg-white px-3 font-mono text-xs font-normal text-slate-800 shadow-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                       >
-                        <option value="">No automatic prefill</option>
-                        {CANDIDATE_PREFILL_KEYS.map((key) => <option key={key} value={key}>{key}</option>)}
-                      </select>
+                        <NativeSelectOption value="">No automatic prefill</NativeSelectOption>
+                        {CANDIDATE_PREFILL_KEYS.map((key) => <NativeSelectOption key={key} value={key}>{key}</NativeSelectOption>)}
+                      </NativeSelect>
                       <span className="mt-1 block text-[10px] font-normal leading-4 text-slate-400">Copied as a snapshot when this form is assigned to a linked candidate account.</span>
                     </label>
                     <div className="rounded-lg border border-slate-200 bg-white p-3 shadow-sm">
@@ -6151,7 +6156,7 @@ export function PdfEditor(props: { initialTemplateId?: string }) {
                       selectedAnnotation.type === "initials") && (
                       <label className="block text-xs font-semibold text-slate-600">
                         Placeholder
-                        <input
+                        <Input
                           value={selectedAnnotation.placeholder ?? ""}
                           onChange={(event) => updateSelected({ placeholder: event.target.value })}
                           className="mt-1.5 h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm font-normal text-slate-800 shadow-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
@@ -6160,27 +6165,27 @@ export function PdfEditor(props: { initialTemplateId?: string }) {
                     )}
                     <div className="grid grid-cols-2 items-end gap-3">
                       <label className="flex h-9 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-xs font-medium text-slate-600 shadow-sm">
-                        <input type="checkbox" checked={selectedAnnotation.required ?? false} onChange={(event) => updateSelected({ required: event.target.checked })} className="size-4 accent-blue-600" />
+                        <Checkbox checked={selectedAnnotation.required ?? false} onCheckedChange={(checked) => updateSelected({ required: checked === true })} />
                         Required
                       </label>
                       <label className="text-xs font-semibold text-slate-600">
                         Tab order
-                        <input type="number" min="1" value={selectedAnnotation.tabIndex ?? 1} onChange={(event) => updateSelected({ tabIndex: Math.max(1, Number(event.target.value)) })} className="mt-1.5 h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm font-normal text-slate-800 shadow-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100" />
+                        <Input type="number" min="1" value={selectedAnnotation.tabIndex ?? 1} onChange={(event) => updateSelected({ tabIndex: Math.max(1, Number(event.target.value)) })} className="mt-1.5 h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm font-normal text-slate-800 shadow-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100" />
                       </label>
                     </div>
                     {selectedAnnotation.type === "input" && (
                       <>
                         <label className="block text-xs font-semibold text-slate-600">
                           Validation
-                          <select value={selectedAnnotation.validation ?? "none"} onChange={(event) => updateSelected({ validation: event.target.value as Annotation["validation"] })} className="mt-1.5 h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm font-normal text-slate-800 shadow-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100">
-                            <option value="none">Any text</option>
-                            <option value="email">Email</option>
-                            <option value="number">Number</option>
-                            <option value="phone">Phone</option>
-                          </select>
+                          <NativeSelect value={selectedAnnotation.validation ?? "none"} onChange={(event) => updateSelected({ validation: event.target.value as Annotation["validation"] })} className="mt-1.5 h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm font-normal text-slate-800 shadow-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100">
+                            <NativeSelectOption value="none">Any text</NativeSelectOption>
+                            <NativeSelectOption value="email">Email</NativeSelectOption>
+                            <NativeSelectOption value="number">Number</NativeSelectOption>
+                            <NativeSelectOption value="phone">Phone</NativeSelectOption>
+                          </NativeSelect>
                         </label>
                         <label className="flex items-center gap-2 text-xs font-medium text-slate-600">
-                          <input type="checkbox" checked={selectedAnnotation.multiline ?? false} onChange={(event) => updateSelected({ multiline: event.target.checked })} className="size-4 accent-blue-600" />
+                          <Checkbox checked={selectedAnnotation.multiline ?? false} onCheckedChange={(checked) => updateSelected({ multiline: checked === true })} />
                           Multiple lines
                         </label>
                       </>
@@ -6194,7 +6199,7 @@ export function PdfEditor(props: { initialTemplateId?: string }) {
                   <div className="space-y-3 rounded-xl border border-slate-200 bg-slate-50/70 p-3">
                     <label className="block text-xs font-semibold text-slate-600">
                       Placeholder label
-                      <input
+                      <Input
                         value={selectedAnnotation.label ?? ""}
                         onChange={(event) =>
                           updateSelected({ label: event.target.value })
@@ -6358,11 +6363,11 @@ export function PdfEditor(props: { initialTemplateId?: string }) {
               <div className="grid gap-3 sm:grid-cols-2">
                 <label className="text-xs font-semibold text-slate-600">
                   Template name
-                  <input value={templateName} maxLength={120} onChange={(event) => setTemplateName(event.target.value)} className="mt-1.5 h-10 w-full rounded-lg border border-slate-200 px-3 text-sm font-normal outline-none focus:border-blue-500" />
+                  <Input value={templateName} maxLength={120} onChange={(event) => setTemplateName(event.target.value)} className="mt-1.5 h-10 w-full rounded-lg border border-slate-200 px-3 text-sm font-normal outline-none focus:border-blue-500" />
                 </label>
                 <label className="text-xs font-semibold text-slate-600">
                   Description
-                  <input value={templateDescription} maxLength={500} onChange={(event) => setTemplateDescription(event.target.value)} placeholder="Optional instructions" className="mt-1.5 h-10 w-full rounded-lg border border-slate-200 px-3 text-sm font-normal outline-none focus:border-blue-500" />
+                  <Input value={templateDescription} maxLength={500} onChange={(event) => setTemplateDescription(event.target.value)} placeholder="Optional instructions" className="mt-1.5 h-10 w-full rounded-lg border border-slate-200 px-3 text-sm font-normal outline-none focus:border-blue-500" />
                 </label>
               </div>
               <div>
@@ -6379,7 +6384,7 @@ export function PdfEditor(props: { initialTemplateId?: string }) {
                   {recipientRoles.map((role) => (
                     <div key={role.id} className="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 p-2">
                       <input type="color" aria-label={`${role.name} color`} value={role.color} onChange={(event) => updateRecipientRole(role.id, { color: event.target.value })} className="size-8 shrink-0 cursor-pointer rounded border-0 bg-transparent p-0" />
-                      <input value={role.name} maxLength={80} onChange={(event) => updateRecipientRole(role.id, { name: event.target.value })} className="h-9 min-w-0 flex-1 rounded-lg border border-slate-200 bg-white px-3 text-sm outline-none focus:border-blue-500" />
+                      <Input value={role.name} maxLength={80} onChange={(event) => updateRecipientRole(role.id, { name: event.target.value })} className="h-9 min-w-0 flex-1 rounded-lg border border-slate-200 bg-white px-3 text-sm outline-none focus:border-blue-500" />
                       <Button type="button" variant="ghost" size="icon-sm" disabled={recipientRoles.length <= 1} onClick={() => removeRecipientRole(role.id)} className="text-rose-600 hover:bg-rose-50"><Trash2 /></Button>
                     </div>
                   ))}

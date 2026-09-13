@@ -15,7 +15,17 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import khmerFontUrl from "@expo-google-fonts/noto-sans-khmer/400Regular/NotoSansKhmer_400Regular.ttf?url";
 
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { CambodiaAddressField } from "@/features/gazetteer/cambodia-address-field";
 import {
   formatCambodiaAddress,
@@ -240,38 +250,80 @@ export function RecipientFill(props: { token: string }) {
 
   const pageAnnotations = payload.template.annotations.filter((annotation) => annotation.page === pageNumber);
   return (
-    <main className="min-h-[100dvh] bg-slate-100 text-slate-950">
-      <header className="sticky top-0 z-30 border-b border-slate-200 bg-white/95 backdrop-blur">
+    <main className="min-h-[100dvh] bg-background text-foreground">
+      <header className="sticky top-0 z-30 border-b bg-background/95 backdrop-blur">
         <div className="mx-auto flex min-h-16 max-w-7xl items-center justify-between gap-3 px-3 py-2 sm:px-6">
-          <div className="min-w-0"><p className="truncate text-sm font-bold">{payload.template.name}</p><p className="truncate text-xs text-slate-400">Complete as {payload.recipient.name}</p></div>
-          <div className="flex items-center gap-2 text-xs font-medium text-emerald-700"><LockKeyhole className="size-3.5" /><span className="hidden sm:inline">{payload.identity ? "Assigned to your account" : "Private recipient link"}</span></div>
+          <div className="min-w-0">
+            <p className="truncate text-sm font-semibold">{payload.template.name}</p>
+            <p className="truncate text-xs text-muted-foreground">Complete as {payload.recipient.name}</p>
+          </div>
+          <div className="flex items-center gap-2 text-xs font-medium text-emerald-700">
+            <LockKeyhole className="size-3.5" />
+            <span className="hidden sm:inline">{payload.identity ? "Assigned to your account" : "Private recipient link"}</span>
+          </div>
         </div>
       </header>
       <div className="mx-auto grid max-w-7xl gap-5 px-3 py-5 lg:grid-cols-[1fr_320px] lg:px-6">
-        <section ref={viewportRef} className="min-w-0 overflow-auto rounded-2xl border border-slate-200 bg-slate-200/70 p-3 sm:p-6">
+        <section ref={viewportRef} className="min-w-0 overflow-auto rounded-xl border bg-muted/55 p-3 sm:p-6">
           <div className="mx-auto">
             <div className="relative mx-auto overflow-hidden bg-white shadow-2xl" style={{ width: pageSize.width, height: pageSize.height }}>
               <canvas ref={canvasRef} className="absolute inset-0 size-full" />
               {pageAnnotations.map((annotation) => <FillAnnotation key={annotation.id} annotation={annotation} value={values[annotation.id]} scale={pageScale} onChange={(value) => updateValue(annotation.id, value)} onError={setError} />)}
             </div>
-            <div className="mt-4 flex items-center justify-center gap-3 text-xs font-semibold text-slate-500">
+            <div className="mt-4 flex items-center justify-center gap-3 text-xs font-medium text-muted-foreground">
               <Button type="button" variant="outline" size="icon-sm" disabled={pageNumber === 1} onClick={() => setPageNumber((page) => page - 1)}><ArrowLeft /></Button>
               Page {pageNumber} of {payload.template.pageOrder.length}
               <Button type="button" variant="outline" size="icon-sm" disabled={pageNumber === payload.template.pageOrder.length} onClick={() => setPageNumber((page) => page + 1)}><ArrowRight /></Button>
             </div>
           </div>
         </section>
-        <aside className="h-fit rounded-2xl border border-slate-200 bg-white p-5 shadow-sm lg:sticky lg:top-20">
-          <p className="text-sm font-bold text-slate-900">Finish submission</p>
-          {payload.template.description && <p className="mt-2 text-xs leading-5 text-slate-500">{payload.template.description}</p>}
-          <div className="mt-5 space-y-3">
-            <label className="block text-xs font-semibold text-slate-600">Your name<input value={recipientName} readOnly={Boolean(payload.identity)} onChange={(event) => setRecipientName(event.target.value)} className="mt-1.5 h-10 w-full rounded-lg border border-slate-200 px-3 text-sm font-normal outline-none focus:border-blue-500 read-only:bg-slate-50 read-only:text-slate-500" /></label>
-            <label className="block text-xs font-semibold text-slate-600">Email {!payload.identity && <span className="font-normal text-slate-400">(optional)</span>}<input type="email" value={recipientEmail} readOnly={Boolean(payload.identity)} onChange={(event) => setRecipientEmail(event.target.value)} className="mt-1.5 h-10 w-full rounded-lg border border-slate-200 px-3 text-sm font-normal outline-none focus:border-blue-500 read-only:bg-slate-50 read-only:text-slate-500" /></label>
-          </div>
-          {error && <p role="alert" className="mt-4 rounded-lg border border-rose-200 bg-rose-50 p-3 text-xs font-medium text-rose-700">{error}</p>}
-          <Button type="button" onClick={() => void submit()} disabled={submitting} className="mt-5 h-11 w-full bg-blue-600 hover:bg-blue-700">{submitting ? <LoaderCircle className="size-4 animate-spin" /> : <Check className="size-4" />} Submit completed PDF</Button>
-          <p className="mt-3 text-center text-[11px] leading-4 text-slate-400">Your submission is sent only to the template owner.</p>
-        </aside>
+        <Card className="h-fit lg:sticky lg:top-20">
+          <CardHeader>
+            <CardTitle className="text-sm">Finish submission</CardTitle>
+            {payload.template.description && (
+              <CardDescription className="text-xs leading-5">
+                {payload.template.description}
+              </CardDescription>
+            )}
+          </CardHeader>
+          <CardContent className="space-y-5">
+            <div className="space-y-3">
+              <div className="space-y-1.5">
+                <Label htmlFor="recipient-name">Your name</Label>
+                <Input
+                  id="recipient-name"
+                  value={recipientName}
+                  readOnly={Boolean(payload.identity)}
+                  onChange={(event) => setRecipientName(event.target.value)}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="recipient-email">
+                  Email {!payload.identity && <span className="font-normal text-muted-foreground">(optional)</span>}
+                </Label>
+                <Input
+                  id="recipient-email"
+                  type="email"
+                  value={recipientEmail}
+                  readOnly={Boolean(payload.identity)}
+                  onChange={(event) => setRecipientEmail(event.target.value)}
+                />
+              </div>
+            </div>
+            {error && (
+              <Alert variant="destructive">
+                <AlertDescription>{error}</AlertDescription>
+              </Alert>
+            )}
+            <Button type="button" onClick={() => void submit()} disabled={submitting} className="h-11 w-full">
+              {submitting ? <LoaderCircle className="size-4 animate-spin" /> : <Check className="size-4" />}
+              Submit completed PDF
+            </Button>
+            <p className="text-center text-[11px] leading-4 text-muted-foreground">
+              Your submission is sent only to the template owner.
+            </p>
+          </CardContent>
+        </Card>
       </div>
     </main>
   );
@@ -321,7 +373,19 @@ function FillAnnotation(props: { annotation: TemplateAnnotation; value: unknown;
 }
 
 function CenteredState(props: { icon: React.ReactNode; title: string; description: string; success?: boolean }) {
-  return <main className="flex min-h-[100dvh] items-center justify-center bg-slate-100 p-5"><div className="w-full max-w-md rounded-3xl border border-slate-200 bg-white p-8 text-center shadow-xl"><span className={`mx-auto flex size-14 items-center justify-center rounded-2xl ${props.success ? "bg-emerald-100 text-emerald-700" : "bg-blue-100 text-blue-700"} [&_svg]:size-6`}>{props.icon}</span><h1 className="mt-5 text-xl font-bold text-slate-900">{props.title}</h1><p className="mt-2 text-sm leading-6 text-slate-500">{props.description}</p></div></main>;
+  return (
+    <main className="flex min-h-[100dvh] items-center justify-center bg-muted/40 p-5">
+      <Card className="w-full max-w-md text-center">
+        <CardContent className="p-8">
+          <span className={`mx-auto flex size-14 items-center justify-center rounded-xl ${props.success ? "bg-emerald-100 text-emerald-700" : "bg-primary/10 text-primary"} [&_svg]:size-6`}>
+            {props.icon}
+          </span>
+          <h1 className="mt-5 text-xl font-semibold">{props.title}</h1>
+          <p className="mt-2 text-sm leading-6 text-muted-foreground">{props.description}</p>
+        </CardContent>
+      </Card>
+    </main>
+  );
 }
 
 function initialValues(annotations: TemplateAnnotation[]) {
