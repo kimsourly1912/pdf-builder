@@ -127,7 +127,7 @@ function ensureAiFieldDetectionQueue() {
     console.log(`Created Cloudflare Queue: ${AI_FIELD_DETECTION_QUEUE_NAME}`);
     return;
   }
-  if (/already exists|already been taken/iu.test(output)) {
+  if (/already exists|is already taken|has already been taken/iu.test(output)) {
     console.log(`Using existing Cloudflare Queue: ${AI_FIELD_DETECTION_QUEUE_NAME}`);
     return;
   }
