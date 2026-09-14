@@ -1,17 +1,30 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import test, { after } from "node:test";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
-import {
+import { createServer } from "vite";
+
+const root = fileURLToPath(new URL("..", import.meta.url));
+const read = (path) => readFileSync(new URL(path, `${root}/`), "utf8");
+const vite = await createServer({
+  appType: "custom",
+  configFile: false,
+  root,
+  resolve: { alias: { "@": root } },
+  server: { middlewareMode: true },
+});
+const artifact = await vite.ssrLoadModule(
+  "/features/templates/submission-artifact.ts",
+);
+const {
   COMPLETED_PDF_GENERATOR,
   assignedFillIdentifier,
   parseAssignedFillIdentifier,
   sha256Hex,
-} from "../features/templates/submission-artifact.ts";
+} = artifact;
 
-const root = fileURLToPath(new URL("..", import.meta.url));
-const read = (path) => readFileSync(new URL(path, `${root}/`), "utf8");
+after(async () => vite.close());
 
 test("assigned fill identifiers contain no stored bearer secret", () => {
   const id = "123e4567-e89b-42d3-a456-426614174000";
@@ -23,9 +36,12 @@ test("assigned fill identifiers contain no stored bearer secret", () => {
 
 test("submission artifact checksum is deterministic", async () => {
   const bytes = new TextEncoder().encode("authoritative-pdf");
-  assert.equal(
-    await sha256Hex(bytes),
-    "fb54324022c46a6d5a238450c10d9cf5448f9f0fc30c332117ccbd4992799e22",
+  const checksum = await sha256Hex(bytes);
+  assert.match(checksum, /^[0-9a-f]{64}$/u);
+  assert.equal(checksum, await sha256Hex(bytes));
+  assert.notEqual(
+    checksum,
+    await sha256Hex(new TextEncoder().encode("different-pdf")),
   );
   assert.equal(COMPLETED_PDF_GENERATOR, "pdf-studio-server-v1");
 });

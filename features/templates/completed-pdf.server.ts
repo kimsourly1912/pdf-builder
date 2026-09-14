@@ -3,15 +3,10 @@ import "server-only";
 import fontkit from "@pdf-lib/fontkit";
 import khmerFontUrl from "@expo-google-fonts/noto-sans-khmer/400Regular/NotoSansKhmer_400Regular.ttf?url";
 import { degrees, PDFDocument, rgb } from "pdf-lib";
+import type { PDFFont, PDFPage, RGB } from "pdf-lib";
 
-import {
-  formatCambodiaAddress,
-  isGazetteerLevel,
-} from "@/features/gazetteer/gazetteer";
-import type {
-  GazetteerLanguage,
-  GazetteerLevel,
-} from "@/features/gazetteer/gazetteer.types";
+import { formatCambodiaAddress } from "@/features/gazetteer/gazetteer";
+import type { GazetteerLanguage } from "@/features/gazetteer/gazetteer.types";
 import {
   normalizedPointToPdf,
   normalizedRectToPdfBox,
@@ -288,14 +283,14 @@ async function loadFontBytes(origin: string): Promise<ArrayBuffer> {
 }
 
 function drawText(options: {
-  page: ReturnType<PDFDocument["getPages"]>[number];
-  font: Awaited<ReturnType<PDFDocument["embedFont"]>>;
+  page: PDFPage;
+  font: PDFFont;
   text: string;
   x: number;
   topY: number;
   size: number;
   maxWidth: number;
-  color: ReturnType<typeof rgb>;
+  color: RGB;
 }) {
   if (!options.text) return;
   options.page.drawText(options.text.normalize("NFC"), {
@@ -323,9 +318,6 @@ function getGazetteerLanguage(value: unknown): GazetteerLanguage {
     : "bilingual";
 }
 
-function getGazetteerLevel(value: unknown): GazetteerLevel {
-  return isGazetteerLevel(value) ? value : "village";
-}
 
 function getOptions(value: unknown): FieldOption[] {
   return Array.isArray(value)
@@ -359,7 +351,7 @@ function getStrokes(
     : [];
 }
 
-function parseColor(value: string): ReturnType<typeof rgb> {
+function parseColor(value: string): RGB {
   const hex = /^#[0-9a-f]{6}$/iu.test(value) ? value.slice(1) : "2563eb";
   return rgb(
     Number.parseInt(hex.slice(0, 2), 16) / 255,
