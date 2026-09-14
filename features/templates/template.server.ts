@@ -14,7 +14,10 @@ type FilesBucket = {
   put(
     key: string,
     value: ArrayBuffer | ReadableStream,
-    options?: { httpMetadata?: { contentType?: string } },
+    options?: {
+      httpMetadata?: { contentType?: string };
+      customMetadata?: Record<string, string>;
+    },
   ): Promise<unknown>;
 };
 

@@ -219,7 +219,7 @@ export async function POST(
     );
     const completedPdfBytes = await buildAuthoritativeCompletedPdf({
       sourcePdfBytes: new Uint8Array(
-        await sourcePdf.arrayBuffer(),
+        await new Response(sourcePdf.body).arrayBuffer(),
       ) as Uint8Array<ArrayBuffer>,
       pageOrder: parseArray<TemplatePageEntry>(
         fillContext.version.pageOrderJson,
