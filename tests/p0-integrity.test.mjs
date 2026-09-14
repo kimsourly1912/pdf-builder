@@ -2,11 +2,12 @@ import assert from "node:assert/strict";
 import test, { after } from "node:test";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+import { resolve } from "node:path";
 
 import { createServer } from "vite";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
-const read = (path) => readFileSync(new URL(path, `${root}/`), "utf8");
+const read = (path) => readFileSync(resolve(root, path), "utf8");
 const vite = await createServer({
   appType: "custom",
   configFile: false,
