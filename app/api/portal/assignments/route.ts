@@ -10,6 +10,7 @@ import {
 import { requireRecipientAccount } from "@/features/accounts/account.server";
 import { toUtcIsoString } from "@/features/templates/date-time";
 import { recipientLinkAvailability } from "@/features/templates/recipient-link-lifecycle";
+import { assignedFillIdentifier } from "@/features/templates/submission-artifact";
 import { isResponse, jsonError } from "@/features/templates/template.server";
 
 export async function GET(request: Request) {
@@ -28,7 +29,6 @@ export async function GET(request: Request) {
         roleId: formAssignments.roleId,
         roleName: formAssignments.roleName,
         roleColor: formAssignments.roleColor,
-        accessToken: formAssignments.accessToken,
         assignmentStatus: formAssignments.status,
         assignedAt: formAssignments.assignedAt,
         completedAt: formAssignments.completedAt,
@@ -80,7 +80,9 @@ export async function GET(request: Request) {
             : row.linkCompletedAt
               ? toUtcIsoString(row.linkCompletedAt) ?? row.linkCompletedAt
               : null,
-          url: availability.available ? `/fill/${row.accessToken}` : null,
+          url: availability.available
+            ? `/fill/${assignedFillIdentifier(row.id)}`
+            : null,
         };
       }),
     });

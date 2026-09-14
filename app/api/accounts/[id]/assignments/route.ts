@@ -71,7 +71,7 @@ export async function POST(
     );
     if (!role) return jsonError("Recipient role not found.", 404);
 
-    const token = createRecipientToken();
+    const tokenHash = await hashRecipientToken(createRecipientToken());
     const now = new Date().toISOString();
     const linkId = crypto.randomUUID();
     const assignmentId = crypto.randomUUID();
@@ -86,7 +86,7 @@ export async function POST(
         roleName: role.name,
         roleColor: role.color,
         assignedUserId: userId,
-        tokenHash: await hashRecipientToken(token),
+        tokenHash,
         status: "active",
         expiresAt: null,
         maxSubmissions: 1,
@@ -103,7 +103,6 @@ export async function POST(
         roleId: role.id,
         roleName: role.name,
         roleColor: role.color,
-        accessToken: token,
         initialValuesJson: JSON.stringify(initialValues),
         status: "assigned",
         assignedAt: now,

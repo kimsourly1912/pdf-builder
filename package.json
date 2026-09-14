@@ -8,7 +8,7 @@
   "scripts": {
     "dev": "vite",
     "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\"",
-    "build": "npm run clean && vinext build",
+    "build": "npm run clean && vinext build --mode production && node scripts/verify-production-build.mjs",
     "start": "vinext start",
     "test": "npm run build && node --experimental-loader ./tests/cloudflare-loader.mjs --test --test-concurrency=1 tests/*.test.mjs",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",

@@ -10,11 +10,16 @@ import {
 } from "@/db/schema";
 import { authorizeAssignedRecipient } from "@/features/accounts/account.server";
 import { buildSubmissionAnswers } from "@/features/templates/label-binding";
-import { toUtcIsoString } from "@/features/templates/date-time";
 import {
-  sanitizeImage,
-  inspectPdf,
-} from "@/features/templates/file-validation";
+  buildAuthoritativeCompletedPdf,
+} from "@/features/templates/completed-pdf.server";
+import {
+  COMPLETED_PDF_GENERATOR,
+  parseAssignedFillIdentifier,
+  sha256Hex,
+} from "@/features/templates/submission-artifact";
+import { toUtcIsoString } from "@/features/templates/date-time";
+import { sanitizeImage } from "@/features/templates/file-validation";
 import {
   recipientLinkAvailability,
   validIdempotencyKey,
@@ -161,7 +166,6 @@ export async function POST(
           .toLowerCase()
           .slice(0, 254);
     const values = parseValues(formData.get("values"));
-    const completedPdf = formData.get("completedPdf");
     if (!recipientName) return jsonError("Your name is required.", 400);
     if (recipientEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/u.test(recipientEmail)) {
       return jsonError("Enter a valid email address.", 400);
@@ -184,22 +188,6 @@ export async function POST(
     });
     if (!validation.ok) return jsonError(validation.message, 422);
 
-    if (!(completedPdf instanceof File) || completedPdf.size === 0) {
-      return jsonError("A completed PDF is required.", 400);
-    }
-    if (
-      completedPdf.type !== "application/pdf" ||
-      completedPdf.size > MAX_COMPLETED_PDF_SIZE
-    ) {
-      return jsonError("The completed PDF is invalid or too large.", 400);
-    }
-    const completedPdfBytes = new Uint8Array(
-      await completedPdf.arrayBuffer(),
-    ) as Uint8Array<ArrayBuffer>;
-    if (!(await inspectPdf(completedPdfBytes))) {
-      return jsonError("The completed PDF is invalid.", 400);
-    }
-
     const submissionId = crypto.randomUUID();
     const storedValues = { ...validation.values };
     const preparedImages: Array<{
@@ -217,6 +205,39 @@ export async function POST(
       }
       preparedImages.push({ fieldId, image });
     }
+    const sourcePdf = await getFilesBucket().get(fillContext.version.fileKey);
+    if (!sourcePdf) {
+      return jsonError("The source PDF is unavailable.", 409);
+    }
+    const allAnnotations = parseArray<TemplateAnnotation>(
+      fillContext.version.annotationsJson,
+    );
+    const renderAnnotations = allAnnotations.filter(
+      (annotation) =>
+        !isRecipientFieldType(annotation.type) ||
+        annotation.recipientRoleId === fillContext.link.roleId,
+    );
+    const completedPdfBytes = await buildAuthoritativeCompletedPdf({
+      sourcePdfBytes: new Uint8Array(
+        await sourcePdf.arrayBuffer(),
+      ) as Uint8Array<ArrayBuffer>,
+      pageOrder: parseArray<TemplatePageEntry>(
+        fillContext.version.pageOrderJson,
+      ),
+      annotations: renderAnnotations,
+      values: validation.values,
+      images: new Map(
+        preparedImages.map(({ fieldId, image }) => [
+          fieldId,
+          { bytes: image.bytes, contentType: image.contentType },
+        ]),
+      ),
+      origin: new URL(request.url).origin,
+    });
+    if (completedPdfBytes.length > MAX_COMPLETED_PDF_SIZE) {
+      return jsonError("The completed PDF is too large.", 422);
+    }
+    const completedFileChecksum = await sha256Hex(completedPdfBytes);
     for (const { fieldId, image } of preparedImages) {
       const storageKey =
         `submissions/${fillContext.template.id}/${submissionId}/images/${fieldId}.${image.extension}`;
@@ -237,6 +258,11 @@ export async function POST(
       `submissions/${fillContext.template.id}/${submissionId}/completed.pdf`;
     await getFilesBucket().put(completedFileKey, completedPdfBytes.buffer, {
       httpMetadata: { contentType: "application/pdf" },
+      customMetadata: {
+        checksum: completedFileChecksum,
+        generator: COMPLETED_PDF_GENERATOR,
+        templateVersionId: fillContext.version.id,
+      },
     });
 
     const now = new Date().toISOString();
@@ -247,9 +273,10 @@ export async function POST(
           `INSERT OR IGNORE INTO submissions (
             id, template_id, recipient_link_id, template_version_id,
             idempotency_key, recipient_name, recipient_email, values_json,
-            completed_file_key, submitted_at
+            completed_file_key, completed_file_checksum, artifact_generator,
+            submitted_at
           )
-          SELECT ?, template_id, id, template_version_id, ?, ?, ?, ?, ?, ?
+          SELECT ?, template_id, id, template_version_id, ?, ?, ?, ?, ?, ?, ?, ?
           FROM recipient_links
           WHERE id = ?
             AND token_hash = ?
@@ -265,6 +292,8 @@ export async function POST(
           recipientEmail,
           JSON.stringify(buildSubmissionAnswers(assignedFields, storedValues)),
           completedFileKey,
+          completedFileChecksum,
+          COMPLETED_PDF_GENERATOR,
           now,
           fillContext.link.id,
           fillContext.link.tokenHash,
@@ -375,10 +404,10 @@ async function deleteUploadedFiles(
   );
 }
 
-async function findFillContext(token: string) {
-  if (!/^[A-Za-z0-9_-]{40,60}$/u.test(token)) return null;
-  const tokenHash = await hashRecipientToken(token);
-  const [row] = await getDb()
+async function findFillContext(identifier: string) {
+  const assignmentId = parseAssignedFillIdentifier(identifier);
+  const db = getDb();
+  const query = db
     .select({
       link: recipientLinks,
       template: templates,
@@ -394,8 +423,18 @@ async function findFillContext(token: string) {
     .leftJoin(
       formAssignments,
       eq(recipientLinks.id, formAssignments.recipientLinkId),
-    )
-    .where(eq(recipientLinks.tokenHash, tokenHash))
+    );
+
+  if (assignmentId) {
+    const [row] = await query
+      .where(eq(formAssignments.id, assignmentId))
+      .limit(1);
+    return row ?? null;
+  }
+
+  if (!/^[A-Za-z0-9_-]{40,60}$/u.test(identifier)) return null;
+  const [row] = await query
+    .where(eq(recipientLinks.tokenHash, await hashRecipientToken(identifier)))
     .limit(1);
   return row ?? null;
 }

@@ -36,6 +36,9 @@ async function main() {
   const hostname = `${WORKER_NAME}.${workersSubdomain}.workers.dev`;
   await ensureAuthenticationBypass(hostname);
   writeProductionDatabaseId(database.uuid);
+  // The Cloudflare Vite plugin snapshots bindings during the build. Rebuild
+  // after injecting the real production D1 id, immediately before deployment.
+  run("npm", ["run", "build"]);
 
   run("npx", [
     "wrangler",
