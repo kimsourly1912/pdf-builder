@@ -58,7 +58,11 @@ test("assignment storage contains no plaintext access token", () => {
   const schema = read("db/schema.ts");
   const assignment = read("app/api/accounts/[id]/assignments/route.ts");
   const portal = read("app/api/portal/assignments/route.ts");
-  assert.doesNotMatch(schema, /accessToken: text\("access_token"\)/);
+  const formAssignmentSchema = schema.slice(
+    schema.indexOf("export const formAssignments"),
+    schema.indexOf("export const candidates"),
+  );
+  assert.doesNotMatch(formAssignmentSchema, /accessToken:/);
   assert.doesNotMatch(assignment, /accessToken:/);
   assert.doesNotMatch(portal, /formAssignments\.accessToken/);
   assert.match(portal, /assignedFillIdentifier/);
