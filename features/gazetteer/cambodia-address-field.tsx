@@ -5,13 +5,14 @@ import {
   Check,
   ChevronDown,
   ChevronRight,
-  LoaderCircle,
   RefreshCw,
   X,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import type { CSSProperties } from "react";
 
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
 import {
   Command,
   CommandEmpty,
@@ -25,6 +26,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import { Spinner } from "@/components/ui/spinner";
 import {
   EMPTY_CAMBODIA_ADDRESS,
   GAZETTEER_LEVELS,
@@ -157,14 +159,14 @@ export function CambodiaAddressField(props: CambodiaAddressFieldProps) {
   if (props.disabled) {
     return (
       <div
-        className={`flex size-full min-w-0 items-center rounded-md border border-slate-300 bg-white px-2 text-slate-700 ${props.className ?? ""}`}
+        className={`flex size-full min-w-0 items-center rounded-md border border-input bg-background px-2 text-foreground ${props.className ?? ""}`}
         style={{ ...props.style, ...triggerStyle }}
         title={displayValue || props.label || "Cambodia address"}
       >
-        <span className={`min-w-0 flex-1 ${displayValue ? "truncate" : "text-slate-400"}`}>
+        <span className={`min-w-0 flex-1 ${displayValue ? "truncate" : "text-muted-foreground"}`}>
           {displayValue || props.label || "Cambodia address"}
         </span>
-        <ChevronDown className="ml-1 size-3.5 shrink-0 text-slate-400" />
+        <ChevronDown className="ml-1 size-3.5 shrink-0 text-muted-foreground" />
       </div>
     );
   }
@@ -173,21 +175,22 @@ export function CambodiaAddressField(props: CambodiaAddressFieldProps) {
     <div className={`size-full min-w-0 ${props.className ?? ""}`} style={props.style}>
       <Popover open={open} onOpenChange={openAtCurrentStep}>
         <PopoverTrigger asChild>
-          <button
+          <Button
             type="button"
+            variant="outline"
             aria-label={props.label ?? "Cambodia address"}
             aria-expanded={open}
             data-required={props.required || undefined}
             onPointerDown={(event) => event.stopPropagation()}
-            className="flex size-full min-w-0 items-center rounded-md border border-slate-300 bg-white px-2 text-left text-slate-700 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
+            className="size-full min-w-0 justify-start px-2 text-left font-normal"
             style={triggerStyle}
             title={displayValue || props.label || "Select Cambodia address"}
           >
-            <span className={`min-w-0 flex-1 truncate ${displayValue ? "" : "text-slate-400"}`}>
+            <span className={`min-w-0 flex-1 truncate ${displayValue ? "" : "text-muted-foreground"}`}>
               {displayValue || props.label || "Select Cambodia address"}
             </span>
-            <ChevronDown className="ml-1 size-3.5 shrink-0 text-slate-400" />
-          </button>
+            <ChevronDown className="ml-1 size-3.5 shrink-0 text-muted-foreground" />
+          </Button>
         </PopoverTrigger>
         <PopoverContent
           align="start"
@@ -198,55 +201,59 @@ export function CambodiaAddressField(props: CambodiaAddressFieldProps) {
         >
           <div className="flex items-start justify-between gap-3 border-b px-3 py-2.5">
             <div className="min-w-0">
-              <p className="font-semibold text-slate-900">
+              <p className="font-semibold text-foreground">
                 {props.label || "Cambodia address"}
               </p>
-              <p className="mt-0.5 text-xs text-slate-500">
+              <p className="mt-0.5 text-xs text-muted-foreground">
                 Step {visibleLevels.indexOf(currentLevel) + 1} of {visibleLevels.length}: {activeLabel}
               </p>
             </div>
             {hasValue && (
-              <button
+              <Button
                 type="button"
+                variant="ghost"
+                size="xs"
                 onClick={() => {
                   props.onChange?.({ ...EMPTY_CAMBODIA_ADDRESS });
                   setAttempt(0);
                   setActiveLevel("province");
                 }}
-                className="flex shrink-0 items-center gap-1 rounded px-1.5 py-1 text-xs font-medium text-slate-500 hover:bg-slate-100 hover:text-slate-800"
+                className="shrink-0 text-muted-foreground"
               >
                 <X className="size-3" /> Clear
-              </button>
+              </Button>
             )}
           </div>
 
-          <div className="flex min-h-9 items-center gap-0.5 overflow-x-auto border-b bg-slate-50 px-2 py-1.5">
+          <div className="flex min-h-9 items-center gap-0.5 overflow-x-auto border-b bg-muted/50 px-2 py-1.5">
             {visibleLevels.map((level, index) => {
               const location = value[level];
               const isActive = level === currentLevel;
               return (
                 <div key={level} className="flex shrink-0 items-center">
-                  {index > 0 && <ChevronRight className="size-3 text-slate-300" />}
-                  <button
+                  {index > 0 && <ChevronRight className="size-3 text-muted-foreground/50" />}
+                  <Button
                     type="button"
+                    variant="ghost"
+                    size="xs"
                     disabled={!location && !isActive}
                     onClick={() => {
                       setAttempt(0);
                       setActiveLevel(level);
                     }}
-                    className={`max-w-32 truncate rounded px-1.5 py-1 text-xs ${
+                    className={`max-w-32 truncate px-1.5 ${
                       isActive
-                        ? "bg-blue-100 font-semibold text-blue-700"
+                        ? "bg-primary/10 font-semibold text-primary hover:bg-primary/15 hover:text-primary"
                         : location
-                          ? "text-slate-600 hover:bg-slate-200"
-                          : "text-slate-400"
-                    } disabled:cursor-not-allowed`}
+                          ? "text-muted-foreground"
+                          : "text-muted-foreground/60"
+                    }`}
                     title={location ? formatLocationLabel(location, language) : formatLevelLabel(level, language)}
                   >
                     {location
                       ? formatLocationLabel(location, language)
                       : formatLevelLabel(level, language)}
-                  </button>
+                  </Button>
                 </div>
               );
             })}
@@ -256,27 +263,29 @@ export function CambodiaAddressField(props: CambodiaAddressFieldProps) {
             <CommandInput placeholder={`Search ${activeLabel}…`} autoFocus />
             <CommandList className="max-h-64">
               {loading ? (
-                <div className="flex items-center justify-center gap-2 py-8 text-sm text-slate-500">
-                  <LoaderCircle className="size-4 animate-spin" /> Loading {activeLabel}…
+                <div className="flex items-center justify-center gap-2 py-8 text-sm text-muted-foreground">
+                  <Spinner /> Loading {activeLabel}…
                 </div>
               ) : error ? (
                 <div className="p-3">
-                  <div className="rounded-md border border-rose-200 bg-rose-50 p-3 text-xs text-rose-700">
-                    <div className="flex items-start gap-2">
-                      <AlertCircle className="mt-0.5 size-4 shrink-0" />
-                      <span>{error}</span>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        requestCache.delete(requestKey);
-                        setAttempt((current) => current + 1);
-                      }}
-                      className="mt-2 flex items-center gap-1 font-semibold hover:underline"
-                    >
-                      <RefreshCw className="size-3" /> Retry
-                    </button>
-                  </div>
+                  <Alert variant="destructive" className="text-xs">
+                    <AlertCircle />
+                    <AlertDescription>
+                      <p>{error}</p>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="xs"
+                        onClick={() => {
+                          requestCache.delete(requestKey);
+                          setAttempt((current) => current + 1);
+                        }}
+                        className="-ml-2 mt-1 text-destructive hover:text-destructive"
+                      >
+                        <RefreshCw className="size-3" /> Retry
+                      </Button>
+                    </AlertDescription>
+                  </Alert>
                 </div>
               ) : (
                 <>
@@ -292,12 +301,12 @@ export function CambodiaAddressField(props: CambodiaAddressFieldProps) {
                           className={`size-4 ${selectedCode === option.code ? "opacity-100" : "opacity-0"}`}
                         />
                         <span className="min-w-0 flex-1">
-                          <span className="block truncate font-medium text-slate-800">
+                          <span className="block truncate font-medium text-foreground">
                             {formatLocationLabel(option, language)}
                           </span>
-                          <span className="block text-[11px] text-slate-400">{option.code}</span>
+                          <span className="block text-[11px] text-muted-foreground">{option.code}</span>
                         </span>
-                        <ChevronRight className="size-4 text-slate-300" />
+                        <ChevronRight className="size-4 text-muted-foreground/50" />
                       </CommandItem>
                     ))}
                   </CommandGroup>

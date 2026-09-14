@@ -1,12 +1,14 @@
 "use client";
 
-import { LoaderCircle, LockKeyhole } from "lucide-react";
+import { CircleAlert, LockKeyhole } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { FormEvent, useState } from "react";
 
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Spinner } from "@/components/ui/spinner";
 import { authClient } from "@/lib/auth-client";
 
 export function SignInForm(props: {
@@ -40,7 +42,7 @@ export function SignInForm(props: {
   }
 
   return (
-    <form className="mt-7 space-y-5" onSubmit={submit}>
+    <form className="space-y-5" onSubmit={submit}>
       <div className="space-y-2">
         <Label htmlFor="email">Email</Label>
         <Input
@@ -68,20 +70,19 @@ export function SignInForm(props: {
         />
       </div>
       {error && (
-        <p
-          role="alert"
-          className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-medium text-rose-700"
-        >
-          {error}
-        </p>
+        <Alert variant="destructive">
+          <CircleAlert />
+          <AlertTitle>Sign-in failed</AlertTitle>
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
       )}
       <Button
         type="submit"
-        className="h-11 w-full bg-blue-600 hover:bg-blue-700"
+        className="h-11 w-full"
         disabled={submitting}
       >
         {submitting ? (
-          <LoaderCircle className="size-4 animate-spin" />
+          <Spinner />
         ) : (
           <LockKeyhole className="size-4" />
         )}

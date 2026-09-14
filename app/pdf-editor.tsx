@@ -22,7 +22,6 @@ import {
   ImagePlus,
   Keyboard,
   Link2,
-  LoaderCircle,
   ListFilter,
   LockKeyhole,
   MapPinned,
@@ -55,6 +54,7 @@ import khmerFontUrl from "@expo-google-fonts/noto-sans-khmer/400Regular/NotoSans
 import type { RecipientRole } from "@/features/templates/template.types";
 import type { LabelBinding } from "@/features/templates/label-binding";
 import { createFieldKey, duplicateFieldKeys } from "@/features/templates/label-binding";
+import { getCanvasFieldRectStyle } from "@/features/templates/canvas-field-style";
 import {
   normalizedPointToPdf,
   normalizedRectToPdfBox,
@@ -89,6 +89,8 @@ import {
   AlertDialogMedia,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -97,6 +99,19 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Slider } from "@/components/ui/slider";
+import { Spinner } from "@/components/ui/spinner";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Textarea } from "@/components/ui/textarea";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import {
   Empty,
   EmptyContent,
@@ -111,6 +126,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { cn } from "@/lib/utils";
 
 type Tool =
   | "select"
@@ -852,14 +868,12 @@ function ToolButton(props: {
           variant={props.active ? "default" : "ghost"}
           size="icon-sm"
           aria-label={accessibleLabel}
-          title={accessibleLabel}
           disabled={props.disabled}
           onClick={props.onClick}
-          className={
-            props.active
-              ? "size-10 shrink-0 bg-blue-600 text-white hover:bg-blue-700 sm:size-8"
-              : "size-10 shrink-0 text-slate-600 sm:size-8"
-          }
+          className={cn(
+            "size-10 shrink-0 sm:size-8",
+            !props.active && "text-muted-foreground",
+          )}
         >
           {props.children}
         </Button>
@@ -888,36 +902,44 @@ function ColorControl(props: {
 
   return (
     <div className="flex items-center gap-2">
-      {COLORS.map((item) => (
-        <button
-          key={item}
-          type="button"
-          aria-label={`Use ${item} color`}
-          aria-pressed={value === item}
-          onClick={() => onChange(item)}
-          className={`${sizeClass} shrink-0 rounded-full border-2 transition ${
-            value === item
-              ? "scale-110 border-slate-900"
-              : "border-white ring-1 ring-slate-200"
-          }`}
-          style={{ backgroundColor: item }}
-        />
-      ))}
-      <label
-        title="Choose a custom color"
-        aria-label="Choose a custom color"
-        className={`${sizeClass} relative flex shrink-0 cursor-pointer items-center justify-center overflow-hidden rounded-full border-2 border-white text-white shadow-sm ring-1 ring-slate-300`}
-        style={{ backgroundColor: value }}
+      <ToggleGroup
+        type="single"
+        value={value}
+        spacing={1}
+        aria-label="Annotation color"
+        onValueChange={(nextValue) => {
+          if (nextValue) onChange(nextValue);
+        }}
       >
-        <Pipette className={compact ? "size-3" : "size-3.5"} />
-        <input
-          type="color"
-          value={value}
-          aria-label="Custom color"
-          onChange={(event) => onChange(event.target.value)}
-          className="absolute inset-0 size-full cursor-pointer opacity-0"
-        />
-      </label>
+        {COLORS.map((item) => (
+          <ToggleGroupItem
+            key={item}
+            value={item}
+            aria-label={`Use ${item} color`}
+            className={`${sizeClass} rounded-full border-2 border-background p-0 ring-1 ring-border transition data-[state=on]:scale-110 data-[state=on]:border-foreground data-[state=on]:ring-foreground`}
+            style={{ backgroundColor: item }}
+          />
+        ))}
+      </ToggleGroup>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <label
+            aria-label="Choose a custom color"
+            className={`${sizeClass} relative flex shrink-0 cursor-pointer items-center justify-center overflow-hidden rounded-full border-2 border-background text-white shadow-sm ring-1 ring-border`}
+            style={{ backgroundColor: value }}
+          >
+            <Pipette className={compact ? "size-3" : "size-3.5"} />
+            <input
+              type="color"
+              value={value}
+              aria-label="Custom color"
+              onChange={(event) => onChange(event.target.value)}
+              className="absolute inset-0 size-full cursor-pointer opacity-0"
+            />
+          </label>
+        </TooltipTrigger>
+        <TooltipContent>Choose a custom color</TooltipContent>
+      </Tooltip>
     </div>
   );
 }
@@ -931,39 +953,42 @@ function FontSizeControl(props: {
 
   return (
     <div className={compact ? "w-80 shrink-0" : "w-full"}>
-      <div className="flex flex-wrap items-center gap-1">
+      <ToggleGroup
+        type="single"
+        value={String(value)}
+        spacing={1}
+        className="flex-wrap"
+        aria-label="Font size presets"
+        onValueChange={(nextValue) => {
+          if (nextValue) onChange(Number(nextValue));
+        }}
+      >
         {FONT_SIZE_PRESETS.map((size) => (
-          <button
+          <ToggleGroupItem
             key={size}
-            type="button"
+            value={String(size)}
             aria-label={`Set font size to ${size} points`}
-            aria-pressed={value === size}
-            onClick={() => onChange(size)}
-            className={`h-7 min-w-8 rounded-md border px-1.5 text-[11px] font-semibold transition ${
-              value === size
-                ? "border-blue-600 bg-blue-600 text-white"
-                : "border-slate-200 bg-white text-slate-600 hover:border-blue-300 hover:text-blue-700"
-            }`}
+            variant="outline"
+            className="h-7 min-w-8 px-1.5 text-[11px] font-semibold data-[state=on]:border-primary data-[state=on]:bg-primary data-[state=on]:text-primary-foreground"
           >
             {size}
-          </button>
+          </ToggleGroupItem>
         ))}
-      </div>
+      </ToggleGroup>
       <div className="mt-2 flex items-center gap-2">
-        <input
-          type="range"
+        <Slider
           min={MIN_FONT_SIZE}
-          max="72"
-          value={value}
+          max={72}
+          value={[value]}
           aria-label="Custom font size"
-          onChange={(event) =>
-            onChange(clampFontSize(Number(event.target.value)))
+          onValueChange={(nextValue) =>
+            onChange(clampFontSize(nextValue[0] ?? value))
           }
-          className="min-w-0 flex-1 accent-blue-600"
+          className="min-w-0 flex-1"
         />
-        <label className="flex shrink-0 items-center gap-1 text-[11px] font-medium text-slate-500">
+        <label className="flex shrink-0 items-center gap-1 text-[11px] font-medium text-muted-foreground">
           <span className="sr-only">Exact font size</span>
-          <input
+          <Input
             type="number"
             min={MIN_FONT_SIZE}
             max={MAX_FONT_SIZE}
@@ -973,7 +998,7 @@ function FontSizeControl(props: {
               if (!event.target.value) return;
               onChange(clampFontSize(Number(event.target.value)));
             }}
-            className="h-7 w-14 rounded-md border border-slate-200 bg-white px-1.5 text-right text-xs font-semibold tabular-nums text-slate-700 outline-none focus:border-blue-500"
+            className="h-7 w-14 px-1.5 text-right text-xs font-semibold tabular-nums"
           />
           pt
         </label>
@@ -1042,12 +1067,12 @@ function GroupFieldEditor(props: {
           : "space-y-3"
       }
     >
-      <input
+      <Input
         aria-label="Group label"
         value={props.annotation.label ?? ""}
         onChange={(event) => props.onChange({ label: event.target.value })}
         placeholder="Group label"
-        className={`${props.compact ? "h-8 w-40" : "h-9 w-full"} rounded-md border border-slate-200 bg-slate-50 px-2 text-sm outline-none focus:border-blue-500`}
+        className={props.compact ? "h-8 w-40" : "h-9 w-full"}
       />
       <div className={props.compact ? "flex items-center gap-2" : "space-y-2"}>
         {options.map((option) => (
@@ -1073,23 +1098,25 @@ function GroupFieldEditor(props: {
                   />
                 ))}
             </button>
-            <input
+            <Input
               aria-label="Option label"
               value={option.label}
               onChange={(event) =>
                 updateOption(option.id, { label: event.target.value })
               }
-              className={`${props.compact ? "h-8 w-28" : "h-8 min-w-0 flex-1"} rounded-md border border-slate-200 px-2 text-xs outline-none focus:border-blue-500`}
+              className={`${props.compact ? "w-28" : "min-w-0 flex-1"} h-8 text-xs`}
             />
-            <button
+            <Button
               type="button"
+              variant="ghost"
+              size="icon-xs"
               aria-label={`Remove ${option.label}`}
               disabled={options.length <= 1}
               onClick={() => removeOption(option.id)}
-              className="flex size-7 shrink-0 items-center justify-center rounded-md text-slate-400 hover:bg-rose-50 hover:text-rose-600 disabled:opacity-30"
+              className="size-7 text-muted-foreground hover:text-destructive disabled:opacity-30"
             >
               <Minus className="size-3.5" />
-            </button>
+            </Button>
           </div>
         ))}
       </div>
@@ -1109,21 +1136,20 @@ function GazetteerFieldEditor(props: {
     <div className={props.compact ? "flex min-w-max items-center gap-2" : "space-y-3"}>
       <label className="block text-[11px] font-semibold text-slate-500">
         <span className={props.compact ? "sr-only" : "block"}>Field label</span>
-        <input
+        <Input
           aria-label="Cambodia address field label"
           value={props.annotation.label ?? ""}
           onChange={(event) => props.onChange({ label: event.target.value })}
           placeholder="Cambodia address"
-          className={`${props.compact ? "h-8 w-40" : "mt-1 h-8 w-full"} rounded-md border border-slate-200 bg-white px-2 text-xs font-normal text-slate-800 outline-none focus:border-blue-500`}
+          className={`${props.compact ? "w-40" : "mt-1 w-full"} h-8 text-xs font-normal`}
         />
       </label>
       <label className="block text-[11px] font-semibold text-slate-500">
         <span className={props.compact ? "sr-only" : "block"}>Display language</span>
-        <select
-          aria-label="Cambodia address display language"
+        <Select
           value={props.annotation.gazetteerLanguage ?? "bilingual"}
-          onChange={(event) => {
-            const gazetteerLanguage = event.target.value as GazetteerLanguage;
+          onValueChange={(value) => {
+            const gazetteerLanguage = value as GazetteerLanguage;
             props.onChange({
               gazetteerLanguage,
               text: formatCambodiaAddress(
@@ -1132,20 +1158,21 @@ function GazetteerFieldEditor(props: {
               ),
             });
           }}
-          className={`${props.compact ? "h-8 w-32" : "mt-1 h-8 w-full"} rounded-md border border-slate-200 bg-white px-2 text-xs font-normal text-slate-800 outline-none focus:border-blue-500`}
         >
-          <option value="bilingual">Khmer + English</option>
-          <option value="km">Khmer</option>
-          <option value="en">English</option>
-        </select>
+          <SelectTrigger aria-label="Cambodia address display language" size="sm" className={`${props.compact ? "w-32" : "mt-1 w-full"} text-xs font-normal`}><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="bilingual">Khmer + English</SelectItem>
+            <SelectItem value="km">Khmer</SelectItem>
+            <SelectItem value="en">English</SelectItem>
+          </SelectContent>
+        </Select>
       </label>
       <label className="block text-[11px] font-semibold text-slate-500">
         <span className={props.compact ? "sr-only" : "block"}>Address depth</span>
-        <select
-          aria-label="Cambodia address depth"
+        <Select
           value={props.annotation.gazetteerLevel ?? "village"}
-          onChange={(event) => {
-            const gazetteerLevel = event.target.value as GazetteerLevel;
+          onValueChange={(value) => {
+            const gazetteerLevel = value as GazetteerLevel;
             const address = truncateCambodiaAddress(
               props.annotation.address,
               gazetteerLevel,
@@ -1159,13 +1186,15 @@ function GazetteerFieldEditor(props: {
               ),
             });
           }}
-          className={`${props.compact ? "h-8 w-32" : "mt-1 h-8 w-full"} rounded-md border border-slate-200 bg-white px-2 text-xs font-normal text-slate-800 outline-none focus:border-blue-500`}
         >
-          <option value="province">Province</option>
-          <option value="district">District</option>
-          <option value="commune">Commune</option>
-          <option value="village">Village</option>
-        </select>
+          <SelectTrigger aria-label="Cambodia address depth" size="sm" className={`${props.compact ? "w-32" : "mt-1 w-full"} text-xs font-normal`}><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="province">Province</SelectItem>
+            <SelectItem value="district">District</SelectItem>
+            <SelectItem value="commune">Commune</SelectItem>
+            <SelectItem value="village">Village</SelectItem>
+          </SelectContent>
+        </Select>
       </label>
     </div>
   );
@@ -1247,7 +1276,6 @@ function ShortcutsDialog(props: {
           <Button
             type="button"
             onClick={() => onOpenChange(false)}
-            className="bg-blue-600 hover:bg-blue-700"
           >
             Done
           </Button>
@@ -1364,7 +1392,6 @@ function SignatureDialog(props: {
             type="button"
             disabled={!strokes.length}
             onClick={useSignature}
-            className="bg-blue-600 hover:bg-blue-700"
           >
             Use signature
           </Button>
@@ -1463,16 +1490,21 @@ function PageThumbnail(props: {
             ["Duplicate", props.onDuplicate, <Copy key="copy" />],
             ["Delete", props.onDelete, <Trash2 key="delete" />],
           ].map(([label, action, icon]) => (
-            <button
-              key={label as string}
-              type="button"
-              title={label as string}
-              aria-label={`${label} page ${props.displayNumber}`}
-              onClick={action as () => void}
-              className="flex size-6 items-center justify-center rounded text-slate-500 hover:bg-white hover:text-blue-700 [&_svg]:size-3"
-            >
-              {icon as React.ReactNode}
-            </button>
+            <Tooltip key={label as string}>
+              <TooltipTrigger asChild>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-xs"
+                  aria-label={`${label} page ${props.displayNumber}`}
+                  onClick={action as () => void}
+                  className="text-muted-foreground hover:text-primary"
+                >
+                  {icon as React.ReactNode}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>{label as string}</TooltipContent>
+            </Tooltip>
           ))}
         </div>
       )}
@@ -3657,11 +3689,11 @@ export function PdfEditor() {
               <Empty className="min-h-[390px] rounded-[1.5rem] border-2 border-dashed border-blue-200 bg-gradient-to-b from-blue-50/80 to-white px-6">
                 <EmptyHeader>
                   <EmptyMedia
-                    className="size-16 rounded-2xl bg-blue-600 text-white shadow-lg shadow-blue-600/20"
+                    className="size-16 rounded-2xl bg-primary text-primary-foreground shadow-lg shadow-primary/20"
                     variant="icon"
                   >
                     {isLoading ? (
-                      <LoaderCircle className="size-7 animate-spin" />
+                      <Spinner className="size-7" />
                     ) : (
                       <UploadCloud className="size-7" />
                     )}
@@ -3684,7 +3716,7 @@ export function PdfEditor() {
                         Saved {new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(availableDraft.savedAt)}
                       </p>
                       <div className="mt-3 flex gap-2">
-                        <Button type="button" size="sm" disabled={isLoading} onClick={() => void restoreDraft()} className="bg-blue-600 hover:bg-blue-700">
+                        <Button type="button" size="sm" disabled={isLoading} onClick={() => void restoreDraft()}>
                           Restore draft
                         </Button>
                         <Button type="button" size="sm" variant="ghost" onClick={() => {
@@ -3701,7 +3733,7 @@ export function PdfEditor() {
                     size="lg"
                     disabled={isLoading}
                     onClick={() => inputRef.current?.click()}
-                    className="h-12 rounded-xl bg-blue-600 px-6 text-base shadow-lg shadow-blue-600/20 hover:bg-blue-700"
+                    className="h-12 rounded-xl px-6 text-base shadow-lg shadow-primary/20"
                   >
                     <Plus className="size-4" /> Choose PDF
                   </Button>
@@ -3716,12 +3748,10 @@ export function PdfEditor() {
                     }}
                   />
                   {error && (
-                    <p
-                      role="alert"
-                      className="mt-2 text-sm font-medium text-rose-600"
-                    >
-                      {error}
-                    </p>
+                    <Alert variant="destructive" className="mt-2 max-w-sm text-left">
+                      <TriangleAlert />
+                      <AlertDescription>{error}</AlertDescription>
+                    </Alert>
                   )}
                 </EmptyContent>
               </Empty>
@@ -3747,7 +3777,7 @@ export function PdfEditor() {
               </p>
               <p className="flex items-center gap-1 text-[11px] font-medium text-slate-400">
                 {draftStatus === "saving" ? (
-                  <LoaderCircle className="size-3 animate-spin text-blue-600" />
+                  <Spinner className="size-3 text-primary" />
                 ) : (
                   <Check className="size-3 text-emerald-600" />
                 )}
@@ -3756,44 +3786,44 @@ export function PdfEditor() {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <div className="flex items-center rounded-lg border border-slate-200 bg-slate-50 p-1">
-              <Button
-                type="button"
-                variant={editorMode === "build" ? "default" : "ghost"}
-                size="sm"
-                onClick={() => setEditorMode("build")}
-                className="h-7 px-2"
-              >
-                <Wrench className="size-3.5" />
-                <span className="hidden md:inline">Build</span>
-              </Button>
-              <Button
-                type="button"
-                variant={editorMode === "fill" ? "default" : "ghost"}
-                size="sm"
-                onClick={() => {
-                  setEditorMode("fill");
+            <Tabs
+              value={editorMode}
+              onValueChange={(value) => {
+                const nextMode = value as EditorMode;
+                setEditorMode(nextMode);
+                if (nextMode === "fill") {
                   setTool("select");
                   setSelectedId(null);
-                }}
-                className="h-7 px-2"
-              >
+                }
+              }}
+            >
+              <TabsList className="h-9">
+              <TabsTrigger value="build" className="h-7 px-2">
+                <Wrench className="size-3.5" />
+                <span className="hidden md:inline">Build</span>
+              </TabsTrigger>
+              <TabsTrigger value="fill" className="h-7 px-2">
                 <Eye className="size-3.5" />
                 <span className="hidden md:inline">Fill</span>
-              </Button>
-            </div>
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              title="Keyboard shortcuts"
-              aria-label="Open keyboard shortcuts"
-              onClick={() => setShortcutsOpen(true)}
-              className="px-2 text-slate-600 sm:px-3"
-            >
-              <Keyboard className="size-4" />
-              <span className="hidden lg:inline">Shortcuts</span>
-            </Button>
+              </TabsTrigger>
+              </TabsList>
+            </Tabs>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  aria-label="Open keyboard shortcuts"
+                  onClick={() => setShortcutsOpen(true)}
+                  className="px-2 text-muted-foreground sm:px-3"
+                >
+                  <Keyboard className="size-4" />
+                  <span className="hidden lg:inline">Shortcuts</span>
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Keyboard shortcuts</TooltipContent>
+            </Tooltip>
             <Button asChild type="button" variant="ghost" size="sm" className="hidden text-slate-600 lg:flex">
               <a href="/templates">
                 <FolderOpen className="size-4" /> Templates
@@ -3835,63 +3865,63 @@ export function PdfEditor() {
                 event.currentTarget.value = "";
               }}
             />
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              title="Extract PDF content"
-              aria-label="Extract PDF content"
-              disabled={isExtracting || isConvertingHtml || isExporting}
-              onClick={() => {
-                setExtractionOpen(true);
-                if (!extractionResult) void extractContent();
-              }}
-              className="px-2 sm:px-3"
-            >
-              {isExtracting ? (
-                <LoaderCircle className="size-4 animate-spin" />
-              ) : (
-                <FileSearch className="size-4" />
-              )}
-              <span className="hidden xl:inline">Extract</span>
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              title="Convert PDF to HTML"
-              aria-label="Convert PDF to HTML"
-              disabled={isConvertingHtml || isExporting || isExtracting}
-              onClick={() => void convertToHtml()}
-              className="px-2 sm:px-3"
-            >
-              {isConvertingHtml ? (
-                <LoaderCircle className="size-4 animate-spin" />
-              ) : (
-                <FileCode2 className="size-4" />
-              )}
-              <span className="hidden md:inline">
-                {isConvertingHtml && htmlProgress
-                  ? `HTML ${htmlProgress}/${pageOrder.length}`
-                  : "Convert to HTML"}
-              </span>
-            </Button>
-            <Button
-              type="button"
-              size="sm"
-              title="Save fillable PDF"
-              aria-label="Save fillable PDF"
-              disabled={isExporting || isConvertingHtml || isExtracting}
-              onClick={() => void exportPdf()}
-              className="bg-blue-600 shadow-sm hover:bg-blue-700"
-            >
-              {isExporting ? (
-                <LoaderCircle className="size-4 animate-spin" />
-              ) : (
-                <Download className="size-4" />
-              )}
-              <span className="hidden sm:inline">Save PDF</span>
-            </Button>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  aria-label="Extract PDF content"
+                  disabled={isExtracting || isConvertingHtml || isExporting}
+                  onClick={() => {
+                    setExtractionOpen(true);
+                    if (!extractionResult) void extractContent();
+                  }}
+                  className="px-2 sm:px-3"
+                >
+                  {isExtracting ? <Spinner /> : <FileSearch className="size-4" />}
+                  <span className="hidden xl:inline">Extract</span>
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Extract PDF content</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  aria-label="Convert PDF to HTML"
+                  disabled={isConvertingHtml || isExporting || isExtracting}
+                  onClick={() => void convertToHtml()}
+                  className="px-2 sm:px-3"
+                >
+                  {isConvertingHtml ? <Spinner /> : <FileCode2 className="size-4" />}
+                  <span className="hidden md:inline">
+                    {isConvertingHtml && htmlProgress
+                      ? `HTML ${htmlProgress}/${pageOrder.length}`
+                      : "Convert to HTML"}
+                  </span>
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Convert PDF to HTML</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  type="button"
+                  size="sm"
+                  aria-label="Save fillable PDF"
+                  disabled={isExporting || isConvertingHtml || isExtracting}
+                  onClick={() => void exportPdf()}
+                  className="shadow-sm"
+                >
+                  {isExporting ? <Spinner /> : <Download className="size-4" />}
+                  <span className="hidden sm:inline">Save PDF</span>
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Save fillable PDF</TooltipContent>
+            </Tooltip>
           </div>
         </header>
 
@@ -4087,7 +4117,7 @@ export function PdfEditor() {
                   onClick={() => chooseImage()}
                 >
                   {isAddingImage ? (
-                    <LoaderCircle className="animate-spin" />
+                    <Spinner />
                   ) : (
                     <ImagePlus />
                   )}
@@ -4146,17 +4176,16 @@ export function PdfEditor() {
                 >
                   <ZoomOut />
                 </ToolButton>
-                <input
-                  type="range"
+                <Slider
                   aria-label="Zoom level"
                   min={MIN_ZOOM * 100}
                   max={MAX_ZOOM * 100}
-                  step="5"
-                  value={Math.round(zoom * 100)}
-                  onChange={(event) =>
-                    setManualZoom(Number(event.target.value) / 100)
+                  step={5}
+                  value={[Math.round(zoom * 100)]}
+                  onValueChange={(value) =>
+                    setManualZoom((value[0] ?? Math.round(zoom * 100)) / 100)
                   }
-                  className="hidden w-24 cursor-ew-resize accent-blue-600 sm:block"
+                  className="hidden w-24 cursor-ew-resize sm:flex"
                 />
                 <span className="w-11 text-center text-xs font-semibold tabular-nums text-slate-500">
                   {Math.round(zoom * 100)}%
@@ -4186,12 +4215,10 @@ export function PdfEditor() {
             )}
 
             {error && (
-              <div
-                role="alert"
-                className="border-b border-rose-200 bg-rose-50 px-4 py-2 text-center text-xs font-medium text-rose-700"
-              >
-                {error}
-              </div>
+              <Alert variant="destructive" className="rounded-none border-x-0 border-t-0 px-4 py-2 text-xs">
+                <TriangleAlert />
+                <AlertDescription>{error}</AlertDescription>
+              </Alert>
             )}
 
             {selectedAnnotation && (
@@ -4203,7 +4230,7 @@ export function PdfEditor() {
                   selectedAnnotation.type === "input" ||
                   selectedAnnotation.type === "date" ||
                   selectedAnnotation.type === "initials") && (
-                  <input
+                  <Input
                     type={selectedAnnotation.type === "date" ? "date" : "text"}
                     aria-label={
                       selectedAnnotation.type === "input"
@@ -4218,7 +4245,7 @@ export function PdfEditor() {
                     onChange={(event) =>
                       updateSelected({ text: event.target.value })
                     }
-                    className="h-8 min-w-40 flex-1 rounded-md border border-slate-200 bg-slate-50 px-2 text-sm outline-none focus:border-blue-500"
+                    className="h-8 min-w-40 flex-1 text-sm"
                   />
                 )}
                 {(selectedAnnotation.type === "text" ||
@@ -4263,13 +4290,13 @@ export function PdfEditor() {
                 )}
                 {selectedAnnotation.type === "image-placeholder" && (
                   <>
-                    <input
+                    <Input
                       aria-label="Image placeholder label"
                       value={selectedAnnotation.label ?? ""}
                       onChange={(event) =>
                         updateSelected({ label: event.target.value })
                       }
-                      className="h-8 w-36 rounded-md border border-slate-200 bg-slate-50 px-2 text-sm outline-none focus:border-blue-500"
+                      className="h-8 w-36 text-sm"
                     />
                     <Button
                       type="button"
@@ -4314,7 +4341,7 @@ export function PdfEditor() {
                   selectedAnnotation.type === "image-placeholder") && (
                   <>
                     <label className="flex shrink-0 items-center gap-1.5 text-xs font-semibold text-slate-600">
-                      <input type="checkbox" checked={selectedAnnotation.required ?? false} onChange={(event) => updateSelected({ required: event.target.checked })} className="size-4 accent-blue-600" />
+                      <Checkbox checked={selectedAnnotation.required ?? false} onCheckedChange={(checked) => updateSelected({ required: checked === true })} />
                       Required
                     </label>
                     <Button type="button" variant="outline" size="sm" onClick={duplicateSelectedAcrossPages} disabled={pageOrder.length < 2}>
@@ -4381,12 +4408,7 @@ export function PdfEditor() {
                         bindPdfLabel(run);
                       }}
                       className="absolute z-30 cursor-pointer rounded-sm border border-blue-500 bg-blue-300/25 transition hover:bg-amber-300/60 focus-visible:outline-2 focus-visible:outline-blue-700"
-                      style={{
-                        left: `${run.rect.x * 100}%`,
-                        top: `${run.rect.y * 100}%`,
-                        width: `${run.rect.width * 100}%`,
-                        height: `${run.rect.height * 100}%`,
-                      }}
+                      style={getCanvasFieldRectStyle(run.rect)}
                     />
                   ))}
                   {pageAnnotations.map((annotation) => {
@@ -4448,12 +4470,7 @@ export function PdfEditor() {
                             ? "ring-2 ring-rose-500 ring-offset-1"
                             : ""
                         }`}
-                        style={{
-                          left: `${annotation.x * 100}%`,
-                          top: `${annotation.y * 100}%`,
-                          width: `${annotation.width * 100}%`,
-                          height: `${annotation.height * 100}%`,
-                        }}
+                        style={getCanvasFieldRectStyle(annotation)}
                       >
                         {(annotation.type === "text" ||
                           annotation.type === "initials") && (
@@ -4874,7 +4891,7 @@ export function PdfEditor() {
                                 "resize",
                               )
                             }
-                            className="absolute -bottom-2 -right-2 size-4 cursor-nwse-resize rounded-full border-2 border-white bg-blue-600 shadow"
+                            className="absolute -bottom-2 -right-2 size-4 cursor-nwse-resize rounded-full border-2 border-background bg-primary shadow"
                           />
                         )}
                       </div>
@@ -4940,13 +4957,13 @@ export function PdfEditor() {
                       : selectedAnnotation.type === "initials"
                           ? "Initials"
                           : "Text"}
-                    <textarea
+                    <Textarea
                       value={selectedAnnotation.text}
                       onChange={(event) =>
                         updateSelected({ text: event.target.value })
                       }
                       rows={4}
-                      className="mt-2 w-full resize-none rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-normal text-slate-800 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                      className="mt-2 resize-none text-sm font-normal"
                     />
                   </label>
                 )}
@@ -4954,13 +4971,13 @@ export function PdfEditor() {
                   <label className="block text-xs font-semibold text-slate-600">
                     Date
                     <div className="relative mt-2">
-                      <input
+                      <Input
                         type="date"
                         value={selectedAnnotation.text ?? ""}
                         onChange={(event) =>
                           updateSelected({ text: event.target.value })
                         }
-                        className="h-11 w-full rounded-lg border border-slate-200 bg-white px-3 pr-10 text-sm font-normal text-slate-800 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                        className="h-11 pr-10 text-sm font-normal"
                       />
                       <CalendarDays className="pointer-events-none absolute right-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
                     </div>
@@ -4988,14 +5005,12 @@ export function PdfEditor() {
                   selectedAnnotation.type === "radio") && (
                   <label className="flex items-center justify-between gap-3 text-xs font-semibold text-slate-600">
                     Selected
-                    <input
-                      type="checkbox"
+                    <Checkbox
                       aria-label={`Toggle ${selectedAnnotation.type}`}
                       checked={selectedAnnotation.checked ?? false}
-                      onChange={(event) =>
-                        updateSelected({ checked: event.target.checked })
+                      onCheckedChange={(checked) =>
+                        updateSelected({ checked: checked === true })
                       }
-                      className="size-4 accent-blue-600"
                     />
                   </label>
                 )}
@@ -5033,32 +5048,34 @@ export function PdfEditor() {
                     <p className="text-xs font-semibold text-slate-700">Field settings</p>
                     <label className="block text-[11px] font-semibold text-slate-500">
                       Recipient
-                      <select
+                      <Select
                         value={selectedAnnotation.recipientRoleId ?? recipientRoles[0]?.id ?? ""}
-                        onChange={(event) => updateSelected({ recipientRoleId: event.target.value })}
-                        className="mt-1 h-8 w-full rounded-md border border-slate-200 bg-white px-2 text-xs font-normal text-slate-800 outline-none focus:border-blue-500"
+                        onValueChange={(value) => updateSelected({ recipientRoleId: value })}
                       >
-                        {recipientRoles.map((role) => (
-                          <option key={role.id} value={role.id}>{role.name}</option>
-                        ))}
-                      </select>
+                        <SelectTrigger size="sm" className="mt-1 w-full text-xs font-normal"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          {recipientRoles.map((role) => (
+                            <SelectItem key={role.id} value={role.id}>{role.name}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                     </label>
                     <label className="block text-[11px] font-semibold text-slate-500">
                       Field name
-                      <input
+                      <Input
                         value={selectedAnnotation.fieldName ?? ""}
                         onChange={(event) => updateSelected({ fieldName: event.target.value })}
                         placeholder="Customer name"
-                        className="mt-1 h-8 w-full rounded-md border border-slate-200 bg-white px-2 text-xs font-normal text-slate-800 outline-none focus:border-blue-500"
+                        className="mt-1 h-8 text-xs font-normal"
                       />
                     </label>
                     <label className="block text-[11px] font-semibold text-slate-500">
                       Field key
-                      <input
+                      <Input
                         value={selectedAnnotation.fieldKey ?? createFieldKey(selectedAnnotation.fieldName || selectedAnnotation.label || selectedAnnotation.type)}
                         onChange={(event) => updateSelected({ fieldKey: createFieldKey(event.target.value) })}
                         placeholder="customer_name"
-                        className="mt-1 h-8 w-full rounded-md border border-slate-200 bg-white px-2 font-mono text-xs font-normal text-slate-800 outline-none focus:border-blue-500"
+                        className="mt-1 h-8 font-mono text-xs font-normal"
                       />
                     </label>
                     <div className="rounded-lg border border-slate-200 bg-white p-2">
@@ -5083,36 +5100,39 @@ export function PdfEditor() {
                     {(selectedAnnotation.type === "input" || selectedAnnotation.type === "initials") && (
                       <label className="block text-[11px] font-semibold text-slate-500">
                         Placeholder
-                        <input
+                        <Input
                           value={selectedAnnotation.placeholder ?? ""}
                           onChange={(event) => updateSelected({ placeholder: event.target.value })}
-                          className="mt-1 h-8 w-full rounded-md border border-slate-200 bg-white px-2 text-xs font-normal text-slate-800 outline-none focus:border-blue-500"
+                          className="mt-1 h-8 text-xs font-normal"
                         />
                       </label>
                     )}
                     <div className="grid grid-cols-2 gap-2">
                       <label className="flex items-center gap-2 text-xs font-medium text-slate-600">
-                        <input type="checkbox" checked={selectedAnnotation.required ?? false} onChange={(event) => updateSelected({ required: event.target.checked })} className="size-4 accent-blue-600" />
+                        <Checkbox checked={selectedAnnotation.required ?? false} onCheckedChange={(checked) => updateSelected({ required: checked === true })} />
                         Required
                       </label>
                       <label className="text-[11px] font-semibold text-slate-500">
                         Tab order
-                        <input type="number" min="1" value={selectedAnnotation.tabIndex ?? 1} onChange={(event) => updateSelected({ tabIndex: Math.max(1, Number(event.target.value)) })} className="mt-1 h-8 w-full rounded-md border border-slate-200 bg-white px-2 text-xs font-normal text-slate-800" />
+                        <Input type="number" min="1" value={selectedAnnotation.tabIndex ?? 1} onChange={(event) => updateSelected({ tabIndex: Math.max(1, Number(event.target.value)) })} className="mt-1 h-8 text-xs font-normal" />
                       </label>
                     </div>
                     {selectedAnnotation.type === "input" && (
                       <>
                         <label className="block text-[11px] font-semibold text-slate-500">
                           Validation
-                          <select value={selectedAnnotation.validation ?? "none"} onChange={(event) => updateSelected({ validation: event.target.value as Annotation["validation"] })} className="mt-1 h-8 w-full rounded-md border border-slate-200 bg-white px-2 text-xs font-normal text-slate-800">
-                            <option value="none">Any text</option>
-                            <option value="email">Email</option>
-                            <option value="number">Number</option>
-                            <option value="phone">Phone</option>
-                          </select>
+                          <Select value={selectedAnnotation.validation ?? "none"} onValueChange={(value) => updateSelected({ validation: value as Annotation["validation"] })}>
+                            <SelectTrigger size="sm" className="mt-1 w-full text-xs font-normal"><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="none">Any text</SelectItem>
+                              <SelectItem value="email">Email</SelectItem>
+                              <SelectItem value="number">Number</SelectItem>
+                              <SelectItem value="phone">Phone</SelectItem>
+                            </SelectContent>
+                          </Select>
                         </label>
                         <label className="flex items-center gap-2 text-xs font-medium text-slate-600">
-                          <input type="checkbox" checked={selectedAnnotation.multiline ?? false} onChange={(event) => updateSelected({ multiline: event.target.checked })} className="size-4 accent-blue-600" />
+                          <Checkbox checked={selectedAnnotation.multiline ?? false} onCheckedChange={(checked) => updateSelected({ multiline: checked === true })} />
                           Multiple lines
                         </label>
                       </>
@@ -5126,12 +5146,12 @@ export function PdfEditor() {
                   <div className="space-y-3">
                     <label className="block text-xs font-semibold text-slate-600">
                       Placeholder label
-                      <input
+                      <Input
                         value={selectedAnnotation.label ?? ""}
                         onChange={(event) =>
                           updateSelected({ label: event.target.value })
                         }
-                        className="mt-2 h-9 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm font-normal text-slate-800 outline-none focus:border-blue-500"
+                        className="mt-2 text-sm font-normal"
                       />
                     </label>
                     <Button
@@ -5266,7 +5286,7 @@ export function PdfEditor() {
                   </div>
                 ))}
               </div>
-              <Button asChild type="button" className="w-full bg-blue-600 hover:bg-blue-700">
+              <Button asChild type="button" className="w-full">
                 <a href="/templates"><FolderOpen className="size-4" /> Open template library</a>
               </Button>
             </div>
@@ -5275,11 +5295,11 @@ export function PdfEditor() {
               <div className="grid gap-3 sm:grid-cols-2">
                 <label className="text-xs font-semibold text-slate-600">
                   Template name
-                  <input value={templateName} maxLength={120} onChange={(event) => setTemplateName(event.target.value)} className="mt-1.5 h-10 w-full rounded-lg border border-slate-200 px-3 text-sm font-normal outline-none focus:border-blue-500" />
+                  <Input value={templateName} maxLength={120} onChange={(event) => setTemplateName(event.target.value)} className="mt-1.5 h-10 text-sm font-normal" />
                 </label>
                 <label className="text-xs font-semibold text-slate-600">
                   Description
-                  <input value={templateDescription} maxLength={500} onChange={(event) => setTemplateDescription(event.target.value)} placeholder="Optional instructions" className="mt-1.5 h-10 w-full rounded-lg border border-slate-200 px-3 text-sm font-normal outline-none focus:border-blue-500" />
+                  <Input value={templateDescription} maxLength={500} onChange={(event) => setTemplateDescription(event.target.value)} placeholder="Optional instructions" className="mt-1.5 h-10 text-sm font-normal" />
                 </label>
               </div>
               <div>
@@ -5296,8 +5316,8 @@ export function PdfEditor() {
                   {recipientRoles.map((role) => (
                     <div key={role.id} className="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 p-2">
                       <input type="color" aria-label={`${role.name} color`} value={role.color} onChange={(event) => updateRecipientRole(role.id, { color: event.target.value })} className="size-8 shrink-0 cursor-pointer rounded border-0 bg-transparent p-0" />
-                      <input value={role.name} maxLength={80} onChange={(event) => updateRecipientRole(role.id, { name: event.target.value })} className="h-9 min-w-0 flex-1 rounded-lg border border-slate-200 bg-white px-3 text-sm outline-none focus:border-blue-500" />
-                      <Button type="button" variant="ghost" size="icon-sm" disabled={recipientRoles.length <= 1} onClick={() => removeRecipientRole(role.id)} className="text-rose-600 hover:bg-rose-50"><Trash2 /></Button>
+                      <Input value={role.name} maxLength={80} onChange={(event) => updateRecipientRole(role.id, { name: event.target.value })} className="min-w-0 flex-1" />
+                      <Button type="button" variant="ghost" size="icon-sm" disabled={recipientRoles.length <= 1} onClick={() => removeRecipientRole(role.id)} aria-label={`Remove ${role.name} recipient`} className="text-destructive hover:text-destructive"><Trash2 /></Button>
                     </div>
                   ))}
                 </div>
@@ -5307,8 +5327,8 @@ export function PdfEditor() {
           {createdShareLinks.length === 0 && (
             <DialogFooter>
               <Button type="button" variant="ghost" onClick={() => setTemplateOpen(false)}>Cancel</Button>
-              <Button type="button" disabled={!templateName.trim() || recipientRoles.some((role) => !role.name.trim()) || isSavingTemplate} onClick={() => void saveTemplate()} className="bg-blue-600 hover:bg-blue-700">
-                {isSavingTemplate ? <LoaderCircle className="size-4 animate-spin" /> : <Save className="size-4" />}
+              <Button type="button" disabled={!templateName.trim() || recipientRoles.some((role) => !role.name.trim()) || isSavingTemplate} onClick={() => void saveTemplate()}>
+                {isSavingTemplate ? <Spinner /> : <Save className="size-4" />}
                 Save and create links
               </Button>
             </DialogFooter>
@@ -5357,7 +5377,7 @@ function Brand(props: { compact?: boolean }) {
       className="flex shrink-0 items-center gap-2.5"
       aria-label="PDF Studio"
     >
-      <div className="flex size-9 items-center justify-center rounded-xl bg-blue-600 text-white shadow-md shadow-blue-600/20">
+      <div className="flex size-9 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-md shadow-primary/20">
         <FileText className="size-5" />
       </div>
       <span

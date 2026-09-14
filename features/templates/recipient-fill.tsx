@@ -4,8 +4,8 @@ import {
   ArrowLeft,
   ArrowRight,
   Check,
+  CircleAlert,
   FileCheck2,
-  LoaderCircle,
   LockKeyhole,
   UploadCloud,
 } from "lucide-react";
@@ -13,7 +13,11 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import khmerFontUrl from "@expo-google-fonts/noto-sans-khmer/400Regular/NotoSansKhmer_400Regular.ttf?url";
 
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Spinner } from "@/components/ui/spinner";
 import { CambodiaAddressField } from "@/features/gazetteer/cambodia-address-field";
 import {
   formatCambodiaAddress,
@@ -26,6 +30,7 @@ import type {
   TemplateFillPayload,
 } from "@/features/templates/template.types";
 import { isRecipientFieldType } from "@/features/templates/template-fields";
+import { getCanvasFieldRectStyle } from "@/features/templates/canvas-field-style";
 import {
   normalizedPointToPdf,
   normalizedRectToPdfBox,
@@ -34,6 +39,7 @@ import type {
   GazetteerLanguage,
   GazetteerLevel,
 } from "@/features/gazetteer/gazetteer.types";
+import { cn } from "@/lib/utils";
 
 type PdfViewport = { width: number; height: number };
 type PdfPage = {
@@ -208,44 +214,46 @@ export function RecipientFill(props: { token: string }) {
     }
   }
 
-  if (loading) return <CenteredState icon={<LoaderCircle className="animate-spin" />} title="Opening document…" description="Loading the private recipient form." />;
+  if (loading) return <CenteredState icon={<Spinner className="size-6" />} title="Opening document…" description="Loading the private recipient form." />;
   if (!payload || !pdfDocument || error && !pdfBytes) return <CenteredState icon={<LockKeyhole />} title="Document unavailable" description={error || "This fill link is invalid or expired."} />;
   if (completed) return <CenteredState icon={<FileCheck2 />} title="Submission completed" description="Your information and completed PDF were securely sent to the document owner." success />;
 
   const pageAnnotations = payload.template.annotations.filter((annotation) => annotation.page === pageNumber);
   return (
-    <main className="min-h-[100dvh] bg-slate-100 text-slate-950">
-      <header className="sticky top-0 z-30 border-b border-slate-200 bg-white/95 backdrop-blur">
+    <main className="min-h-[100dvh] bg-background text-foreground">
+      <header className="sticky top-0 z-30 border-b border-border bg-background/95 backdrop-blur">
         <div className="mx-auto flex min-h-16 max-w-7xl items-center justify-between gap-3 px-3 py-2 sm:px-6">
-          <div className="min-w-0"><p className="truncate text-sm font-bold">{payload.template.name}</p><p className="truncate text-xs text-slate-400">Complete as {payload.recipient.name}</p></div>
+          <div className="min-w-0"><p className="truncate text-sm font-bold">{payload.template.name}</p><p className="truncate text-xs text-muted-foreground">Complete as {payload.recipient.name}</p></div>
           <div className="flex items-center gap-2 text-xs font-medium text-emerald-700"><LockKeyhole className="size-3.5" /><span className="hidden sm:inline">Private recipient link</span></div>
         </div>
       </header>
       <div className="mx-auto grid max-w-7xl gap-5 px-3 py-5 lg:grid-cols-[1fr_320px] lg:px-6">
-        <section ref={viewportRef} className="min-w-0 overflow-auto rounded-2xl border border-slate-200 bg-slate-200/70 p-3 sm:p-6">
+        <section ref={viewportRef} className="min-w-0 overflow-auto rounded-2xl border border-border bg-muted p-3 sm:p-6">
           <div className="mx-auto">
             <div className="relative mx-auto overflow-hidden bg-white shadow-2xl" style={{ width: pageSize.width, height: pageSize.height }}>
               <canvas ref={canvasRef} className="absolute inset-0 size-full" />
               {pageAnnotations.map((annotation) => <FillAnnotation key={annotation.id} annotation={annotation} value={values[annotation.id]} onChange={(value) => updateValue(annotation.id, value)} onError={setError} />)}
             </div>
-            <div className="mt-4 flex items-center justify-center gap-3 text-xs font-semibold text-slate-500">
+            <div className="mt-4 flex items-center justify-center gap-3 text-xs font-semibold text-muted-foreground">
               <Button type="button" variant="outline" size="icon-sm" disabled={pageNumber === 1} onClick={() => setPageNumber((page) => page - 1)}><ArrowLeft /></Button>
               Page {pageNumber} of {payload.template.pageOrder.length}
               <Button type="button" variant="outline" size="icon-sm" disabled={pageNumber === payload.template.pageOrder.length} onClick={() => setPageNumber((page) => page + 1)}><ArrowRight /></Button>
             </div>
           </div>
         </section>
-        <aside className="h-fit rounded-2xl border border-slate-200 bg-white p-5 shadow-sm lg:sticky lg:top-20">
-          <p className="text-sm font-bold text-slate-900">Finish submission</p>
-          {payload.template.description && <p className="mt-2 text-xs leading-5 text-slate-500">{payload.template.description}</p>}
-          <div className="mt-5 space-y-3">
-            <label className="block text-xs font-semibold text-slate-600">Your name<input value={recipientName} onChange={(event) => setRecipientName(event.target.value)} className="mt-1.5 h-10 w-full rounded-lg border border-slate-200 px-3 text-sm font-normal outline-none focus:border-blue-500" /></label>
-            <label className="block text-xs font-semibold text-slate-600">Email <span className="font-normal text-slate-400">(optional)</span><input type="email" value={recipientEmail} onChange={(event) => setRecipientEmail(event.target.value)} className="mt-1.5 h-10 w-full rounded-lg border border-slate-200 px-3 text-sm font-normal outline-none focus:border-blue-500" /></label>
-          </div>
-          {error && <p role="alert" className="mt-4 rounded-lg border border-rose-200 bg-rose-50 p-3 text-xs font-medium text-rose-700">{error}</p>}
-          <Button type="button" onClick={() => void submit()} disabled={submitting} className="mt-5 h-11 w-full bg-blue-600 hover:bg-blue-700">{submitting ? <LoaderCircle className="size-4 animate-spin" /> : <Check className="size-4" />} Submit completed PDF</Button>
-          <p className="mt-3 text-center text-[11px] leading-4 text-slate-400">Your submission is sent only to the template owner.</p>
-        </aside>
+        <Card className="h-fit gap-0 py-0 lg:sticky lg:top-20">
+          <CardContent className="p-5">
+            <p className="text-sm font-bold text-foreground">Finish submission</p>
+            {payload.template.description && <p className="mt-2 text-xs leading-5 text-muted-foreground">{payload.template.description}</p>}
+            <div className="mt-5 space-y-3">
+              <label className="block text-xs font-semibold text-foreground">Your name<Input value={recipientName} onChange={(event) => setRecipientName(event.target.value)} className="mt-1.5 h-10 font-normal" /></label>
+              <label className="block text-xs font-semibold text-foreground">Email <span className="font-normal text-muted-foreground">(optional)</span><Input type="email" value={recipientEmail} onChange={(event) => setRecipientEmail(event.target.value)} className="mt-1.5 h-10 font-normal" /></label>
+            </div>
+            {error && <Alert variant="destructive" className="mt-4"><CircleAlert /><AlertDescription>{error}</AlertDescription></Alert>}
+            <Button type="button" onClick={() => void submit()} disabled={submitting} className="mt-5 h-11 w-full">{submitting ? <Spinner /> : <Check className="size-4" />} Submit completed PDF</Button>
+            <p className="mt-3 text-center text-[11px] leading-4 text-muted-foreground">Your submission is sent only to the template owner.</p>
+          </CardContent>
+        </Card>
       </div>
     </main>
   );
@@ -253,7 +261,7 @@ export function RecipientFill(props: { token: string }) {
 
 function FillAnnotation(props: { annotation: TemplateAnnotation; value: unknown; onChange: (value: unknown) => void; onError: (message: string) => void }) {
   const annotation = props.annotation;
-  const style = { left: `${annotation.x * 100}%`, top: `${annotation.y * 100}%`, width: `${annotation.width * 100}%`, height: `${annotation.height * 100}%` };
+  const style = getCanvasFieldRectStyle(annotation);
   const fontSize = getNumber(annotation.fontSize, 14);
   const borderColor = getString(annotation.borderColor, "#64748b");
   const required = Boolean(annotation.required);
@@ -264,7 +272,7 @@ function FillAnnotation(props: { annotation: TemplateAnnotation; value: unknown;
   if (annotation.type === "date") return <div className="absolute" style={style}><input type="date" value={String(props.value ?? "")} required={required} onChange={(event) => props.onChange(event.target.value)} className="size-full rounded border bg-white px-2 outline-none focus:ring-2 focus:ring-blue-500" style={{ color: annotation.color, borderColor, fontSize }} /></div>;
   if (annotation.type === "dropdown") return <div className="absolute" style={style}><select value={String(props.value ?? "")} required={required} onChange={(event) => props.onChange(event.target.value)} className="size-full rounded border bg-white px-2 outline-none focus:ring-2 focus:ring-blue-500" style={{ color: annotation.color, borderColor, fontSize }}><option value="">{getString(annotation.label, "Select an option")}</option>{options.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}</select></div>;
   if (annotation.type === "cambodia-address") return <div className="absolute" style={style}><CambodiaAddressField value={props.value} language={getGazetteerLanguage(annotation.gazetteerLanguage)} deepestLevel={getGazetteerLevel(annotation.gazetteerLevel)} required={required} label={getString(annotation.label, "Cambodia address")} onChange={props.onChange} style={{ color: annotation.color, borderColor, fontSize }} /></div>;
-  if (annotation.type === "checkbox" || annotation.type === "radio") return <button type="button" aria-label={getString(annotation.fieldName, annotation.type)} aria-pressed={Boolean(props.value)} onClick={() => props.onChange(!props.value)} className={`absolute flex items-center justify-center border-2 bg-white ${annotation.type === "radio" ? "rounded-full" : "rounded"}`} style={{ ...style, borderColor: annotation.color }}>{Boolean(props.value) && (annotation.type === "radio" ? <span className="size-1/2 rounded-full" style={{ backgroundColor: annotation.color }} /> : <Check className="size-full" style={{ color: annotation.color }} />)}</button>;
+  if (annotation.type === "checkbox" || annotation.type === "radio") return <button type="button" aria-label={getString(annotation.fieldName, annotation.type)} aria-pressed={Boolean(props.value)} onClick={() => props.onChange(!props.value)} className={cn("absolute flex items-center justify-center border-2 bg-white", annotation.type === "radio" ? "rounded-full" : "rounded")} style={{ ...style, borderColor: annotation.color }}>{Boolean(props.value) && (annotation.type === "radio" ? <span className="size-1/2 rounded-full" style={{ backgroundColor: annotation.color }} /> : <Check className="size-full" style={{ color: annotation.color }} />)}</button>;
   if (annotation.type === "checkbox-group" || annotation.type === "radio-group") {
     const selected = Array.isArray(props.value) ? props.value.map(String) : [];
     return <fieldset className="absolute overflow-auto rounded-md bg-white/95 p-2" style={style}><legend className="text-xs font-bold text-slate-800">{getString(annotation.label, "Options")}</legend><div className="space-y-1.5">{options.map((option) => { const checked = selected.includes(option.id); return <label key={option.id} className="flex items-center gap-2 text-xs text-slate-700"><input type={annotation.type === "radio-group" ? "radio" : "checkbox"} name={annotation.id} checked={checked} onChange={() => props.onChange(annotation.type === "radio-group" ? [option.id] : checked ? selected.filter((id) => id !== option.id) : [...selected, option.id])} className="accent-blue-600" />{option.label}</label>; })}</div></fieldset>;
@@ -272,7 +280,7 @@ function FillAnnotation(props: { annotation: TemplateAnnotation; value: unknown;
   if (annotation.type === "image-placeholder") return <label className="absolute flex cursor-pointer flex-col items-center justify-center overflow-hidden rounded-lg border-2 border-dashed border-slate-400 bg-slate-50 text-center text-xs font-semibold text-slate-600" style={style}>{typeof props.value === "string" && props.value.startsWith("data:image/") ? <Image src={props.value} alt="Uploaded" fill unoptimized className="object-cover" /> : <><UploadCloud className="size-5" />{getString(annotation.label, "Upload image")}</>}<input type="file" accept="image/png,image/jpeg" className="sr-only" onChange={(event) => { const file = event.target.files?.[0]; if (!file) return; void prepareRecipientImage(file).then(props.onChange).catch(() => { props.onChange(""); props.onError("Choose a valid PNG or JPEG image up to 8 MB."); }); }} /></label>;
   if (annotation.type === "text") return <span className="pointer-events-none absolute whitespace-pre-wrap" style={{ ...style, color: annotation.color, fontSize: getNumber(annotation.fontSize, 16) }}>{getString(annotation.text, "")}</span>;
   if (annotation.type === "highlight") return <span className="pointer-events-none absolute opacity-35" style={{ ...style, backgroundColor: annotation.color }} />;
-  if (annotation.type === "rectangle" || annotation.type === "ellipse") return <span className={`pointer-events-none absolute border-2 ${annotation.type === "ellipse" ? "rounded-full" : ""}`} style={{ ...style, borderColor: annotation.color }} />;
+  if (annotation.type === "rectangle" || annotation.type === "ellipse") return <span className={cn("pointer-events-none absolute border-2", annotation.type === "ellipse" && "rounded-full")} style={{ ...style, borderColor: annotation.color }} />;
   if (annotation.type === "line") {
     const up = annotation.lineDirection === "up";
     return <svg aria-hidden="true" className="pointer-events-none absolute overflow-visible" style={style} viewBox="0 0 100 100" preserveAspectRatio="none"><line x1="0" y1={up ? "100" : "0"} x2="100" y2={up ? "0" : "100"} stroke={annotation.color} strokeWidth={getNumber(annotation.strokeWidth, 2)} vectorEffect="non-scaling-stroke" /></svg>;
@@ -290,7 +298,7 @@ function FillAnnotation(props: { annotation: TemplateAnnotation; value: unknown;
 }
 
 function CenteredState(props: { icon: React.ReactNode; title: string; description: string; success?: boolean }) {
-  return <main className="flex min-h-[100dvh] items-center justify-center bg-slate-100 p-5"><div className="w-full max-w-md rounded-3xl border border-slate-200 bg-white p-8 text-center shadow-xl"><span className={`mx-auto flex size-14 items-center justify-center rounded-2xl ${props.success ? "bg-emerald-100 text-emerald-700" : "bg-blue-100 text-blue-700"} [&_svg]:size-6`}>{props.icon}</span><h1 className="mt-5 text-xl font-bold text-slate-900">{props.title}</h1><p className="mt-2 text-sm leading-6 text-slate-500">{props.description}</p></div></main>;
+  return <main className="flex min-h-[100dvh] items-center justify-center bg-background p-5"><Card className="w-full max-w-md"><CardContent className="p-8 text-center"><span className={`mx-auto flex size-14 items-center justify-center rounded-2xl ${props.success ? "bg-emerald-100 text-emerald-700" : "bg-primary/10 text-primary"} [&_svg]:size-6`}>{props.icon}</span><h1 className="mt-5 text-xl font-bold text-foreground">{props.title}</h1><p className="mt-2 text-sm leading-6 text-muted-foreground">{props.description}</p></CardContent></Card></main>;
 }
 
 function initialValues(annotations: TemplateAnnotation[]) {
