@@ -1,17 +1,16 @@
 "use client";
 
 import {
-  AlertCircle,
   Check,
   ChevronDown,
   ChevronRight,
-  LoaderCircle,
   RefreshCw,
   X,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import type { CSSProperties } from "react";
 
+import { FeedbackAlert } from "@/components/patterns/feedback-alert";
 import { Button } from "@/components/ui/button";
 import {
   Command,
@@ -26,6 +25,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import { Spinner } from "@/components/ui/spinner";
 import {
   EMPTY_CAMBODIA_ADDRESS,
   GAZETTEER_LEVELS,
@@ -182,7 +182,8 @@ export function CambodiaAddressField(props: CambodiaAddressFieldProps) {
     <div className={`size-full min-w-0 ${props.className ?? ""}`} style={props.style}>
       <Popover open={open} onOpenChange={openAtCurrentStep}>
         <PopoverTrigger asChild>
-          <Button variant="ghost"
+          <Button
+            variant="outline"
             type="button"
             aria-label={props.label ?? "Cambodia address"}
             aria-expanded={open}
@@ -219,7 +220,9 @@ export function CambodiaAddressField(props: CambodiaAddressFieldProps) {
               </p>
             </div>
             {hasValue && (
-              <Button variant="ghost"
+              <Button
+                variant="ghost"
+                size="sm"
                 type="button"
                 onClick={() => {
                   props.onChange?.({ ...EMPTY_CAMBODIA_ADDRESS });
@@ -240,7 +243,9 @@ export function CambodiaAddressField(props: CambodiaAddressFieldProps) {
               return (
                 <div key={level} className="flex shrink-0 items-center">
                   {index > 0 && <ChevronRight className="size-3 text-muted-foreground/50" />}
-                  <Button variant="ghost"
+                  <Button
+                    variant="ghost"
+                    size="sm"
                     type="button"
                     disabled={!location && !isActive}
                     onClick={() => {
@@ -270,26 +275,30 @@ export function CambodiaAddressField(props: CambodiaAddressFieldProps) {
             <CommandList className="max-h-64">
               {loading ? (
                 <div className="flex items-center justify-center gap-2 py-8 text-sm text-muted-foreground">
-                  <LoaderCircle className="size-4 animate-spin" /> Loading {activeLabel}…
+                  <Spinner /> Loading {activeLabel}…
                 </div>
               ) : error ? (
                 <div className="p-3">
-                  <div className="rounded-md border border-destructive/30 bg-destructive/10 p-3 text-xs text-destructive">
-                    <div className="flex items-start gap-2">
-                      <AlertCircle className="mt-0.5 size-4 shrink-0" />
-                      <span>{error}</span>
-                    </div>
-                    <Button variant="ghost"
-                      type="button"
-                      onClick={() => {
-                        requestCache.delete(requestKey);
-                        setAttempt((current) => current + 1);
-                      }}
-                      className="mt-2 flex items-center gap-1 font-semibold hover:underline"
-                    >
-                      <RefreshCw className="size-3" /> Retry
-                    </Button>
-                  </div>
+                  <FeedbackAlert
+                    tone="error"
+                    title="Locations could not be loaded"
+                    description={
+                      <>
+                        <p>{error}</p>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            requestCache.delete(requestKey);
+                            setAttempt((current) => current + 1);
+                          }}
+                        >
+                          <RefreshCw /> Retry
+                        </Button>
+                      </>
+                    }
+                  />
                 </div>
               ) : (
                 <>

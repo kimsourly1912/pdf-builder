@@ -25,7 +25,6 @@ import {
   ImagePlus,
   Keyboard,
   Link2,
-  LoaderCircle,
   ListFilter,
   LockKeyhole,
   MapPinned,
@@ -94,6 +93,7 @@ import {
   resizeEditorAnnotationProportionally,
 } from "@/features/templates/editor-shortcuts";
 import { formatLocalDateTime } from "@/features/templates/date-time";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { DatePicker } from "@/components/ui/date-picker";
@@ -106,7 +106,13 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Slider } from "@/components/ui/slider";
+import { Spinner } from "@/components/ui/spinner";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  ToggleGroup,
+  ToggleGroupItem,
+} from "@/components/ui/toggle-group";
 import { PdfExtractionDialog } from "@/features/extraction/pdf-extraction-dialog";
 import { extractPdfContent } from "@/features/extraction/pdf-extraction";
 import { AiFieldDetectionDialog } from "@/features/ai-field-detection/ai-field-detection-dialog";
@@ -135,6 +141,8 @@ import type {
   GazetteerLanguage,
   GazetteerLevel,
 } from "@/features/gazetteer/gazetteer.types";
+import { getCanvasFieldRectStyle } from "@/features/templates/canvas-field-style";
+import { cn } from "@/lib/utils";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -1027,14 +1035,12 @@ function ToolButton(props: {
           variant={props.active ? "default" : "ghost"}
           size="icon-sm"
           aria-label={accessibleLabel}
-          title={accessibleLabel}
           disabled={props.disabled}
           onClick={props.onClick}
-          className={
-            props.active
-              ? "size-10 shrink-0 bg-blue-600 text-white hover:bg-blue-700 sm:size-8"
-              : "size-10 shrink-0 text-slate-600 sm:size-8"
-          }
+          className={cn(
+            "size-10 shrink-0 sm:size-8",
+            !props.active && "text-muted-foreground",
+          )}
         >
           {props.children}
         </Button>
@@ -1063,36 +1069,47 @@ function ColorControl(props: {
 
   return (
     <div className="flex flex-wrap items-center gap-2.5">
-      {COLORS.map((item) => (
-        <Button variant="ghost"
-          key={item}
-          type="button"
-          aria-label={`Use ${item} color`}
-          aria-pressed={value === item}
-          onClick={() => onChange(item)}
-          className={`${sizeClass} shrink-0 rounded-full border-2 p-0 transition ${
-            value === item
-              ? "scale-105 border-slate-900 shadow-sm"
-              : "border-white ring-1 ring-slate-300"
-          }`}
-          style={{ backgroundColor: item }}
-        />
-      ))}
-      <label
-        title="Choose a custom color"
-        aria-label="Choose a custom color"
-        className={`${sizeClass} relative flex shrink-0 cursor-pointer items-center justify-center overflow-hidden rounded-full border-2 border-white text-white shadow-sm ring-1 ring-slate-300`}
-        style={{ backgroundColor: value }}
+      <ToggleGroup
+        type="single"
+        value={COLORS.includes(value) ? value : ""}
+        onValueChange={(nextValue) => {
+          if (nextValue) onChange(nextValue);
+        }}
+        aria-label="Color presets"
+        className="flex-wrap gap-2.5"
       >
-        <Pipette className={compact ? "size-3" : "size-3.5"} />
-        <input
-          type="color"
-          value={value}
-          aria-label="Custom color"
-          onChange={(event) => onChange(event.target.value)}
-          className="absolute inset-0 size-full cursor-pointer opacity-0"
-        />
-      </label>
+        {COLORS.map((item) => (
+          <ToggleGroupItem
+            key={item}
+            value={item}
+            aria-label={`Use ${item} color`}
+            className={cn(
+              sizeClass,
+              "shrink-0 rounded-full border-2 border-background p-0 ring-1 ring-border transition data-[state=on]:scale-105 data-[state=on]:ring-foreground",
+            )}
+            style={{ backgroundColor: item }}
+          />
+        ))}
+      </ToggleGroup>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <label
+            aria-label="Choose a custom color"
+            className={`${sizeClass} relative flex shrink-0 cursor-pointer items-center justify-center overflow-hidden rounded-full border-2 border-background text-white shadow-sm ring-1 ring-border`}
+            style={{ backgroundColor: value }}
+          >
+            <Pipette className={compact ? "size-3" : "size-3.5"} />
+            <input
+              type="color"
+              value={value}
+              aria-label="Custom color"
+              onChange={(event) => onChange(event.target.value)}
+              className="absolute inset-0 size-full cursor-pointer opacity-0"
+            />
+          </label>
+        </TooltipTrigger>
+        <TooltipContent>Choose a custom color</TooltipContent>
+      </Tooltip>
     </div>
   );
 }
@@ -1106,24 +1123,27 @@ function FontSizeControl(props: {
 
   return (
     <div className={compact ? "w-80 shrink-0" : "w-full"}>
-      <div className="grid grid-cols-4 gap-1.5 sm:grid-cols-7 xl:grid-cols-4">
+      <ToggleGroup
+        type="single"
+        value={String(value)}
+        onValueChange={(nextValue) => {
+          if (nextValue) onChange(Number(nextValue));
+        }}
+        aria-label="Font size presets"
+        className="grid w-full grid-cols-4 gap-1.5 sm:grid-cols-7 xl:grid-cols-4"
+      >
         {FONT_SIZE_PRESETS.map((size) => (
-          <Button variant="ghost"
+          <ToggleGroupItem
             key={size}
-            type="button"
+            value={String(size)}
             aria-label={`Set font size to ${size} points`}
-            aria-pressed={value === size}
-            onClick={() => onChange(size)}
-            className={`h-8 min-w-0 rounded-md border px-1.5 text-[11px] font-semibold transition ${
-              value === size
-                ? "border-blue-600 bg-blue-600 text-white"
-                : "border-slate-200 bg-white text-slate-600 hover:border-blue-300 hover:text-blue-700"
-            }`}
+            variant="outline"
+            className="h-8 min-w-0 rounded-md px-1.5 text-[11px] font-semibold data-[state=on]:border-primary data-[state=on]:bg-primary data-[state=on]:text-primary-foreground"
           >
             {size}
-          </Button>
+          </ToggleGroupItem>
         ))}
-      </div>
+      </ToggleGroup>
       <div className="mt-2 flex items-center gap-2">
         <Slider
           min={MIN_FONT_SIZE}
@@ -1414,7 +1434,6 @@ function ShortcutsDialog(props: {
           <Button
             type="button"
             onClick={() => onOpenChange(false)}
-            className="bg-blue-600 hover:bg-blue-700"
           >
             Done
           </Button>
@@ -1531,7 +1550,6 @@ function SignatureDialog(props: {
             type="button"
             disabled={!strokes.length}
             onClick={useSignature}
-            className="bg-blue-600 hover:bg-blue-700"
           >
             Use signature
           </Button>
@@ -1672,16 +1690,21 @@ function PageThumbnail(props: {
             ["Duplicate", props.onDuplicate, <Copy key="copy" />],
             ["Delete", props.onDelete, <Trash2 key="delete" />],
           ].map(([label, action, icon]) => (
-            <Button variant="ghost"
-              key={label as string}
-              type="button"
-              title={label as string}
-              aria-label={`${label} page ${props.displayNumber}`}
-              onClick={action as () => void}
-              className="size-6 p-0 text-slate-500 hover:bg-white hover:text-blue-700 [&_svg]:size-3"
-            >
-              {icon as React.ReactNode}
-            </Button>
+            <Tooltip key={label as string}>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon-xs"
+                  type="button"
+                  aria-label={`${label} page ${props.displayNumber}`}
+                  onClick={action as () => void}
+                  className="text-muted-foreground hover:text-primary"
+                >
+                  {icon as React.ReactNode}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>{label as string}</TooltipContent>
+            </Tooltip>
           ))}
         </div>
       )}
@@ -4736,11 +4759,11 @@ export function PdfEditor(props: { initialTemplateId?: string }) {
               <Empty className="min-h-[390px] rounded-[1.5rem] border-2 border-dashed border-blue-200 bg-gradient-to-b from-blue-50/80 to-white px-6">
                 <EmptyHeader>
                   <EmptyMedia
-                    className="size-16 rounded-2xl bg-blue-600 text-white shadow-lg shadow-blue-600/20"
+                    className="size-16 rounded-2xl bg-primary text-primary-foreground shadow-lg shadow-primary/20"
                     variant="icon"
                   >
                     {isLoading ? (
-                      <LoaderCircle className="size-7 animate-spin" />
+                      <Spinner className="size-7" />
                     ) : (
                       <UploadCloud className="size-7" />
                     )}
@@ -4763,7 +4786,7 @@ export function PdfEditor(props: { initialTemplateId?: string }) {
                         Saved {formatLocalDateTime(availableDraft.savedAt)}
                       </p>
                       <div className="mt-3 flex gap-2">
-                        <Button type="button" size="sm" disabled={isLoading} onClick={() => void restoreDraft()} className="bg-blue-600 hover:bg-blue-700">
+                        <Button type="button" size="sm" disabled={isLoading} onClick={() => void restoreDraft()}>
                           Restore draft
                         </Button>
                         <Button type="button" size="sm" variant="ghost" onClick={() => {
@@ -4780,7 +4803,7 @@ export function PdfEditor(props: { initialTemplateId?: string }) {
                     size="lg"
                     disabled={isLoading}
                     onClick={() => inputRef.current?.click()}
-                    className="h-12 rounded-xl bg-blue-600 px-6 text-base shadow-lg shadow-blue-600/20 hover:bg-blue-700"
+                    className="h-12 rounded-xl px-6 text-base shadow-lg shadow-primary/20"
                   >
                     <Plus className="size-4" /> Choose PDF
                   </Button>
@@ -4795,16 +4818,14 @@ export function PdfEditor(props: { initialTemplateId?: string }) {
                     }}
                   />
                   {error && (
-                    <p
-                      role="alert"
-                      className="mt-2 text-sm font-medium text-rose-600"
-                    >
-                      {error}
-                    </p>
+                    <Alert variant="destructive" className="mt-2 max-w-md text-left">
+                      <TriangleAlert />
+                      <AlertDescription>{error}</AlertDescription>
+                    </Alert>
                   )}
                 </EmptyContent>
               </Empty>
-              <div className="pointer-events-none absolute -right-10 -top-10 size-32 rounded-full bg-blue-200/50 blur-3xl" />
+              <div className="pointer-events-none absolute -right-10 -top-10 size-32 rounded-full bg-primary/15 blur-3xl" />
             </div>
           </div>
         </section>
@@ -4826,7 +4847,7 @@ export function PdfEditor(props: { initialTemplateId?: string }) {
               </p>
               <p className="flex items-center gap-1 text-[11px] font-medium text-slate-400">
                 {draftStatus === "saving" ? (
-                  <LoaderCircle className="size-3 animate-spin text-blue-600" />
+                  <Spinner className="size-3 text-primary" />
                 ) : (
                   <Check className="size-3 text-emerald-600" />
                 )}
@@ -4835,44 +4856,44 @@ export function PdfEditor(props: { initialTemplateId?: string }) {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <div className="flex items-center rounded-lg border border-slate-200 bg-slate-50 p-1">
-              <Button
-                type="button"
-                variant={editorMode === "build" ? "default" : "ghost"}
-                size="sm"
-                onClick={() => setEditorMode("build")}
-                className="h-7 px-2"
-              >
-                <Wrench className="size-3.5" />
-                <span className="hidden md:inline">Build</span>
-              </Button>
-              <Button
-                type="button"
-                variant={editorMode === "fill" ? "default" : "ghost"}
-                size="sm"
-                onClick={() => {
-                  setEditorMode("fill");
+            <Tabs
+              value={editorMode}
+              onValueChange={(nextMode) => {
+                const mode = nextMode as EditorMode;
+                setEditorMode(mode);
+                if (mode === "fill") {
                   setTool("select");
                   setSelectedId(null);
-                }}
-                className="h-7 px-2"
-              >
+                }
+              }}
+            >
+              <TabsList className="h-9">
+              <TabsTrigger value="build" className="h-7 px-2">
+                <Wrench className="size-3.5" />
+                <span className="hidden md:inline">Build</span>
+              </TabsTrigger>
+              <TabsTrigger value="fill" className="h-7 px-2">
                 <Eye className="size-3.5" />
                 <span className="hidden md:inline">Fill</span>
-              </Button>
-            </div>
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              title="Keyboard shortcuts"
-              aria-label="Open keyboard shortcuts"
-              onClick={() => setShortcutsOpen(true)}
-              className="px-2 text-slate-600 sm:px-3"
-            >
-              <Keyboard className="size-4" />
-              <span className="hidden lg:inline">Shortcuts</span>
-            </Button>
+              </TabsTrigger>
+              </TabsList>
+            </Tabs>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  aria-label="Open keyboard shortcuts"
+                  onClick={() => setShortcutsOpen(true)}
+                  className="px-2 text-muted-foreground sm:px-3"
+                >
+                  <Keyboard className="size-4" />
+                  <span className="hidden lg:inline">Shortcuts</span>
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">Keyboard shortcuts</TooltipContent>
+            </Tooltip>
             <Button asChild type="button" variant="ghost" size="sm" className="hidden text-slate-600 lg:flex">
               <a href="/templates">
                 <FolderOpen className="size-4" /> Templates
@@ -4914,89 +4935,89 @@ export function PdfEditor(props: { initialTemplateId?: string }) {
                 event.currentTarget.value = "";
               }}
             />
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              title="Detect fields with AI"
-              aria-label="Detect fields with AI"
-              disabled={
-                isDetectingFields ||
-                isExtracting ||
-                isConvertingHtml ||
-                isExporting ||
-                editorMode !== "build"
-              }
-              onClick={() => {
-                setAiDetectionOpen(true);
-                if (aiCandidates.length === 0) void detectFieldsWithAi();
-              }}
-              className="px-2 sm:px-3"
-            >
-              {isDetectingFields ? (
-                <LoaderCircle className="size-4 animate-spin" />
-              ) : (
-                <Sparkles className="size-4" />
-              )}
-              <span className="hidden xl:inline">AI fields</span>
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              title="Extract PDF content"
-              aria-label="Extract PDF content"
-              disabled={isExtracting || isConvertingHtml || isExporting}
-              onClick={() => {
-                setExtractionOpen(true);
-                if (!extractionResult) void extractContent();
-              }}
-              className="px-2 sm:px-3"
-            >
-              {isExtracting ? (
-                <LoaderCircle className="size-4 animate-spin" />
-              ) : (
-                <FileSearch className="size-4" />
-              )}
-              <span className="hidden xl:inline">Extract</span>
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              title="Convert PDF to HTML"
-              aria-label="Convert PDF to HTML"
-              disabled={isConvertingHtml || isExporting || isExtracting}
-              onClick={() => void convertToHtml()}
-              className="px-2 sm:px-3"
-            >
-              {isConvertingHtml ? (
-                <LoaderCircle className="size-4 animate-spin" />
-              ) : (
-                <FileCode2 className="size-4" />
-              )}
-              <span className="hidden md:inline">
-                {isConvertingHtml && htmlProgress
-                  ? `HTML ${htmlProgress}/${pageOrder.length}`
-                  : "Convert to HTML"}
-              </span>
-            </Button>
-            <Button
-              type="button"
-              size="sm"
-              title="Save fillable PDF"
-              aria-label="Save fillable PDF"
-              disabled={isExporting || isConvertingHtml || isExtracting}
-              onClick={() => void exportPdf()}
-              className="bg-blue-600 shadow-sm hover:bg-blue-700"
-            >
-              {isExporting ? (
-                <LoaderCircle className="size-4 animate-spin" />
-              ) : (
-                <Download className="size-4" />
-              )}
-              <span className="hidden sm:inline">Save PDF</span>
-            </Button>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  aria-label="Detect fields with AI"
+                  disabled={
+                    isDetectingFields ||
+                    isExtracting ||
+                    isConvertingHtml ||
+                    isExporting ||
+                    editorMode !== "build"
+                  }
+                  onClick={() => {
+                    setAiDetectionOpen(true);
+                    if (aiCandidates.length === 0) void detectFieldsWithAi();
+                  }}
+                  className="px-2 sm:px-3"
+                >
+                  {isDetectingFields ? <Spinner /> : <Sparkles className="size-4" />}
+                  <span className="hidden xl:inline">AI fields</span>
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">Detect fields with AI</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  aria-label="Extract PDF content"
+                  disabled={isExtracting || isConvertingHtml || isExporting}
+                  onClick={() => {
+                    setExtractionOpen(true);
+                    if (!extractionResult) void extractContent();
+                  }}
+                  className="px-2 sm:px-3"
+                >
+                  {isExtracting ? <Spinner /> : <FileSearch className="size-4" />}
+                  <span className="hidden xl:inline">Extract</span>
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">Extract PDF content</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  aria-label="Convert PDF to HTML"
+                  disabled={isConvertingHtml || isExporting || isExtracting}
+                  onClick={() => void convertToHtml()}
+                  className="px-2 sm:px-3"
+                >
+                  {isConvertingHtml ? <Spinner /> : <FileCode2 className="size-4" />}
+                  <span className="hidden md:inline">
+                    {isConvertingHtml && htmlProgress
+                      ? `HTML ${htmlProgress}/${pageOrder.length}`
+                      : "Convert to HTML"}
+                  </span>
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">Convert PDF to HTML</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  type="button"
+                  size="sm"
+                  aria-label="Save fillable PDF"
+                  disabled={isExporting || isConvertingHtml || isExtracting}
+                  onClick={() => void exportPdf()}
+                  className="shadow-sm"
+                >
+                  {isExporting ? <Spinner /> : <Download className="size-4" />}
+                  <span className="hidden sm:inline">Save PDF</span>
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">Save fillable PDF</TooltipContent>
+            </Tooltip>
           </div>
         </header>
 
@@ -5206,7 +5227,7 @@ export function PdfEditor(props: { initialTemplateId?: string }) {
                   onClick={() => chooseImage()}
                 >
                   {isAddingImage ? (
-                    <LoaderCircle className="animate-spin" />
+                    <Spinner />
                   ) : (
                     <ImagePlus />
                   )}
@@ -5304,11 +5325,11 @@ export function PdfEditor(props: { initialTemplateId?: string }) {
             )}
 
             {error && (
-              <div
-                role="alert"
-                className="border-b border-rose-200 bg-rose-50 px-4 py-2 text-center text-xs font-medium text-rose-700"
-              >
-                {error}
+              <div className="border-b border-border bg-background px-4 py-2">
+                <Alert variant="destructive" className="mx-auto max-w-3xl">
+                  <TriangleAlert />
+                  <AlertDescription>{error}</AlertDescription>
+                </Alert>
               </div>
             )}
 
@@ -5536,12 +5557,7 @@ export function PdfEditor(props: { initialTemplateId?: string }) {
                         bindPdfLabel(run);
                       }}
                       className="absolute z-30 cursor-pointer rounded-sm border border-blue-500 bg-blue-300/25 transition hover:bg-amber-300/60 focus-visible:outline-2 focus-visible:outline-blue-700"
-                      style={{
-                        left: `${run.rect.x * 100}%`,
-                        top: `${run.rect.y * 100}%`,
-                        width: `${run.rect.width * 100}%`,
-                        height: `${run.rect.height * 100}%`,
-                      }}
+                      style={getCanvasFieldRectStyle(run.rect)}
                     />
                   ))}
                   {pageAnnotations.map((annotation) => {
@@ -5608,12 +5624,7 @@ export function PdfEditor(props: { initialTemplateId?: string }) {
                             ? "ring-2 ring-rose-500 ring-offset-1"
                             : ""
                         }`}
-                        style={{
-                          left: `${annotation.x * 100}%`,
-                          top: `${annotation.y * 100}%`,
-                          width: `${annotation.width * 100}%`,
-                          height: `${annotation.height * 100}%`,
-                        }}
+                        style={getCanvasFieldRectStyle(annotation)}
                       >
                         {(annotation.type === "text" ||
                           annotation.type === "initials") && (
@@ -6155,7 +6166,7 @@ export function PdfEditor(props: { initialTemplateId?: string }) {
                                 "resize",
                               )
                             }
-                            className="absolute -bottom-2 -right-2 size-4 cursor-nwse-resize rounded-full border-2 border-white bg-blue-600 shadow"
+                            className="absolute -bottom-2 -right-2 size-4 cursor-nwse-resize rounded-full border-2 border-white bg-primary shadow"
                           />
                         )}
                       </div>
@@ -6639,7 +6650,7 @@ export function PdfEditor(props: { initialTemplateId?: string }) {
                   );
                 })}
               </div>
-              <Button asChild type="button" className="w-full bg-blue-600 hover:bg-blue-700">
+              <Button asChild type="button" className="w-full">
                 <a href="/templates"><FolderOpen className="size-4" /> Open template library</a>
               </Button>
             </div>
@@ -6680,8 +6691,8 @@ export function PdfEditor(props: { initialTemplateId?: string }) {
           {createdShareLinks.length === 0 && (
             <DialogFooter>
               <Button type="button" variant="ghost" onClick={() => setTemplateOpen(false)}>Cancel</Button>
-              <Button type="button" disabled={!templateName.trim() || recipientRoles.some((role) => !role.name.trim()) || isSavingTemplate} onClick={() => void saveTemplate()} className="bg-blue-600 hover:bg-blue-700">
-                {isSavingTemplate ? <LoaderCircle className="size-4 animate-spin" /> : <Save className="size-4" />}
+              <Button type="button" disabled={!templateName.trim() || recipientRoles.some((role) => !role.name.trim()) || isSavingTemplate} onClick={() => void saveTemplate()}>
+                {isSavingTemplate ? <Spinner /> : <Save className="size-4" />}
                 {editingTemplateId ? "Save new version" : "Save and create links"}
               </Button>
             </DialogFooter>
@@ -6730,7 +6741,7 @@ function Brand(props: { compact?: boolean }) {
       className="flex shrink-0 items-center gap-2.5"
       aria-label="PDF Studio"
     >
-      <div className="flex size-9 items-center justify-center rounded-xl bg-blue-600 text-white shadow-md shadow-blue-600/20">
+      <div className="flex size-9 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-md shadow-primary/20">
         <FileText className="size-5" />
       </div>
       <span

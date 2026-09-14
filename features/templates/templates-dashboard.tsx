@@ -14,7 +14,6 @@ import {
   FolderOpen,
   Inbox,
   Link2,
-  LoaderCircle,
   Pencil,
   RefreshCw,
   Search,
@@ -81,6 +80,7 @@ import {
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Spinner } from "@/components/ui/spinner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   AlertDialog,
@@ -767,7 +767,7 @@ function TemplateRowActions(props: {
             aria-label={`More actions for ${props.template.name}`}
           >
             {props.removingTemplateId === props.template.id ? (
-              <LoaderCircle className="animate-spin" />
+              <Spinner />
             ) : (
               <EllipsisVertical />
             )}
@@ -949,7 +949,7 @@ function TemplateLinksDialog(props: {
               }}
             >
               {busy ? (
-                <LoaderCircle className="animate-spin" />
+                <Spinner />
               ) : (
                 <RefreshCw />
               )}
@@ -1096,7 +1096,7 @@ function ArchivedTemplateTable(props: {
             onClick={() => props.onRestore(template)}
           >
             {props.busyTemplateId === template.id ? (
-              <LoaderCircle className="animate-spin" />
+              <Spinner />
             ) : (
               <ArchiveRestore />
             )}
@@ -1192,7 +1192,7 @@ function TemplateRemovalDialog(props: {
               if (template) props.onConfirm(template);
             }}
           >
-            {props.removing && <LoaderCircle className="size-4 animate-spin" />}
+            {props.removing && <Spinner />}
             {willArchive ? "Archive template" : "Delete permanently"}
           </AlertDialogAction>
         </AlertDialogFooter>

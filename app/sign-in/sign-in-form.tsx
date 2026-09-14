@@ -1,6 +1,6 @@
 "use client";
 
-import { LoaderCircle, LockKeyhole } from "lucide-react";
+import { LockKeyhole } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { FormEvent, useState } from "react";
 
@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { FeedbackAlert } from "@/components/patterns/feedback-alert";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Spinner } from "@/components/ui/spinner";
 import { authClient } from "@/lib/auth-client";
 
 export function SignInForm(props: {
@@ -46,7 +47,7 @@ export function SignInForm(props: {
   }
 
   return (
-    <form className="mt-7 space-y-5" onSubmit={submit}>
+    <form className="space-y-5" onSubmit={submit}>
       <div className="space-y-2">
         <Label htmlFor="email">Email</Label>
         <Input
@@ -82,7 +83,7 @@ export function SignInForm(props: {
         disabled={submitting}
       >
         {submitting ? (
-          <LoaderCircle className="size-4 animate-spin" />
+          <Spinner />
         ) : (
           <LockKeyhole className="size-4" />
         )}

@@ -7,7 +7,6 @@ import {
   ChevronDown,
   CalendarDays,
   FileCheck2,
-  LoaderCircle,
   LockKeyhole,
   UploadCloud,
 } from "lucide-react";
@@ -26,6 +25,7 @@ import {
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Spinner } from "@/components/ui/spinner";
 import { CambodiaAddressField } from "@/features/gazetteer/cambodia-address-field";
 import {
   formatCambodiaAddress,
@@ -47,10 +47,12 @@ import {
   normalizedPointToPdf,
   normalizedRectToPdfBox,
 } from "@/features/templates/pdf-coordinates";
+import { getCanvasFieldRectStyle } from "@/features/templates/canvas-field-style";
 import type {
   GazetteerLanguage,
   GazetteerLevel,
 } from "@/features/gazetteer/gazetteer.types";
+import { cn } from "@/lib/utils";
 
 type PdfViewport = { width: number; height: number };
 type PdfPage = {
@@ -244,7 +246,7 @@ export function RecipientFill(props: { token: string }) {
     }
   }
 
-  if (loading) return <CenteredState icon={<LoaderCircle className="animate-spin" />} title="Opening document…" description="Loading your recipient form." />;
+  if (loading) return <CenteredState icon={<Spinner />} title="Opening document…" description="Loading your recipient form." />;
   if (!payload || !pdfDocument || error && !pdfBytes) return <CenteredState icon={<LockKeyhole />} title="Document unavailable" description={error || "This fill link is invalid or expired."} />;
   if (completed) return <CenteredState icon={<FileCheck2 />} title="Submission completed" description="Your information and completed PDF were securely sent to the document owner." success />;
 
@@ -316,7 +318,7 @@ export function RecipientFill(props: { token: string }) {
               </Alert>
             )}
             <Button type="button" onClick={() => void submit()} disabled={submitting} className="h-11 w-full">
-              {submitting ? <LoaderCircle className="size-4 animate-spin" /> : <Check className="size-4" />}
+              {submitting ? <Spinner /> : <Check className="size-4" />}
               Submit completed PDF
             </Button>
             <p className="text-center text-[11px] leading-4 text-muted-foreground">
@@ -331,7 +333,7 @@ export function RecipientFill(props: { token: string }) {
 
 function FillAnnotation(props: { annotation: TemplateAnnotation; value: unknown; scale: number; onChange: (value: unknown) => void; onError: (message: string) => void }) {
   const annotation = props.annotation;
-  const style = { left: `${annotation.x * 100}%`, top: `${annotation.y * 100}%`, width: `${annotation.width * 100}%`, height: `${annotation.height * 100}%` };
+  const style = getCanvasFieldRectStyle(annotation);
   const fontSize = getNumber(annotation.fontSize, DEFAULT_ELEMENT_FONT_SIZE);
   const borderColor = getString(
     annotation.borderColor,
@@ -347,7 +349,7 @@ function FillAnnotation(props: { annotation: TemplateAnnotation; value: unknown;
   if (annotation.type === "date") return <div className="absolute" style={style}><div className="relative size-full"><input type="date" value={String(props.value ?? "")} required={required} onChange={(event) => props.onChange(event.target.value)} className="pdf-native-date-field size-full rounded border bg-white px-2 outline-none focus:ring-2 focus:ring-blue-500" style={{ color: annotation.color, borderColor, fontSize, paddingRight: fieldIconSize + 12 }} /><CalendarDays aria-hidden="true" className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-slate-500" style={{ width: fieldIconSize, height: fieldIconSize }} strokeWidth={2.25} /></div></div>;
   if (annotation.type === "dropdown") return <div className="absolute" style={style}><div className="relative size-full"><select value={String(props.value ?? "")} required={required} onChange={(event) => props.onChange(event.target.value)} className="size-full appearance-none rounded border bg-white px-2 outline-none focus:ring-2 focus:ring-blue-500" style={{ color: annotation.color, borderColor, fontSize, paddingRight: fieldIconSize + 12 }}><option value="">{getString(annotation.label, "Select an option")}</option>{options.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}</select><ChevronDown aria-hidden="true" className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-slate-500" style={{ width: fieldIconSize, height: fieldIconSize }} strokeWidth={2.25} /></div></div>;
   if (annotation.type === "cambodia-address") return <div className="absolute" style={style}><CambodiaAddressField value={props.value} language={getGazetteerLanguage(annotation.gazetteerLanguage)} deepestLevel={getGazetteerLevel(annotation.gazetteerLevel)} required={required} label={getString(annotation.label, "Cambodia address")} onChange={props.onChange} style={{ color: annotation.color, borderColor, fontSize }} iconSize={fieldIconSize} /></div>;
-  if (annotation.type === "checkbox" || annotation.type === "radio") return <button type="button" aria-label={getString(annotation.fieldName, annotation.type)} aria-pressed={Boolean(props.value)} onClick={() => props.onChange(!props.value)} className={`absolute flex items-center justify-center border-2 bg-white ${annotation.type === "radio" ? "rounded-full" : "rounded"}`} style={{ ...style, borderColor: annotation.color }}>{Boolean(props.value) && (annotation.type === "radio" ? <span className="size-1/2 rounded-full" style={{ backgroundColor: annotation.color }} /> : <Check className="size-full" style={{ color: annotation.color }} />)}</button>;
+  if (annotation.type === "checkbox" || annotation.type === "radio") return <button type="button" aria-label={getString(annotation.fieldName, annotation.type)} aria-pressed={Boolean(props.value)} onClick={() => props.onChange(!props.value)} className={cn("absolute flex items-center justify-center border-2 bg-white", annotation.type === "radio" ? "rounded-full" : "rounded")} style={{ ...style, borderColor: annotation.color }}>{Boolean(props.value) && (annotation.type === "radio" ? <span className="size-1/2 rounded-full" style={{ backgroundColor: annotation.color }} /> : <Check className="size-full" style={{ color: annotation.color }} />)}</button>;
   if (annotation.type === "checkbox-group" || annotation.type === "radio-group") {
     const selected = Array.isArray(props.value) ? props.value.map(String) : [];
     return <fieldset className="absolute overflow-auto rounded-md bg-white/95 p-2" style={{ ...style, color: annotation.color, fontSize }}><legend className="font-bold">{getString(annotation.label, "Options")}</legend><div className="space-y-1.5">{options.map((option) => { const checked = selected.includes(option.id); return <label key={option.id} className="flex items-center gap-2"><input type={annotation.type === "radio-group" ? "radio" : "checkbox"} name={annotation.id} checked={checked} onChange={() => props.onChange(annotation.type === "radio-group" ? [option.id] : checked ? selected.filter((id) => id !== option.id) : [...selected, option.id])} className="shrink-0" style={{ width: fieldIconSize, height: fieldIconSize, accentColor: annotation.color }} />{option.label}</label>; })}</div></fieldset>;
@@ -355,7 +357,7 @@ function FillAnnotation(props: { annotation: TemplateAnnotation; value: unknown;
   if (annotation.type === "image-placeholder") return <label className="absolute flex cursor-pointer flex-col items-center justify-center overflow-hidden rounded-lg border-2 border-dashed bg-slate-50 text-center font-semibold" style={{ ...style, color: annotation.color, borderColor, fontSize }}>{typeof props.value === "string" && props.value.startsWith("data:image/") ? <Image src={props.value} alt="Uploaded" fill unoptimized className="object-cover" /> : <><UploadCloud style={{ width: mediaIconSize, height: mediaIconSize }} strokeWidth={2.1} />{getString(annotation.label, "Upload image")}</>}<input type="file" accept="image/png,image/jpeg" className="sr-only" onChange={(event) => { const file = event.target.files?.[0]; if (!file) return; void prepareRecipientImage(file).then(props.onChange).catch(() => { props.onChange(""); props.onError("Choose a valid PNG or JPEG image up to 8 MB."); }); }} /></label>;
   if (annotation.type === "text") return <span className="pointer-events-none absolute whitespace-pre-wrap" style={{ ...style, color: annotation.color, fontSize: getNumber(annotation.fontSize, DEFAULT_ELEMENT_FONT_SIZE) }}>{getString(annotation.text, "")}</span>;
   if (annotation.type === "highlight") return <span className="pointer-events-none absolute opacity-35" style={{ ...style, backgroundColor: annotation.color }} />;
-  if (annotation.type === "rectangle" || annotation.type === "ellipse") return <span className={`pointer-events-none absolute border-2 ${annotation.type === "ellipse" ? "rounded-full" : ""}`} style={{ ...style, borderColor: annotation.color }} />;
+  if (annotation.type === "rectangle" || annotation.type === "ellipse") return <span className={cn("pointer-events-none absolute border-2", annotation.type === "ellipse" && "rounded-full")} style={{ ...style, borderColor: annotation.color }} />;
   if (annotation.type === "line") {
     const up = annotation.lineDirection === "up";
     return <svg aria-hidden="true" className="pointer-events-none absolute overflow-visible" style={style} viewBox="0 0 100 100" preserveAspectRatio="none"><line x1="0" y1={up ? "100" : "0"} x2="100" y2={up ? "0" : "100"} stroke={annotation.color} strokeWidth={getNumber(annotation.strokeWidth, 2)} vectorEffect="non-scaling-stroke" /></svg>;

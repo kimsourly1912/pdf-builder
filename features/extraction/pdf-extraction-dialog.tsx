@@ -8,7 +8,6 @@ import {
   FileText,
   ImageIcon,
   Info,
-  LoaderCircle,
   Paperclip,
   RefreshCw,
   Search,
@@ -16,9 +15,11 @@ import {
 } from "lucide-react";
 import { useMemo, useState } from "react";
 
+import { FeedbackAlert } from "@/components/patterns/feedback-alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Progress } from "@/components/ui/progress";
 import {
   Dialog,
   DialogContent,
@@ -28,11 +29,13 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Spinner } from "@/components/ui/spinner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   createExtractionJson,
   createExtractionText,
 } from "@/features/extraction/pdf-extraction";
+import { cn } from "@/lib/utils";
 import type {
   PdfExtractedAttachment,
   PdfExtractionResult,
@@ -121,26 +124,30 @@ export function PdfExtractionDialog(props: PdfExtractionDialogProps) {
         {isExtracting ? (
           <div className="flex min-h-[420px] flex-col items-center justify-center px-6 text-center">
             <span className="flex size-14 items-center justify-center rounded-2xl bg-primary/10 text-primary">
-              <LoaderCircle className="size-6 animate-spin" />
+              <Spinner className="size-6" />
             </span>
             <p className="mt-4 text-base font-semibold text-foreground">Reading every page</p>
             <p className="mt-1 text-sm text-muted-foreground">
               Page {progress.current || 1} of {progress.total || 1}
             </p>
-            <div className="mt-4 h-2 w-56 overflow-hidden rounded-full bg-muted">
-              <div
-                className="h-full rounded-full bg-primary transition-[width]"
-                style={{ width: `${Math.max(4, progress.total ? (progress.current / progress.total) * 100 : 4)}%` }}
-              />
-            </div>
+            <Progress
+              className="mt-4 w-56"
+              value={Math.max(
+                4,
+                progress.total
+                  ? (progress.current / progress.total) * 100
+                  : 4,
+              )}
+            />
           </div>
         ) : error ? (
-          <div className="flex min-h-[360px] flex-col items-center justify-center px-6 text-center">
-            <span className="flex size-14 items-center justify-center rounded-2xl bg-rose-50 text-rose-600">
-              <Info className="size-6" />
-            </span>
-            <p className="mt-4 font-semibold text-foreground">Content could not be extracted</p>
-            <p className="mt-1 max-w-md text-sm leading-6 text-muted-foreground">{error}</p>
+          <div className="flex min-h-[360px] flex-col items-center justify-center gap-4 px-6">
+            <FeedbackAlert
+              tone="error"
+              title="Content could not be extracted"
+              description={error}
+              className="max-w-md"
+            />
             <Button type="button" className="mt-5" onClick={onExtract}>Try again</Button>
           </div>
         ) : result ? (
@@ -174,8 +181,14 @@ export function PdfExtractionDialog(props: PdfExtractionDialogProps) {
                           type="button"
                           variant="ghost"
                           size="sm"
+                          aria-current={safeSelectedPage === entry.pageNumber ? "page" : undefined}
                           onClick={() => setSelectedPage(entry.pageNumber)}
-                          className={`h-auto min-w-0 justify-between border px-3 py-2 text-left ${safeSelectedPage === entry.pageNumber ? "border-primary/30 bg-primary/10 text-primary hover:bg-primary/10" : "border-transparent bg-card text-muted-foreground hover:border-border"}`}
+                          className={cn(
+                            "h-auto min-w-0 justify-between border px-3 py-2 text-left",
+                            safeSelectedPage === entry.pageNumber
+                              ? "border-primary/30 bg-primary/10 text-primary hover:bg-primary/10"
+                              : "border-transparent bg-card text-muted-foreground hover:border-border",
+                          )}
                         >
                           <span className="truncate font-semibold">Page {entry.label}</span>
                           <span className="flex items-center gap-1.5">
@@ -188,7 +201,7 @@ export function PdfExtractionDialog(props: PdfExtractionDialogProps) {
                   </ScrollArea>
                 </aside>
                 <section className="flex min-h-0 flex-col bg-card">
-                  <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 px-4 py-3 sm:px-5">
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-4 py-3 sm:px-5">
                     <div>
                       <p className="text-sm font-semibold text-foreground">Page {page?.label}</p>
                       <p className="text-xs text-muted-foreground">{page?.wordCount.toLocaleString()} words · {page?.characterCount.toLocaleString()} characters · {page?.imageObjectCount} image objects</p>
@@ -222,7 +235,7 @@ export function PdfExtractionDialog(props: PdfExtractionDialogProps) {
                     <h3 className="text-sm font-semibold text-foreground">Document metadata</h3>
                     <div className="mt-3 overflow-hidden rounded-xl border border-border">
                       {Object.entries(result.metadata).filter(([, value]) => value !== undefined && value !== "").length > 0 ? Object.entries(result.metadata).filter(([, value]) => value !== undefined && value !== "").map(([key, value]) => (
-                        <div key={key} className="grid gap-1 border-b border-slate-100 px-4 py-3 last:border-b-0 sm:grid-cols-[180px_1fr]">
+                        <div key={key} className="grid gap-1 border-b border-border px-4 py-3 last:border-b-0 sm:grid-cols-[180px_1fr]">
                           <dt className="text-xs font-semibold text-muted-foreground">{key}</dt>
                           <dd className="break-words text-sm text-foreground">{formatValue(value)}</dd>
                         </div>
@@ -272,7 +285,7 @@ export function PdfExtractionDialog(props: PdfExtractionDialogProps) {
               <div className="ml-auto flex flex-wrap gap-2">
                 <Button type="button" variant="outline" size="sm" onClick={() => void copyText()}>{copied ? <Check className="size-4 text-emerald-600" /> : <Clipboard className="size-4" />}{copied ? "Copied" : "Copy text"}</Button>
                 <Button type="button" variant="outline" size="sm" onClick={downloadText}><FileText className="size-4" /> TXT</Button>
-                <Button type="button" size="sm" onClick={downloadJson} className="bg-primary hover:bg-blue-700"><Braces className="size-4" /> JSON</Button>
+              <Button type="button" size="sm" onClick={downloadJson}><Braces className="size-4" /> JSON</Button>
               </div>
             </div>
           )}
@@ -295,7 +308,7 @@ function AttachmentRow(props: { attachment: PdfExtractedAttachment }) {
 }
 
 function EmptyMessage(props: { title: string; description: string }) {
-  return <div className="flex min-h-56 flex-col items-center justify-center rounded-xl border border-dashed border-border p-6 text-center"><Info className="size-6 text-slate-300" /><p className="mt-3 text-sm font-semibold text-foreground">{props.title}</p><p className="mt-1 text-sm text-muted-foreground">{props.description}</p></div>;
+  return <div className="flex min-h-56 flex-col items-center justify-center rounded-xl border border-dashed border-border p-6 text-center"><Info className="size-6 text-muted-foreground/50" /><p className="mt-3 text-sm font-semibold text-foreground">{props.title}</p><p className="mt-1 text-sm text-muted-foreground">{props.description}</p></div>;
 }
 
 function downloadBlob(blob: Blob, fileName: string) {
