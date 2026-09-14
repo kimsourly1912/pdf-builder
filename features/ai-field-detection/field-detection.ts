@@ -15,6 +15,7 @@ export const AI_FIELD_TOOLS = [
 
 export type AiFieldTool = (typeof AI_FIELD_TOOLS)[number];
 export type AiFieldValidation = "none" | "email" | "number" | "phone";
+export type FieldDetectionSource = "acroform" | "ai" | "hybrid";
 
 export type NormalizedRect = {
   x: number;
@@ -25,6 +26,7 @@ export type NormalizedRect = {
 
 export type DetectedFieldCandidate = {
   candidateId: string;
+  source: FieldDetectionSource;
   page: number;
   label: string;
   suggestedKey: string;
@@ -43,6 +45,14 @@ export type FieldDetectionResult = {
   engine: string;
   pageCount: number;
   candidates: DetectedFieldCandidate[];
+  pipeline?: {
+    strategy: "ai-only" | "acroform-only" | "hybrid";
+    acroFormCandidates: number;
+    aiCandidates: number;
+    duplicatesMerged: number;
+    readOnlyAcroFormFields: number;
+    unsupportedAcroFormFields: number;
+  };
   usage?: {
     inputTokens: number;
     outputTokens: number;
@@ -327,6 +337,7 @@ function normalizeCandidate(options: {
 
   return {
     candidateId: idFactory(),
+    source: "ai",
     page,
     label,
     suggestedKey: createFieldKey(
@@ -379,6 +390,7 @@ function candidateToAnnotation(options: {
       candidateId: candidate.candidateId,
       confidence: candidate.confidence,
       evidence: candidate.evidence,
+      source: candidate.source,
       schemaVersion: 1,
     },
     labelBinding: {
@@ -386,7 +398,7 @@ function candidateToAnnotation(options: {
       sourceText: candidate.label,
       page,
       rect: candidate.labelBox,
-      source: "ai-detection",
+      source: candidate.source === "acroform" ? "pdf-form" : "ai-detection",
     },
   };
   if (candidate.tool === "textarea") annotation.multiline = true;

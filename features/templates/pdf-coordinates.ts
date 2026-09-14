@@ -95,3 +95,74 @@ export function normalizedRectToPdfBox(
     height: Math.max(...ys) - y,
   };
 }
+
+export function pdfBoxToNormalizedRect(
+  box: PdfBox,
+  cropBox: PdfCropBox,
+  rotation: number,
+): NormalizedRect {
+  const points = [
+    pdfPointToNormalized({ x: box.x, y: box.y }, cropBox, rotation),
+    pdfPointToNormalized(
+      { x: box.x + box.width, y: box.y },
+      cropBox,
+      rotation,
+    ),
+    pdfPointToNormalized(
+      { x: box.x, y: box.y + box.height },
+      cropBox,
+      rotation,
+    ),
+    pdfPointToNormalized(
+      { x: box.x + box.width, y: box.y + box.height },
+      cropBox,
+      rotation,
+    ),
+  ];
+  const xs = points.map((point) => point.x);
+  const ys = points.map((point) => point.y);
+  const left = clamp(Math.min(...xs), 0, 1);
+  const top = clamp(Math.min(...ys), 0, 1);
+  const right = clamp(Math.max(...xs), left, 1);
+  const bottom = clamp(Math.max(...ys), top, 1);
+  return {
+    x: left,
+    y: top,
+    width: right - left,
+    height: bottom - top,
+  };
+}
+
+function pdfPointToNormalized(
+  point: NormalizedPoint,
+  cropBox: PdfCropBox,
+  rotation: number,
+): NormalizedPoint {
+  const normalizedRotation = normalizePageRotation(rotation);
+  if (normalizedRotation === 90) {
+    return {
+      x: (point.y - cropBox.y) / cropBox.height,
+      y: (point.x - cropBox.x) / cropBox.width,
+    };
+  }
+  if (normalizedRotation === 180) {
+    return {
+      x: (cropBox.x + cropBox.width - point.x) / cropBox.width,
+      y: (point.y - cropBox.y) / cropBox.height,
+    };
+  }
+  if (normalizedRotation === 270) {
+    return {
+      x: (cropBox.y + cropBox.height - point.y) / cropBox.height,
+      y: (cropBox.x + cropBox.width - point.x) / cropBox.width,
+    };
+  }
+  return {
+    x: (point.x - cropBox.x) / cropBox.width,
+    y: (cropBox.y + cropBox.height - point.y) / cropBox.height,
+  };
+}
+
+function clamp(value: number, minimum: number, maximum: number): number {
+  return Math.min(maximum, Math.max(minimum, value));
+}

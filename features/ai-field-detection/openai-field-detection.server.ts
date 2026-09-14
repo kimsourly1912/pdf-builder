@@ -6,7 +6,10 @@ import {
   AI_FIELD_TOOLS,
   normalizeFieldDetectionResult,
 } from "@/features/ai-field-detection/field-detection";
-import type { FieldDetectionResult } from "@/features/ai-field-detection/field-detection";
+import type {
+  DetectedFieldCandidate,
+  FieldDetectionResult,
+} from "@/features/ai-field-detection/field-detection";
 
 type OpenAiRuntime = {
   OPENAI_API_KEY?: string;
@@ -49,8 +52,9 @@ export async function detectPdfFieldsWithOpenAi(options: {
   bytes: Uint8Array<ArrayBuffer>;
   fileName: string;
   pageCount: number;
+  knownFields?: DetectedFieldCandidate[];
 }): Promise<FieldDetectionResult & { providerResponseId?: string }> {
-  const { bytes, fileName, pageCount } = options;
+  const { bytes, fileName, pageCount, knownFields = [] } = options;
   const runtime = env as unknown as OpenAiRuntime;
   const apiKey = runtime.OPENAI_API_KEY?.trim();
   const model = getFieldDetectionModel();
@@ -92,7 +96,7 @@ export async function detectPdfFieldsWithOpenAi(options: {
             },
             {
               type: "input_text",
-              text: `Analyze this ${pageCount}-page PDF. Return only real fields that a recipient is expected to complete.`,
+              text: fieldDetectionRequestText(pageCount, knownFields),
             },
           ],
         },
@@ -157,6 +161,21 @@ export async function detectPdfFieldsWithOpenAi(options: {
     usage,
     providerResponseId: payload.id,
   };
+}
+
+function fieldDetectionRequestText(
+  pageCount: number,
+  knownFields: DetectedFieldCandidate[],
+): string {
+  const introduction = `Analyze this ${pageCount}-page PDF. Return only real fields that a recipient is expected to complete.`;
+  if (knownFields.length === 0) return introduction;
+  const known = knownFields.map((candidate) => ({
+    page: candidate.page,
+    name: candidate.label,
+    tool: candidate.tool,
+    fieldBox: candidate.fieldBox,
+  }));
+  return `${introduction}\n\nThe following embedded AcroForm widgets are already detected. Do not return duplicates of these widgets. Find only additional printed or scanned blank fields, or visually match a widget when its embedded name is generic so its visible label can be improved:\n${JSON.stringify(known)}`;
 }
 
 export function getFieldDetectionModel(): string {

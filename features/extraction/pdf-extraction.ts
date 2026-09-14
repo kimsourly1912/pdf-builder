@@ -87,15 +87,17 @@ type PdfPageLike = {
   getOperatorList(): Promise<{ fnArray: number[] }>;
 };
 
+type PdfMetadata = {
+  info?: Record<string, unknown>;
+  metadata?: { getAll(): Record<string, unknown> } | null;
+  contentDispositionFilename?: string | null;
+  contentLength?: number | null;
+};
+
 export type PdfDocumentForExtraction = {
   numPages: number;
   getPage(pageNumber: number): Promise<PdfPageLike>;
-  getMetadata(): Promise<{
-    info?: Record<string, unknown>;
-    metadata?: { getAll(): Record<string, unknown> } | null;
-    contentDispositionFilename?: string | null;
-    contentLength?: number | null;
-  }>;
+  getMetadata(): Promise<PdfMetadata>;
   getOutline(): Promise<Array<Record<string, unknown>> | null>;
   getAttachments(): Promise<Record<string, { filename?: string; content?: Uint8Array }> | null>;
   getPageLabels(): Promise<Array<string> | null>;
@@ -121,7 +123,7 @@ export async function extractPdfContent(options: ExtractPdfContentOptions) {
     ].filter((value): value is number => typeof value === "number"),
   );
   const [rawMetadata, rawOutline, rawAttachments, pageLabels] = await Promise.all([
-    document.getMetadata().catch(() => ({})),
+    document.getMetadata().catch((): PdfMetadata => ({})),
     document.getOutline().catch(() => null),
     document.getAttachments().catch(() => null),
     document.getPageLabels().catch(() => null),

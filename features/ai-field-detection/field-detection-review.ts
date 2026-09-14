@@ -5,7 +5,6 @@ import {
 } from "@/features/ai-field-detection/field-detection";
 import {
   createFieldKey,
-  createUniqueFieldKey,
 } from "@/features/templates/label-binding";
 
 type ReviewCandidateInput = {
@@ -48,10 +47,7 @@ export function parseReviewedFieldCandidates(options: {
     const requestedKey = createFieldKey(
       cleanString(input.suggestedKey, 120) || label,
     );
-    const suggestedKey = createUniqueFieldKey(
-      requestedKey,
-      [...usedKeys].map((fieldKey) => ({ fieldKey })),
-    );
+    const suggestedKey = uniqueReviewedKey(requestedKey, usedKeys);
     usedCandidateIds.add(candidateId);
     usedKeys.add(suggestedKey);
     reviewed.push({
@@ -64,6 +60,16 @@ export function parseReviewedFieldCandidates(options: {
   }
 
   return reviewed;
+}
+
+function uniqueReviewedKey(value: string, usedKeys: Set<string>): string {
+  if (!usedKeys.has(value)) return value;
+  for (let suffix = 2; suffix <= usedKeys.size + 2; suffix += 1) {
+    const ending = `_${suffix}`;
+    const candidate = `${value.slice(0, 64 - ending.length)}${ending}`;
+    if (!usedKeys.has(candidate)) return candidate;
+  }
+  return createFieldKey(`field_${usedKeys.size + 1}`);
 }
 
 function cleanString(value: unknown, maximumLength: number): string {

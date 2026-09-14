@@ -28,6 +28,7 @@ import {
 import type {
   AiFieldTool,
   DetectedFieldCandidate,
+  FieldDetectionSource,
 } from "@/features/ai-field-detection/field-detection";
 import type { AiFieldDetectionRunStatus } from "@/features/ai-field-detection/run-types";
 
@@ -193,6 +194,7 @@ export function AiFieldDetectionDialog(props: {
                           <span className="text-xs font-medium text-muted-foreground">
                             Page {candidate.page}
                           </span>
+                          <SourceBadge source={candidate.source ?? "ai"} />
                           <ConfidenceBadge band={band} value={candidate.confidence} />
                           {candidate.required && (
                             <span className="rounded-full bg-rose-100 px-2 py-0.5 text-xs font-medium text-rose-700">
@@ -299,6 +301,27 @@ export function AiFieldDetectionDialog(props: {
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+function SourceBadge(props: { source: FieldDetectionSource }) {
+  const { source } = props;
+  const label =
+    source === "acroform"
+      ? "Embedded form"
+      : source === "hybrid"
+        ? "Form + AI"
+        : "Visual AI";
+  const style =
+    source === "acroform"
+      ? "bg-blue-100 text-blue-700"
+      : source === "hybrid"
+        ? "bg-violet-100 text-violet-700"
+        : "bg-slate-100 text-slate-600";
+  return (
+    <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${style}`}>
+      {label}
+    </span>
   );
 }
 

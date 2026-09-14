@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test, { after } from "node:test";
 import { fileURLToPath } from "node:url";
 
+import { PDFDocument, PDFName, PDFString, degrees } from "pdf-lib";
 import { createServer } from "vite";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
@@ -20,6 +21,12 @@ const detection = await vite.ssrLoadModule(
 );
 const review = await vite.ssrLoadModule(
   "/features/ai-field-detection/field-detection-review.ts",
+);
+const acroFormDetection = await vite.ssrLoadModule(
+  "/features/ai-field-detection/acroform-field-detection.ts",
+);
+const hybridDetection = await vite.ssrLoadModule(
+  "/features/ai-field-detection/hybrid-field-detection.ts",
 );
 
 function rawField(overrides = {}) {
@@ -65,8 +72,148 @@ test("normalizes model output, coordinates, keys, and dropdown safety", () => {
   assert.equal(result.candidates[0].suggestedKey, "date_of_birth");
   assert.equal(result.candidates[1].suggestedKey, "date_of_birth_2");
   assert.equal(result.candidates[1].tool, "input");
+  assert.equal(result.candidates[0].source, "ai");
   assert.ok(Math.abs(result.candidates[1].fieldBox.width - 0.1) < 1e-10);
   assert.ok(Math.abs(result.candidates[1].fieldBox.height - 0.02) < 1e-10);
+});
+
+test("extracts supported AcroForm widgets with normalized page geometry", async () => {
+  const document = await PDFDocument.create();
+  const page = document.addPage([600, 800]);
+  const rotatedPage = document.addPage([600, 800]);
+  rotatedPage.setRotation(degrees(90));
+  const form = document.getForm();
+
+  const email = form.createTextField("person.email");
+  email.acroField.dict.set(PDFName.of("TU"), PDFString.of("Email address"));
+  email.enableRequired();
+  email.addToPage(page, { x: 120, y: 640, width: 240, height: 32 });
+
+  const notes = form.createTextField("application.notes");
+  notes.enableMultiline();
+  notes.addToPage(page, { x: 120, y: 500, width: 300, height: 96 });
+
+  const birthDate = form.createTextField("birthDate");
+  birthDate.addToPage(rotatedPage, { x: 80, y: 620, width: 180, height: 32 });
+
+  const consent = form.createCheckBox("termsAccepted");
+  consent.addToPage(page, { x: 120, y: 440, width: 20, height: 20 });
+
+  const department = form.createDropdown("department");
+  department.addOptions(["Engineering", "Finance", "Engineering"]);
+  department.addToPage(page, { x: 120, y: 380, width: 200, height: 32 });
+
+  const readOnly = form.createTextField("internalId");
+  readOnly.enableReadOnly();
+  readOnly.addToPage(page, { x: 120, y: 320, width: 200, height: 32 });
+
+  const unsupported = form.createButton("submitButton");
+  unsupported.addToPage("Submit", page, {
+    x: 120,
+    y: 260,
+    width: 100,
+    height: 32,
+  });
+
+  const bytes = await document.save();
+  const result = await acroFormDetection.detectAcroFormFields({ bytes });
+
+  assert.equal(result.totalFields, 7);
+  assert.equal(result.readOnlyFields, 1);
+  assert.equal(result.unsupportedFields, 1);
+  assert.equal(result.candidates.length, 5);
+  assert.ok(result.candidates.every((candidate) => candidate.source === "acroform"));
+
+  const byKey = Object.fromEntries(
+    result.candidates.map((candidate) => [candidate.suggestedKey, candidate]),
+  );
+  assert.equal(byKey.person_email.label, "Email address");
+  assert.equal(byKey.person_email.tool, "input");
+  assert.equal(byKey.person_email.validation, "email");
+  assert.equal(byKey.person_email.required, true);
+  assert.equal(byKey.application_notes.tool, "textarea");
+  assert.equal(byKey.birth_date.tool, "date");
+  assert.equal(byKey.birth_date.page, 2);
+  assert.equal(byKey.terms_accepted.tool, "checkbox");
+  assert.equal(byKey.department.tool, "dropdown");
+  assert.deepEqual(byKey.department.options, ["Engineering", "Finance"]);
+  assertBox(byKey.person_email.fieldBox, {
+    x: 0.2,
+    y: 0.16,
+    width: 0.4,
+    height: 0.04,
+  });
+  assertBox(byKey.birth_date.fieldBox, {
+    x: 0.775,
+    y: 0.13333333333333333,
+    width: 0.04,
+    height: 0.3,
+  });
+});
+
+test("merges visual AI duplicates while retaining deterministic widget geometry", () => {
+  const embedded = {
+    ...rawField({
+      label: "Field 1",
+      suggestedKey: "field_1",
+      tool: "input",
+      validation: "none",
+      fieldBox: { x: 0.35, y: 0.2, width: 0.25, height: 0.05 },
+      confidence: 0.86,
+    }),
+    candidateId: "acroform:1:1:1",
+    source: "acroform",
+  };
+  const visualMatch = {
+    ...rawField({
+      label: "Date of Birth",
+      suggestedKey: "date_of_birth",
+      validation: "none",
+      fieldBox: { x: 0.36, y: 0.205, width: 0.24, height: 0.045 },
+    }),
+    candidateId: "ai-1",
+    source: "ai",
+  };
+  const visualOnly = {
+    ...rawField({
+      label: "Comments",
+      suggestedKey: "comments",
+      tool: "textarea",
+      fieldBox: { x: 0.2, y: 0.6, width: 0.5, height: 0.2 },
+    }),
+    candidateId: "ai-2",
+    source: "ai",
+  };
+
+  const result = hybridDetection.mergeHybridFieldDetection({
+    acroForm: {
+      candidates: [embedded],
+      totalFields: 3,
+      readOnlyFields: 1,
+      unsupportedFields: 1,
+    },
+    ai: {
+      schemaVersion: 1,
+      engine: "test-ai",
+      candidates: [visualMatch, visualOnly],
+    },
+  });
+
+  assert.equal(result.engine, "hybrid:acroform+test-ai");
+  assert.equal(result.candidates.length, 2);
+  assert.equal(result.candidates[0].source, "hybrid");
+  assert.equal(result.candidates[0].label, "Date of Birth");
+  assert.equal(result.candidates[0].suggestedKey, "field_1");
+  assert.deepEqual(result.candidates[0].fieldBox, embedded.fieldBox);
+  assert.equal(result.candidates[1].source, "ai");
+  assert.deepEqual(result.pipeline, {
+    strategy: "hybrid",
+    acroFormCandidates: 1,
+    aiCandidates: 2,
+    duplicatesMerged: 1,
+    readOnlyAcroFormFields: 1,
+    unsupportedAcroFormFields: 1,
+  });
 });
 
 test("converts approved candidates to editable annotations without publishing", () => {
@@ -207,3 +354,12 @@ test("calculates reproducible evaluation metrics", () => {
   assert.ok(Math.abs(metrics.meanFieldIou - 1) < 1e-10);
   assert.equal(metrics.usablePositionRate, 1);
 });
+
+function assertBox(actual, expected) {
+  for (const key of ["x", "y", "width", "height"]) {
+    assert.ok(
+      Math.abs(actual[key] - expected[key]) < 0.002,
+      `${key} differs: expected ${expected[key]}, received ${actual[key]}`,
+    );
+  }
+}

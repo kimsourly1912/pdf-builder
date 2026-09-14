@@ -1727,11 +1727,13 @@ export function PdfEditor(props: { initialTemplateId?: string }) {
   const [draftStatus, setDraftStatus] = useState<"saving" | "saved">("saved");
   const [invalidFieldIds, setInvalidFieldIds] = useState<string[]>([]);
   const [pageNumber, setPageNumber] = useState(1);
-  const [pageSize, setPageSize] = useState<PdfViewport>({
+  const [pageSize, setPageSize] = useState<Pick<PdfViewport, "width" | "height">>({
     width: 612,
     height: 792,
   });
-  const [basePageSize, setBasePageSize] = useState<PdfViewport>({
+  const [basePageSize, setBasePageSize] = useState<
+    Pick<PdfViewport, "width" | "height">
+  >({
     width: 612,
     height: 792,
   });

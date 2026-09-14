@@ -23,7 +23,8 @@ PDF editing and selectable-text extraction run locally in the browser. D1 and pr
 - Candidate duplicate suggestions using normalized email and phone
 - Editable candidate review with confidence, source-page, and verification state
 - Explicit `candidate.*` template prefill keys copied as immutable assignment snapshots
-- Durable AI field-detection runs with private R2 inputs, D1 status, queue retries, and review-before-apply
+- Hybrid AcroForm and visual AI field detection with source-aware deduplication and review-before-apply
+- Durable detection runs with private R2 inputs, D1 status, queue retries, and resumable review
 
 ## Requirements
 

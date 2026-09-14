@@ -50,6 +50,30 @@ test("maps normalized rectangles through crop offsets and every page rotation", 
     width: 80,
     height: 30,
   });
+
+  for (const rotation of [0, 90, 180, 270]) {
+    const pdfBox = coordinates.normalizedRectToPdfBox(
+      rect,
+      cropBox,
+      rotation,
+    );
+    assertBox(
+      coordinates.pdfBoxToNormalizedRect(pdfBox, cropBox, rotation),
+      rect,
+    );
+  }
+});
+
+test("clamps PDF rectangles to the visible crop box", () => {
+  const cropBox = { x: 10, y: 20, width: 200, height: 100 };
+  assertBox(
+    coordinates.pdfBoxToNormalizedRect(
+      { x: -10, y: 0, width: 260, height: 150 },
+      cropBox,
+      0,
+    ),
+    { x: 0, y: 0, width: 1, height: 1 },
+  );
 });
 
 function assertBox(actual, expected) {

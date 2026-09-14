@@ -4,6 +4,9 @@ import { and, eq, inArray, lt, or } from "drizzle-orm";
 
 import { getDb } from "@/db";
 import { aiFieldDetectionRuns } from "@/db/schema";
+import { detectAcroFormFields } from "@/features/ai-field-detection/acroform-field-detection";
+import type { AcroFormFieldDetection } from "@/features/ai-field-detection/acroform-field-detection";
+import { mergeHybridFieldDetection } from "@/features/ai-field-detection/hybrid-field-detection";
 import {
   FieldDetectionProviderError,
   detectPdfFieldsWithOpenAi,
@@ -66,10 +69,16 @@ export async function processAiFieldDetectionRun(options: {
     const bytes = new Uint8Array(
       await new Response(source.body).arrayBuffer(),
     ) as Uint8Array<ArrayBuffer>;
-    const detection = await detectPdfFieldsWithOpenAi({
+    const acroForm = await safeAcroFormDetection(bytes);
+    const aiDetection = await detectPdfFieldsWithOpenAi({
       bytes,
       fileName: claimed.fileName,
       pageCount: claimed.pageCount,
+      knownFields: acroForm.candidates,
+    });
+    const detection = mergeHybridFieldDetection({
+      acroForm,
+      ai: aiDetection,
     });
     const completedAt = new Date().toISOString();
     await db
@@ -108,6 +117,22 @@ export async function processAiFieldDetectionRun(options: {
       });
     }
     throw new AiFieldDetectionProcessingError(failure.logMessage, retryable);
+  }
+}
+
+async function safeAcroFormDetection(
+  bytes: Uint8Array<ArrayBuffer>,
+): Promise<AcroFormFieldDetection> {
+  try {
+    return await detectAcroFormFields({ bytes });
+  } catch (error) {
+    console.error("Embedded AcroForm detection failed; continuing with AI", error);
+    return {
+      candidates: [],
+      totalFields: 0,
+      readOnlyFields: 0,
+      unsupportedFields: 0,
+    };
   }
 }
 

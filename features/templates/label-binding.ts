@@ -5,7 +5,7 @@ export type LabelBinding = {
   sourceText: string;
   page: number;
   rect: { x: number; y: number; width: number; height: number };
-  source: "pdf-text" | "manual" | "ai-detection";
+  source: "pdf-text" | "pdf-form" | "manual" | "ai-detection";
 };
 
 export type SubmissionAnswer = {
@@ -99,10 +99,9 @@ export function isSubmissionAnswer(value: unknown): value is SubmissionAnswer {
 export function isLabelBinding(value: unknown): value is LabelBinding {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
   const binding = value as Partial<LabelBinding>;
-  return typeof binding.text === "string" && typeof binding.page === "number" && (binding.source === "pdf-text" || binding.source === "manual" || binding.source === "ai-detection");
+  return typeof binding.text === "string" && typeof binding.page === "number" && (binding.source === "pdf-text" || binding.source === "pdf-form" || binding.source === "manual" || binding.source === "ai-detection");
 }
 
 function numberValue(value: unknown, fallback: number) {
   return typeof value === "number" && Number.isFinite(value) ? value : fallback;
 }
-
