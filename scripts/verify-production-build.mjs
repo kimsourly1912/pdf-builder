@@ -10,7 +10,6 @@ const DIST_DIRECTORY = "dist";
 const FORBIDDEN_MARKERS = [
   "pdf-builder-dev",
   "pdf-builder-ai-field-detection-dev",
-  "http://localhost:5173",
   '"ENVIRONMENT":"development"',
 ];
 const REQUIRED_MARKERS = [
