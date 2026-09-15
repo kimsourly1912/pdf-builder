@@ -83,4 +83,5 @@ test("production builds cannot silently select development bindings", () => {
   assert.match(config, /\.\/wrangler\.jsonc/);
   assert.match(wrangler, /"main": "worker\/index\.ts"/);
   assert.match(deploy, /run\("npm", \["run", "build"\]\)/);
+  assert.match(deploy, /BUILT_WRANGLER_CONFIG_PATH/);
 });
