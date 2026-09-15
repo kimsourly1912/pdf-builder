@@ -13,6 +13,7 @@ import {
 } from "@/features/ai-field-detection/openai-field-detection.server";
 import { AI_FIELD_DETECTION_MAX_ATTEMPTS } from "@/features/ai-field-detection/run-types";
 import { getFilesBucket } from "@/features/templates/template.server";
+import { compensateStorageWrites } from "@/features/storage/storage-cleanup.server";
 
 export class AiFieldDetectionProcessingError extends Error {
   readonly retryable: boolean;
@@ -112,9 +113,7 @@ export async function processAiFieldDetectionRun(options: {
       })
       .where(eq(aiFieldDetectionRuns.id, runId));
     if (!retryable) {
-      await getFilesBucket().delete(claimed.fileKey).catch((cleanupError) => {
-        console.error("Failed to delete terminal AI source PDF", cleanupError);
-      });
+      await compensateStorageWrites([claimed.fileKey], "ai_finished");
     }
     throw new AiFieldDetectionProcessingError(failure.logMessage, retryable);
   }

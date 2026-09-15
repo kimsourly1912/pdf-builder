@@ -25,6 +25,9 @@ PDF editing and selectable-text extraction run locally in the browser. D1 and pr
 - Explicit `candidate.*` template prefill keys copied as immutable assignment snapshots
 - Hybrid AcroForm and visual AI field detection with source-aware deduplication and review-before-apply
 - Durable detection runs with private R2 inputs, D1 status, queue retries, and resumable review
+- Request IDs on every HTTP response for production incident correlation
+- Durable R2 cleanup jobs retried every 15 minutes after partial storage failures
+- SHA-256 verification before completed PDFs and resumes are downloaded
 
 ## Requirements
 
@@ -146,6 +149,11 @@ New links expire after 30 days and allow one submission by default. The owner ca
 rotate or revoke them from the templates dashboard. Each link stays pinned to
 the exact published template version it was created for, and submission retries
 reuse the original result through a client-generated idempotency key.
+
+R2 deletion is coordinated through `storage_cleanup_jobs`. Destructive D1
+operations enqueue their object keys in the same database batch, and a scheduled
+worker retries failed cleanup every 15 minutes. This prevents a transient R2
+failure from leaving untracked private files indefinitely.
 
 ## Cambodia Gazetteer
 

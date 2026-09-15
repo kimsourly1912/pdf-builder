@@ -429,3 +429,20 @@ export const submissions = sqliteTable(
     ),
   ],
 );
+
+export const storageCleanupJobs = sqliteTable(
+  "storage_cleanup_jobs",
+  {
+    id: text("id").primaryKey(),
+    objectKey: text("object_key").notNull(),
+    reason: text("reason").notNull(),
+    attemptCount: integer("attempt_count").notNull().default(0),
+    lastErrorCode: text("last_error_code"),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("storage_cleanup_jobs_object_key_unique").on(table.objectKey),
+    index("storage_cleanup_jobs_updated_idx").on(table.updatedAt),
+  ],
+);

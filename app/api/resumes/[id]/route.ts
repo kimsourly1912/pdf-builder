@@ -1,6 +1,6 @@
 import { and, desc, eq, ne, or, type SQL } from "drizzle-orm";
 
-import { getDb } from "@/db";
+import { getDatabaseBinding, getDb } from "@/db";
 import {
   candidateResumeLinks,
   candidates,
@@ -18,7 +18,8 @@ import {
   updateExtractionWithVerifiedCandidate,
 } from "@/features/resumes/resume.server";
 import type { ResumeDetail } from "@/features/resumes/resume.types";
-import { getFilesBucket, isResponse, jsonError, requireRequestOwner } from "@/features/templates/template.server";
+import { processStorageCleanupJobs } from "@/features/storage/storage-cleanup.server";
+import { isResponse, jsonError, requireRequestOwner } from "@/features/templates/template.server";
 
 export async function GET(request: Request, context: { params: Promise<{ id: string }> }) {
   try {
@@ -144,8 +145,30 @@ export async function DELETE(request: Request, context: { params: Promise<{ id: 
     const { id } = await context.params;
     const [resume] = await getDb().select().from(resumes).where(and(eq(resumes.id, id), eq(resumes.ownerEmail, ownerEmail))).limit(1);
     if (!resume) return jsonError("Resume not found.", 404);
-    await getFilesBucket().delete(resume.fileKey);
-    await getDb().delete(resumes).where(and(eq(resumes.id, id), eq(resumes.ownerEmail, ownerEmail)));
+    const database = getDatabaseBinding();
+    const now = new Date().toISOString();
+    const results = await database.batch([
+      database
+        .prepare(
+          `INSERT OR IGNORE INTO storage_cleanup_jobs (
+            id, object_key, reason, attempt_count, last_error_code,
+            created_at, updated_at
+          )
+          SELECT ?, file_key, 'resume_deleted', 0, NULL, ?, ?
+          FROM resumes
+          WHERE id = ? AND owner_email = ?`,
+        )
+        .bind(crypto.randomUUID(), now, now, id, ownerEmail),
+      database
+        .prepare("DELETE FROM resumes WHERE id = ? AND owner_email = ?")
+        .bind(id, ownerEmail),
+    ]);
+    if (Number(results[1]?.meta?.changes ?? 0) === 0) {
+      return jsonError("Resume not found.", 404);
+    }
+    await processStorageCleanupJobs({ objectKeys: [resume.fileKey] }).catch(
+      () => undefined,
+    );
     return new Response(null, { status: 204 });
   } catch (error) {
     if (isResponse(error)) return error;

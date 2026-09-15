@@ -21,6 +21,7 @@ import {
   jsonError,
   requireRequestOwner,
 } from "@/features/templates/template.server";
+import { compensateStorageWrites } from "@/features/storage/storage-cleanup.server";
 import { inspectPdf } from "@/features/templates/file-validation";
 import { validateTemplateDefinition } from "@/features/templates/submission-validation";
 import {
@@ -270,7 +271,7 @@ export async function POST(request: Request) {
     );
   } catch (error) {
     if (uploadedKey) {
-      await getFilesBucket().delete(uploadedKey).catch(() => undefined);
+      await compensateStorageWrites([uploadedKey], "template_create_failed");
     }
     if (isResponse(error)) return error;
     console.error("Failed to save template", error);
