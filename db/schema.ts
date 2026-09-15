@@ -213,7 +213,6 @@ export const formAssignments = sqliteTable(
     roleId: text("role_id").notNull(),
     roleName: text("role_name").notNull(),
     roleColor: text("role_color").notNull(),
-    accessToken: text("access_token").notNull(),
     initialValuesJson: text("initial_values_json").notNull().default("{}"),
     status: text("status").notNull().default("assigned"),
     assignedAt: text("assigned_at").notNull(),
@@ -413,6 +412,10 @@ export const submissions = sqliteTable(
     recipientEmail: text("recipient_email").notNull().default(""),
     valuesJson: text("values_json").notNull(),
     completedFileKey: text("completed_file_key"),
+    completedFileChecksum: text("completed_file_checksum"),
+    artifactGenerator: text("artifact_generator")
+      .notNull()
+      .default("legacy-client-v1"),
     submittedAt: text("submitted_at").notNull(),
   },
   (table) => [

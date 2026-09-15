@@ -2,12 +2,14 @@ import { eq } from "drizzle-orm";
 
 import { getDb } from "@/db";
 import {
+  formAssignments,
   recipientLinks,
   templates,
   templateVersions,
 } from "@/db/schema";
 import { authorizeAssignedRecipient } from "@/features/accounts/account.server";
 import { recipientLinkAvailability } from "@/features/templates/recipient-link-lifecycle";
+import { parseAssignedFillIdentifier } from "@/features/templates/submission-artifact";
 import {
   getFilesBucket,
   hashRecipientToken,
@@ -21,23 +23,7 @@ export async function GET(
 ) {
   try {
     const { token } = await context.params;
-    if (!/^[A-Za-z0-9_-]{40,60}$/u.test(token)) {
-      return jsonError("Fill link not found.", 404);
-    }
-    const [row] = await getDb()
-      .select({
-        link: recipientLinks,
-        template: templates,
-        version: templateVersions,
-      })
-      .from(recipientLinks)
-      .innerJoin(templates, eq(recipientLinks.templateId, templates.id))
-      .innerJoin(
-        templateVersions,
-        eq(recipientLinks.templateVersionId, templateVersions.id),
-      )
-      .where(eq(recipientLinks.tokenHash, await hashRecipientToken(token)))
-      .limit(1);
+    const row = await findRecipientPdfContext(token);
     if (!row) return jsonError("Fill link not found.", 404);
     await authorizeAssignedRecipient(request.headers, row.link.assignedUserId);
 
@@ -52,6 +38,7 @@ export async function GET(
       headers: {
         "Content-Type": "application/pdf",
         "Cache-Control": "private, no-store",
+        "X-Content-Type-Options": "nosniff",
         ETag: object.httpEtag,
       },
     });
@@ -60,4 +47,37 @@ export async function GET(
     console.error("Failed to load recipient PDF", error);
     return jsonError("The PDF could not be loaded.", 500);
   }
+}
+
+async function findRecipientPdfContext(identifier: string) {
+  const assignmentId = parseAssignedFillIdentifier(identifier);
+  const db = getDb();
+  const query = db
+    .select({
+      link: recipientLinks,
+      template: templates,
+      version: templateVersions,
+    })
+    .from(recipientLinks)
+    .innerJoin(templates, eq(recipientLinks.templateId, templates.id))
+    .innerJoin(
+      templateVersions,
+      eq(recipientLinks.templateVersionId, templateVersions.id),
+    )
+    .leftJoin(
+      formAssignments,
+      eq(recipientLinks.id, formAssignments.recipientLinkId),
+    );
+
+  if (assignmentId) {
+    const [row] = await query
+      .where(eq(formAssignments.id, assignmentId))
+      .limit(1);
+    return row ?? null;
+  }
+  if (!/^[A-Za-z0-9_-]{40,60}$/u.test(identifier)) return null;
+  const [row] = await query
+    .where(eq(recipientLinks.tokenHash, await hashRecipientToken(identifier)))
+    .limit(1);
+  return row ?? null;
 }
