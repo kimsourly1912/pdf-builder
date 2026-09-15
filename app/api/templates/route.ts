@@ -1,4 +1,4 @@
-import { and, desc, eq, isNull } from "drizzle-orm";
+import { and, count, desc, eq, isNull } from "drizzle-orm";
 
 import { getDb } from "@/db";
 import {
@@ -47,69 +47,93 @@ export async function GET(request: Request) {
       .where(eq(templates.ownerEmail, ownerEmail))
       .orderBy(desc(templates.updatedAt));
 
-    const result = await Promise.all(
-      templateRows.map(async (template) => {
-        const [links, submissionRows, assignmentRows, currentVersion, versionRows] = await Promise.all([
-          db
-            .select({
-              id: recipientLinks.id,
-              roleId: recipientLinks.roleId,
-              roleName: recipientLinks.roleName,
-              roleColor: recipientLinks.roleColor,
-              status: recipientLinks.status,
-              expiresAt: recipientLinks.expiresAt,
-              maxSubmissions: recipientLinks.maxSubmissions,
-              submissionCount: recipientLinks.submissionCount,
-              revokedAt: recipientLinks.revokedAt,
-              completedAt: recipientLinks.completedAt,
-              templateVersionId: recipientLinks.templateVersionId,
-            })
-            .from(recipientLinks)
-            .where(
-              and(
-                eq(recipientLinks.templateId, template.id),
-                isNull(recipientLinks.assignedUserId),
-              ),
+    if (templateRows.length === 0) {
+      return Response.json({ templates: [] });
+    }
+
+    const [linkRows, submissionCountRows, assignmentCountRows, versionRows] =
+      await Promise.all([
+        db
+          .select({
+            id: recipientLinks.id,
+            templateId: recipientLinks.templateId,
+            roleId: recipientLinks.roleId,
+            roleName: recipientLinks.roleName,
+            roleColor: recipientLinks.roleColor,
+            status: recipientLinks.status,
+            expiresAt: recipientLinks.expiresAt,
+            maxSubmissions: recipientLinks.maxSubmissions,
+            submissionCount: recipientLinks.submissionCount,
+            revokedAt: recipientLinks.revokedAt,
+            completedAt: recipientLinks.completedAt,
+            templateVersionId: recipientLinks.templateVersionId,
+          })
+          .from(recipientLinks)
+          .innerJoin(templates, eq(recipientLinks.templateId, templates.id))
+          .where(
+            and(
+              eq(templates.ownerEmail, ownerEmail),
+              isNull(recipientLinks.assignedUserId),
             ),
-          db
-            .select({ id: submissions.id })
-            .from(submissions)
-            .where(eq(submissions.templateId, template.id)),
-          db
-            .select({ id: formAssignments.id })
-            .from(formAssignments)
-            .where(eq(formAssignments.templateId, template.id)),
-          db
-            .select({
-              versionNumber: templateVersions.versionNumber,
-              rolesJson: templateVersions.rolesJson,
-            })
-            .from(templateVersions)
-            .where(eq(templateVersions.id, template.currentVersionId))
-            .limit(1),
-          db
-            .select({ rolesJson: templateVersions.rolesJson })
-            .from(templateVersions)
-            .where(eq(templateVersions.templateId, template.id))
-            .orderBy(desc(templateVersions.versionNumber)),
-        ]);
-        const version = currentVersion[0];
-        const currentRoles = parseVersionRoles(version?.rolesJson ?? "[]");
-        const currentRoleIds = new Set(currentRoles.map((role) => role.id));
-        return {
-          id: template.id,
-          name: template.name,
-          description: template.description,
-          fileName: template.fileName,
-          archivedAt: template.archivedAt
-            ? toUtcIsoString(template.archivedAt) ?? template.archivedAt
-            : null,
-          createdAt: toUtcIsoString(template.createdAt) ?? template.createdAt,
-          updatedAt: toUtcIsoString(template.updatedAt) ?? template.updatedAt,
-          versionNumber: version?.versionNumber ?? 1,
-          currentRoles,
-          filterRoles: uniqueVersionRoles(versionRows.map((row) => row.rolesJson)),
-          recipients: links.filter((link) => currentRoleIds.has(link.roleId)).map((link) => {
+          ),
+        db
+          .select({ templateId: submissions.templateId, total: count() })
+          .from(submissions)
+          .innerJoin(templates, eq(submissions.templateId, templates.id))
+          .where(eq(templates.ownerEmail, ownerEmail))
+          .groupBy(submissions.templateId),
+        db
+          .select({ templateId: formAssignments.templateId, total: count() })
+          .from(formAssignments)
+          .innerJoin(templates, eq(formAssignments.templateId, templates.id))
+          .where(eq(templates.ownerEmail, ownerEmail))
+          .groupBy(formAssignments.templateId),
+        db
+          .select({
+            id: templateVersions.id,
+            templateId: templateVersions.templateId,
+            versionNumber: templateVersions.versionNumber,
+            rolesJson: templateVersions.rolesJson,
+          })
+          .from(templateVersions)
+          .innerJoin(templates, eq(templateVersions.templateId, templates.id))
+          .where(eq(templates.ownerEmail, ownerEmail))
+          .orderBy(desc(templateVersions.versionNumber)),
+      ]);
+    const linksByTemplate = groupBy(linkRows, (row) => row.templateId);
+    const versionsByTemplate = groupBy(versionRows, (row) => row.templateId);
+    const versionsById = new Map(versionRows.map((row) => [row.id, row]));
+    const submissionCounts = new Map(
+      submissionCountRows.map((row) => [row.templateId, row.total]),
+    );
+    const assignmentCounts = new Map(
+      assignmentCountRows.map((row) => [row.templateId, row.total]),
+    );
+
+    const result = templateRows.map((template) => {
+      const links = linksByTemplate.get(template.id) ?? [];
+      const version = versionsById.get(template.currentVersionId);
+      const templateVersionRows = versionsByTemplate.get(template.id) ?? [];
+      const currentRoles = parseVersionRoles(version?.rolesJson ?? "[]");
+      const currentRoleIds = new Set(currentRoles.map((role) => role.id));
+      return {
+        id: template.id,
+        name: template.name,
+        description: template.description,
+        fileName: template.fileName,
+        archivedAt: template.archivedAt
+          ? toUtcIsoString(template.archivedAt) ?? template.archivedAt
+          : null,
+        createdAt: toUtcIsoString(template.createdAt) ?? template.createdAt,
+        updatedAt: toUtcIsoString(template.updatedAt) ?? template.updatedAt,
+        versionNumber: version?.versionNumber ?? 1,
+        currentRoles,
+        filterRoles: uniqueVersionRoles(
+          templateVersionRows.map((row) => row.rolesJson),
+        ),
+        recipients: links
+          .filter((link) => currentRoleIds.has(link.roleId))
+          .map((link) => {
             const normalizedLink = {
               ...link,
               expiresAt: link.expiresAt
@@ -127,11 +151,10 @@ export async function GET(request: Request) {
               status: recipientLinkAvailability(normalizedLink).state,
             };
           }),
-          submissionCount: submissionRows.length,
-          assignmentCount: assignmentRows.length,
-        };
-      }),
-    );
+        submissionCount: submissionCounts.get(template.id) ?? 0,
+        assignmentCount: assignmentCounts.get(template.id) ?? 0,
+      };
+    });
 
     return Response.json({ templates: result });
   } catch (error) {
@@ -139,6 +162,17 @@ export async function GET(request: Request) {
     console.error("Failed to list templates", error);
     return jsonError("Templates could not be loaded.", 500);
   }
+}
+
+function groupBy<Row, Key>(rows: Row[], keyFor: (row: Row) => Key) {
+  const groups = new Map<Key, Row[]>();
+  for (const row of rows) {
+    const key = keyFor(row);
+    const group = groups.get(key) ?? [];
+    group.push(row);
+    groups.set(key, group);
+  }
+  return groups;
 }
 
 function uniqueVersionRoles(rolesJsonValues: string[]) {

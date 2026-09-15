@@ -173,6 +173,10 @@ export const recipientLinks = sqliteTable(
       .on(table.templateId, table.roleId)
       .where(sql`${table.assignedUserId} IS NULL`),
     index("recipient_links_template_idx").on(table.templateId),
+    index("recipient_links_template_assignee_idx").on(
+      table.templateId,
+      table.assignedUserId,
+    ),
     index("recipient_links_assigned_user_idx").on(table.assignedUserId),
   ],
 );
@@ -191,7 +195,13 @@ export const recipientProfiles = sqliteTable(
     createdAt: text("created_at").notNull(),
     updatedAt: text("updated_at").notNull(),
   },
-  (table) => [index("recipient_profiles_type_idx").on(table.accountType)],
+  (table) => [
+    index("recipient_profiles_type_idx").on(table.accountType),
+    index("recipient_profiles_creator_created_idx").on(
+      table.createdByEmail,
+      table.createdAt,
+    ),
+  ],
 );
 
 export const formAssignments = sqliteTable(
@@ -227,6 +237,10 @@ export const formAssignments = sqliteTable(
       table.roleId,
     ),
     index("form_assignments_user_status_idx").on(table.userId, table.status),
+    index("form_assignments_user_assigned_idx").on(
+      table.userId,
+      table.assignedAt,
+    ),
     index("form_assignments_template_idx").on(table.templateId),
   ],
 );
@@ -426,6 +440,10 @@ export const submissions = sqliteTable(
     uniqueIndex("submissions_link_idempotency_unique").on(
       table.recipientLinkId,
       table.idempotencyKey,
+    ),
+    index("submissions_link_submitted_idx").on(
+      table.recipientLinkId,
+      table.submittedAt,
     ),
   ],
 );
