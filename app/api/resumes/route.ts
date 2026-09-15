@@ -17,6 +17,7 @@ import { MAX_RESUME_BYTES, MAX_RESUME_PAGES, isResumeStatus } from "@/features/r
 import type { ResumeSummary } from "@/features/resumes/resume.types";
 import { inspectPdf } from "@/features/templates/file-validation";
 import { getFilesBucket, isResponse, jsonError, requireRequestOwner } from "@/features/templates/template.server";
+import { compensateStorageWrites } from "@/features/storage/storage-cleanup.server";
 
 export async function GET(request: Request) {
   try {
@@ -169,7 +170,9 @@ export async function POST(request: Request) {
     await db.batch(statements as [typeof statements[number], ...typeof statements]);
     return Response.json({ resume: { id: resumeId, status } }, { status: 201 });
   } catch (error) {
-    if (fileKey) await getFilesBucket().delete(fileKey).catch(() => undefined);
+    if (fileKey) {
+      await compensateStorageWrites([fileKey], "resume_create_failed");
+    }
     if (isResponse(error)) return error;
     console.error("Failed to upload resume", error);
     const duplicate = error instanceof Error && /unique|constraint/iu.test(error.message);

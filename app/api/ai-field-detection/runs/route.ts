@@ -19,6 +19,7 @@ import {
   jsonError,
   requireRequestOwner,
 } from "@/features/templates/template.server";
+import { compensateStorageWrites } from "@/features/storage/storage-cleanup.server";
 
 export async function POST(request: Request) {
   let fileKey: string | null = null;
@@ -94,11 +95,7 @@ export async function POST(request: Request) {
       }
     }
     if (fileKey) {
-      try {
-        await getFilesBucket().delete(fileKey);
-      } catch {
-        // An R2 lifecycle rule is the final cleanup boundary.
-      }
+      await compensateStorageWrites([fileKey], "ai_enqueue_failed");
     }
     return jsonError("AI analysis could not be started. Try again.", 503);
   }

@@ -9,6 +9,7 @@ import {
   templateVersions,
 } from "@/db/schema";
 import { authorizeAssignedRecipient } from "@/features/accounts/account.server";
+import { compensateStorageWrites } from "@/features/storage/storage-cleanup.server";
 import { buildSubmissionAnswers } from "@/features/templates/label-binding";
 import {
   buildAuthoritativeCompletedPdf,
@@ -331,7 +332,12 @@ export async function POST(
 
     const inserted = Number(results[0]?.meta?.changes ?? 0) > 0;
     if (!inserted) {
-      await deleteUploadedFiles(completedFileKey, uploadedImageKeys);
+      await compensateStorageWrites(
+        completedFileKey
+          ? [completedFileKey, ...uploadedImageKeys]
+          : uploadedImageKeys,
+        "submission_rolled_back",
+      );
       completedFileKey = null;
       uploadedImageKeys.length = 0;
       const racedSubmission = await findIdempotentSubmission(
@@ -364,7 +370,12 @@ export async function POST(
       { status: 201 },
     );
   } catch (error) {
-    await deleteUploadedFiles(completedFileKey, uploadedImageKeys);
+    await compensateStorageWrites(
+      completedFileKey
+        ? [completedFileKey, ...uploadedImageKeys]
+        : uploadedImageKeys,
+      "submission_rolled_back",
+    );
     if (isResponse(error)) return error;
     console.error("Failed to submit fill link", error);
     return jsonError("Your submission could not be saved.", 500);
@@ -392,16 +403,6 @@ function collectImageFiles(
     files.set(fieldId, value);
   }
   return { ok: true, files };
-}
-
-async function deleteUploadedFiles(
-  completedFileKey: string | null,
-  imageKeys: string[],
-) {
-  const keys = completedFileKey ? [completedFileKey, ...imageKeys] : imageKeys;
-  await Promise.all(
-    keys.map((key) => getFilesBucket().delete(key).catch(() => undefined)),
-  );
 }
 
 async function findFillContext(identifier: string) {

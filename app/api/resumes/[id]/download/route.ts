@@ -3,6 +3,7 @@ import { and, eq } from "drizzle-orm";
 import { getDb } from "@/db";
 import { resumes } from "@/db/schema";
 import { safeResumeFileName } from "@/features/resumes/resume.server";
+import { sha256Hex } from "@/features/templates/submission-artifact";
 import { getFilesBucket, isResponse, jsonError, requireRequestOwner } from "@/features/templates/template.server";
 
 export async function GET(request: Request, context: { params: Promise<{ id: string }> }) {
@@ -13,7 +14,16 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
     if (!resume) return jsonError("Resume not found.", 404);
     const object = await getFilesBucket().get(resume.fileKey);
     if (!object) return jsonError("Resume PDF not found.", 404);
-    return new Response(object.body, { headers: {
+    const bytes = new Uint8Array(
+      await new Response(object.body).arrayBuffer(),
+    ) as Uint8Array<ArrayBuffer>;
+    if ((await sha256Hex(bytes)) !== resume.checksum) {
+      console.error("Resume PDF integrity verification failed", {
+        resumeId: resume.id,
+      });
+      return jsonError("The resume PDF failed integrity verification.", 409);
+    }
+    return new Response(bytes, { headers: {
       "Cache-Control": "private, no-store",
       "Content-Type": "application/pdf",
       "Content-Disposition": `inline; filename="${safeResumeFileName(resume.fileName).replaceAll('"', "_")}"`,

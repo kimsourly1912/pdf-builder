@@ -12,6 +12,7 @@ const DATABASE_NAME = "pdf-builder-db";
 const BUCKET_NAME = "pdf-builder-files";
 const AI_FIELD_DETECTION_QUEUE_NAME = "pdf-builder-ai-field-detection";
 const WRANGLER_CONFIG_PATH = "wrangler.jsonc";
+const BUILT_WRANGLER_CONFIG_PATH = "dist/server/wrangler.json";
 const ACCESS_APPLICATION_NAMES = [
   "PDF Builder production",
   "PDF Builder public fill pages",
@@ -55,7 +56,12 @@ async function main() {
   await putWorkerSecret("OPENAI_API_KEY", OPENAI_API_KEY);
   const bootstrapToken = randomSecret();
   await putWorkerSecret("AUTH_BOOTSTRAP_TOKEN", bootstrapToken);
-  run("npx", ["wrangler", "deploy", "--config", WRANGLER_CONFIG_PATH]);
+  run("npx", [
+    "wrangler",
+    "deploy",
+    "--config",
+    BUILT_WRANGLER_CONFIG_PATH,
+  ]);
 
   let authenticatedCookie;
   try {

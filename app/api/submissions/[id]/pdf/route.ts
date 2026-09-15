@@ -2,6 +2,7 @@ import { and, eq } from "drizzle-orm";
 
 import { getDb } from "@/db";
 import { submissions, templates } from "@/db/schema";
+import { sha256Hex } from "@/features/templates/submission-artifact";
 import {
   getFilesBucket,
   isResponse,
@@ -28,10 +29,24 @@ export async function GET(
     }
     const object = await getFilesBucket().get(row.submission.completedFileKey);
     if (!object) return jsonError("Completed PDF not found.", 404);
-    return new Response(object.body, {
+    const bytes = new Uint8Array(
+      await new Response(object.body).arrayBuffer(),
+    ) as Uint8Array<ArrayBuffer>;
+    if (
+      row.submission.completedFileChecksum &&
+      (await sha256Hex(bytes)) !== row.submission.completedFileChecksum
+    ) {
+      console.error("Completed PDF integrity verification failed", {
+        submissionId: row.submission.id,
+      });
+      return jsonError("The completed PDF failed integrity verification.", 409);
+    }
+    return new Response(bytes, {
       headers: {
+        "Cache-Control": "private, no-store",
         "Content-Type": "application/pdf",
         "Content-Disposition": `attachment; filename="${row.template.name.replaceAll(/[^a-zA-Z0-9_-]/gu, "_")}-completed.pdf"`,
+        "X-Content-Type-Options": "nosniff",
         ETag: object.httpEtag,
       },
     });

@@ -1,6 +1,6 @@
-import { and, count, eq, isNull, notExists } from "drizzle-orm";
+import { and, count, eq, isNull } from "drizzle-orm";
 
-import { getDb } from "@/db";
+import { getDatabaseBinding, getDb } from "@/db";
 import {
   formAssignments,
   recipientLinks,
@@ -21,6 +21,10 @@ import {
   jsonError,
   requireRequestOwner,
 } from "@/features/templates/template.server";
+import {
+  compensateStorageWrites,
+  processStorageCleanupJobs,
+} from "@/features/storage/storage-cleanup.server";
 import {
   parseTemplateJson,
   parseVersionRoles,
@@ -237,7 +241,7 @@ export async function PUT(
     });
   } catch (error) {
     if (uploadedKey) {
-      await getFilesBucket().delete(uploadedKey).catch(() => undefined);
+      await compensateStorageWrites([uploadedKey], "template_update_failed");
     }
     if (isResponse(error)) return error;
     console.error("Failed to update template", error);
@@ -344,54 +348,67 @@ export async function DELETE(
       });
     }
 
-    const deletedRows = await db
-      .delete(templates)
-      .where(
-        and(
-          eq(templates.id, id),
-          eq(templates.ownerEmail, ownerEmail),
-          notExists(
-            db
-              .select({ id: submissions.id })
-              .from(submissions)
-              .where(eq(submissions.templateId, id)),
-          ),
-          notExists(
-            db
-              .select({ id: formAssignments.id })
-              .from(formAssignments)
-              .where(eq(formAssignments.templateId, id)),
-          ),
+    const fileKeys = [
+      ...new Set([template.fileKey, ...versionRows.map((row) => row.fileKey)]),
+    ];
+    const deletedAt = new Date().toISOString();
+    const database = getDatabaseBinding();
+    const cleanupStatements = fileKeys.map((fileKey) =>
+      database
+        .prepare(
+          `INSERT OR IGNORE INTO storage_cleanup_jobs (
+            id, object_key, reason, attempt_count, last_error_code,
+            created_at, updated_at
+          )
+          SELECT ?, ?, 'template_deleted', 0, NULL, ?, ?
+          WHERE EXISTS (
+            SELECT 1 FROM templates
+            WHERE id = ? AND owner_email = ?
+              AND NOT EXISTS (
+                SELECT 1 FROM submissions WHERE template_id = ?
+              )
+              AND NOT EXISTS (
+                SELECT 1 FROM form_assignments WHERE template_id = ?
+              )
+          )`,
+        )
+        .bind(
+          crypto.randomUUID(),
+          fileKey,
+          deletedAt,
+          deletedAt,
+          id,
+          ownerEmail,
+          id,
+          id,
         ),
+    );
+    const deleteStatement = database
+      .prepare(
+        `DELETE FROM templates
+        WHERE id = ? AND owner_email = ?
+          AND NOT EXISTS (
+            SELECT 1 FROM submissions WHERE template_id = ?
+          )
+          AND NOT EXISTS (
+            SELECT 1 FROM form_assignments WHERE template_id = ?
+          )`,
       )
-      .returning({ id: templates.id });
-
-    if (deletedRows.length === 0) {
+      .bind(id, ownerEmail, id, id);
+    const results = await database.batch([
+      ...cleanupStatements,
+      deleteStatement,
+    ]);
+    if (Number(results.at(-1)?.meta?.changes ?? 0) === 0) {
       const archivedAt = new Date().toISOString();
       await archiveOwnedTemplate({ id, ownerEmail, archivedAt });
       return Response.json({
         template: { id, disposition: "archive", archivedAt },
       });
     }
-
-    const fileKeys = [
-      ...new Set([template.fileKey, ...versionRows.map((row) => row.fileKey)]),
-    ];
-    let failedFileDeletes = 0;
-    try {
-      const files = getFilesBucket();
-      const results = await Promise.allSettled(
-        fileKeys.map((fileKey) => files.delete(fileKey)),
-      );
-      failedFileDeletes = results.filter((result) => result.status === "rejected").length;
-    } catch {
-      failedFileDeletes = fileKeys.length;
-    }
-    if (failedFileDeletes > 0) {
-      console.warn("Template data was deleted but some stored PDF cleanup failed", {
-        failedFileDeletes,
-      });
-    }
+    await processStorageCleanupJobs({ objectKeys: fileKeys }).catch(
+      () => undefined,
+    );
 
     return Response.json({
       template: { id, disposition, archivedAt: null },

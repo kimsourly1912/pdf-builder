@@ -10,11 +10,11 @@ import {
   publicAiFieldDetectionRun,
 } from "@/features/ai-field-detection/run.server";
 import {
-  getFilesBucket,
   isResponse,
   jsonError,
   requireRequestOwner,
 } from "@/features/templates/template.server";
+import { compensateStorageWrites } from "@/features/storage/storage-cleanup.server";
 
 type RouteContext = { params: Promise<{ id: string }> };
 
@@ -89,9 +89,7 @@ export async function PATCH(request: Request, context: RouteContext) {
     if (!reviewed) {
       return jsonError("This AI analysis was already reviewed.", 409);
     }
-    await getFilesBucket().delete(run.fileKey).catch((error) => {
-      console.error("Failed to delete reviewed AI source PDF", error);
-    });
+    await compensateStorageWrites([run.fileKey], "ai_finished");
     return Response.json({
       run: publicAiFieldDetectionRun(reviewed),
       acceptedCandidates: reviewedCandidates,
@@ -122,7 +120,7 @@ export async function DELETE(request: Request, context: RouteContext) {
     if (!run) {
       return jsonError("Only queued or failed analyses can be cancelled.", 409);
     }
-    await getFilesBucket().delete(run.fileKey).catch(() => undefined);
+    await compensateStorageWrites([run.fileKey], "ai_cancelled");
     return new Response(null, { status: 204 });
   } catch (error) {
     if (isResponse(error)) return error;

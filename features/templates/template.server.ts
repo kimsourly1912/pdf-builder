@@ -23,7 +23,12 @@ type FilesBucket = {
 
 export async function requireRequestOwner(request: Request): Promise<string> {
   const session = await getOwnerSession(request.headers);
-  if (!session) throw new Response("Authentication required", { status: 401 });
+  if (!session) {
+    throw new Response("Authentication required", {
+      status: 401,
+      headers: { "Cache-Control": "no-store" },
+    });
+  }
   return session.user.email.trim().toLowerCase();
 }
 
@@ -56,7 +61,10 @@ export async function hashRecipientToken(token: string): Promise<string> {
 }
 
 export function jsonError(message: string, status: number): Response {
-  return Response.json({ error: message }, { status });
+  return Response.json(
+    { error: message },
+    { status, headers: { "Cache-Control": "no-store" } },
+  );
 }
 
 export function isResponse(error: unknown): error is Response {

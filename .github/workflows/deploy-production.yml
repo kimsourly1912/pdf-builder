@@ -63,6 +63,12 @@ jobs:
       - name: Lint
         run: npm run lint
 
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Validate migrations locally
+        run: npm run db:migrate:local
+
       - name: Test production build
         run: npm test
 
