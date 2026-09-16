@@ -2,6 +2,7 @@ import { and, eq, isNull } from "drizzle-orm";
 
 import { getDb } from "@/db";
 import {
+  auditEvents,
   candidates,
   formAssignments,
   recipientLinks,
@@ -10,6 +11,7 @@ import {
   templateVersions,
   user,
 } from "@/db/schema";
+import { createAuditEvent } from "@/features/audit/audit.server";
 import { buildCandidatePrefillValues } from "@/features/resumes/candidate-prefill";
 import type { TemplateAnnotation } from "@/features/templates/template.types";
 import {
@@ -108,6 +110,24 @@ export async function POST(
         assignedAt: now,
         updatedAt: now,
       }),
+      db.insert(auditEvents).values(
+        createAuditEvent({
+          request,
+          ownerEmail,
+          actorType: "owner",
+          actorId: ownerEmail,
+          action: "assignment.created",
+          targetType: "assignment",
+          targetId: assignmentId,
+          metadata: {
+            accountId: userId,
+            roleId: role.id,
+            templateId,
+            versionNumber: template.version.versionNumber,
+          },
+          createdAt: now,
+        }),
+      ),
     ]);
 
     return Response.json(

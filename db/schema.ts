@@ -114,6 +114,11 @@ export const templates = sqliteTable(
       table.ownerEmail,
       table.updatedAt,
     ),
+    index("templates_owner_archived_updated_idx").on(
+      table.ownerEmail,
+      table.archivedAt,
+      table.updatedAt,
+    ),
   ],
 );
 
@@ -309,6 +314,7 @@ export const resumes = sqliteTable(
     uniqueIndex("resumes_owner_checksum_unique").on(table.ownerEmail, table.checksum),
     index("resumes_owner_status_updated_idx").on(table.ownerEmail, table.status, table.updatedAt),
     index("resumes_owner_source_received_idx").on(table.ownerEmail, table.source, table.receivedDate),
+    index("resumes_owner_received_created_idx").on(table.ownerEmail, table.receivedDate, table.createdAt),
     index("resumes_candidate_idx").on(table.candidateId),
   ],
 );
@@ -462,5 +468,36 @@ export const storageCleanupJobs = sqliteTable(
   (table) => [
     uniqueIndex("storage_cleanup_jobs_object_key_unique").on(table.objectKey),
     index("storage_cleanup_jobs_updated_idx").on(table.updatedAt),
+  ],
+);
+
+export const auditEvents = sqliteTable(
+  "audit_events",
+  {
+    id: text("id").primaryKey(),
+    ownerEmail: text("owner_email").notNull(),
+    actorType: text("actor_type").notNull(),
+    actorId: text("actor_id"),
+    action: text("action").notNull(),
+    targetType: text("target_type").notNull(),
+    targetId: text("target_id").notNull(),
+    requestId: text("request_id"),
+    metadataJson: text("metadata_json").notNull().default("{}"),
+    createdAt: text("created_at").notNull(),
+  },
+  (table) => [
+    index("audit_events_owner_created_idx").on(
+      table.ownerEmail,
+      table.createdAt,
+    ),
+    index("audit_events_target_created_idx").on(
+      table.targetType,
+      table.targetId,
+      table.createdAt,
+    ),
+    index("audit_events_action_created_idx").on(
+      table.action,
+      table.createdAt,
+    ),
   ],
 );

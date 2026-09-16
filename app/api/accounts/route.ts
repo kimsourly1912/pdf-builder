@@ -1,7 +1,9 @@
-import { and, desc, eq, isNull } from "drizzle-orm";
+import { and, asc, count, desc, eq, inArray, isNull, like, or } from "drizzle-orm";
+import type { SQL } from "drizzle-orm";
 
 import { getDb } from "@/db";
 import {
+  auditEvents,
   candidates,
   formAssignments,
   recipientLinks,
@@ -10,6 +12,8 @@ import {
   templateVersions,
   user,
 } from "@/db/schema";
+import { createAuditEvent } from "@/features/audit/audit.server";
+import { createPageMeta, parsePageQuery } from "@/features/pagination/pagination";
 import { normalizeEmail } from "@/features/resumes/resume-extraction";
 import { toUtcIsoString } from "@/features/templates/date-time";
 import {
@@ -30,8 +34,31 @@ import { getAuth } from "@/lib/auth";
 export async function GET(request: Request) {
   try {
     const ownerEmail = await requireRequestOwner(request);
+    const searchParams = new URL(request.url).searchParams;
+    const pageQuery = parsePageQuery(searchParams, {
+      sorts: ["createdAt", "name", "email"] as const,
+      defaultSort: "createdAt",
+    });
+    const conditions: SQL[] = [
+      eq(recipientProfiles.createdByEmail, ownerEmail),
+    ];
+    const accountType = searchParams.get("accountType");
+    if (isRecipientAccountType(accountType)) {
+      conditions.push(eq(recipientProfiles.accountType, accountType));
+    }
+    const search = searchParams.get("search")?.trim().slice(0, 120);
+    if (search) {
+      const pattern = `%${escapeLike(search)}%`;
+      conditions.push(or(like(user.name, pattern), like(user.email, pattern))!);
+    }
+    const sortColumn = {
+      createdAt: recipientProfiles.createdAt,
+      name: user.name,
+      email: user.email,
+    }[pageQuery.sort];
+    const direction = pageQuery.order === "asc" ? asc : desc;
     const db = getDb();
-    const [accountRows, assignmentRows] = await Promise.all([
+    const [accountRows, accountTotals, assignmentTotals] = await Promise.all([
       db
         .select({
           id: user.id,
@@ -43,9 +70,24 @@ export async function GET(request: Request) {
         })
         .from(recipientProfiles)
         .innerJoin(user, eq(recipientProfiles.userId, user.id))
-        .where(eq(recipientProfiles.createdByEmail, ownerEmail))
-        .orderBy(desc(recipientProfiles.createdAt)),
+        .where(and(...conditions))
+        .orderBy(direction(sortColumn), direction(user.id))
+        .limit(pageQuery.pageSize)
+        .offset(pageQuery.offset),
       db
+        .select({ total: count() })
+        .from(recipientProfiles)
+        .innerJoin(user, eq(recipientProfiles.userId, user.id))
+        .where(and(...conditions)),
+      db
+        .select({ total: count() })
+        .from(formAssignments)
+        .innerJoin(templates, eq(formAssignments.templateId, templates.id))
+        .where(eq(templates.ownerEmail, ownerEmail)),
+    ]);
+    const accountIds = accountRows.map((account) => account.id);
+    const assignmentRows = accountIds.length > 0
+      ? await db
         .select({
           id: formAssignments.id,
           userId: formAssignments.userId,
@@ -70,9 +112,12 @@ export async function GET(request: Request) {
           recipientLinks,
           eq(formAssignments.recipientLinkId, recipientLinks.id),
         )
-        .where(eq(templates.ownerEmail, ownerEmail))
-        .orderBy(desc(formAssignments.assignedAt)),
-    ]);
+        .where(and(
+          eq(templates.ownerEmail, ownerEmail),
+          inArray(formAssignments.userId, accountIds),
+        ))
+        .orderBy(desc(formAssignments.assignedAt), desc(formAssignments.id))
+      : [];
     const assignmentsByUser = new Map<string, RecipientAssignmentSummary[]>();
     for (const assignment of assignmentRows) {
       const list = assignmentsByUser.get(assignment.userId) ?? [];
@@ -106,12 +151,26 @@ export async function GET(request: Request) {
           }]
         : [],
     );
-    return Response.json({ accounts });
+    return Response.json(
+      {
+        items: accounts,
+        stats: {
+          accounts: accountTotals[0]?.total ?? 0,
+          assignments: assignmentTotals[0]?.total ?? 0,
+        },
+        ...createPageMeta(accountTotals[0]?.total ?? 0, pageQuery),
+      },
+      { headers: { "Cache-Control": "private, no-store" } },
+    );
   } catch (error) {
     if (isResponse(error)) return error;
     console.error("Failed to list recipient accounts", error);
     return jsonError("Accounts could not be loaded.", 500);
   }
+}
+
+function escapeLike(value: string): string {
+  return value.replaceAll("%", "\\%").replaceAll("_", "\\_");
 }
 
 export async function POST(request: Request) {
@@ -160,13 +219,27 @@ export async function POST(request: Request) {
         createdAt: now,
         updatedAt: now,
       });
+    const recordCreation = db.insert(auditEvents).values(
+      createAuditEvent({
+        request,
+        ownerEmail,
+        actorType: "owner",
+        actorId: ownerEmail,
+        action: "account.created",
+        targetType: "account",
+        targetId: created.user.id,
+        metadata: { accountType },
+        createdAt: now,
+      }),
+    );
     if (candidate) {
       await db.batch([
         createProfile,
         db.update(candidates).set({ userId: created.user.id, updatedAt: now }).where(and(eq(candidates.id, candidate.id), eq(candidates.ownerEmail, ownerEmail))),
+        recordCreation,
       ]);
     } else {
-      await createProfile;
+      await db.batch([createProfile, recordCreation]);
     }
 
     return Response.json(

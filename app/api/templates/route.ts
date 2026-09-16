@@ -1,13 +1,17 @@
-import { and, count, desc, eq, isNull } from "drizzle-orm";
+import { and, asc, count, desc, eq, inArray, isNotNull, isNull, like, or, sql } from "drizzle-orm";
+import type { SQL } from "drizzle-orm";
 
 import { getDb } from "@/db";
 import {
+  auditEvents,
   formAssignments,
   recipientLinks,
   submissions,
   templates,
   templateVersions,
 } from "@/db/schema";
+import { createAuditEvent } from "@/features/audit/audit.server";
+import { createPageMeta, parsePageQuery } from "@/features/pagination/pagination";
 import {
   defaultLinkExpiration,
   recipientLinkAvailability,
@@ -40,16 +44,80 @@ const MAX_PDF_SIZE = 35 * 1024 * 1024;
 export async function GET(request: Request) {
   try {
     const ownerEmail = await requireRequestOwner(request);
+    const searchParams = new URL(request.url).searchParams;
+    const pageQuery = parsePageQuery(searchParams, {
+      sorts: ["updatedAt", "createdAt", "name"] as const,
+      defaultSort: "updatedAt",
+    });
+    const status = templateStatus(searchParams.get("status"));
+    const conditions: SQL[] = [eq(templates.ownerEmail, ownerEmail)];
+    if (status === "active") conditions.push(isNull(templates.archivedAt));
+    if (status === "archived") conditions.push(isNotNull(templates.archivedAt));
+    const search = searchParams.get("search")?.trim().slice(0, 120);
+    if (search) {
+      const pattern = `%${escapeLike(search)}%`;
+      conditions.push(or(
+        like(templates.name, pattern),
+        like(templates.description, pattern),
+        like(templates.fileName, pattern),
+      )!);
+    }
+    const sortColumn = {
+      updatedAt: templates.updatedAt,
+      createdAt: templates.createdAt,
+      name: templates.name,
+    }[pageQuery.sort];
+    const direction = pageQuery.order === "asc" ? asc : desc;
     const db = getDb();
-    const templateRows = await db
-      .select()
-      .from(templates)
-      .where(eq(templates.ownerEmail, ownerEmail))
-      .orderBy(desc(templates.updatedAt));
+    const [templateRows, totals, templateStats, roleTotals] = await Promise.all([
+      db
+        .select()
+        .from(templates)
+        .where(and(...conditions))
+        .orderBy(direction(sortColumn), direction(templates.id))
+        .limit(pageQuery.pageSize)
+        .offset(pageQuery.offset),
+      db
+        .select({ total: count() })
+        .from(templates)
+        .where(and(...conditions)),
+      db
+        .select({
+          active: sql<number>`sum(case when ${templates.archivedAt} is null then 1 else 0 end)`,
+          archived: sql<number>`sum(case when ${templates.archivedAt} is not null then 1 else 0 end)`,
+        })
+        .from(templates)
+        .where(eq(templates.ownerEmail, ownerEmail)),
+      db
+        .select({ total: count() })
+        .from(recipientLinks)
+        .innerJoin(templates, eq(recipientLinks.templateId, templates.id))
+        .where(and(
+          eq(templates.ownerEmail, ownerEmail),
+          isNull(templates.archivedAt),
+          isNull(recipientLinks.assignedUserId),
+          eq(recipientLinks.templateVersionId, templates.currentVersionId),
+        )),
+    ]);
+
+    const stats = {
+      active: templateStats[0]?.active ?? 0,
+      archived: templateStats[0]?.archived ?? 0,
+      recipientRoles: roleTotals[0]?.total ?? 0,
+    };
 
     if (templateRows.length === 0) {
-      return Response.json({ templates: [] });
+      return Response.json(
+        {
+          items: [],
+          stats,
+          ...createPageMeta(totals[0]?.total ?? 0, pageQuery),
+        },
+        { headers: { "Cache-Control": "private, no-store" } },
+      );
     }
+
+    const templateIds = templateRows.map((template) => template.id);
 
     const [linkRows, submissionCountRows, assignmentCountRows, versionRows] =
       await Promise.all([
@@ -73,6 +141,7 @@ export async function GET(request: Request) {
           .where(
             and(
               eq(templates.ownerEmail, ownerEmail),
+              inArray(templates.id, templateIds),
               isNull(recipientLinks.assignedUserId),
             ),
           ),
@@ -80,13 +149,19 @@ export async function GET(request: Request) {
           .select({ templateId: submissions.templateId, total: count() })
           .from(submissions)
           .innerJoin(templates, eq(submissions.templateId, templates.id))
-          .where(eq(templates.ownerEmail, ownerEmail))
+          .where(and(
+            eq(templates.ownerEmail, ownerEmail),
+            inArray(templates.id, templateIds),
+          ))
           .groupBy(submissions.templateId),
         db
           .select({ templateId: formAssignments.templateId, total: count() })
           .from(formAssignments)
           .innerJoin(templates, eq(formAssignments.templateId, templates.id))
-          .where(eq(templates.ownerEmail, ownerEmail))
+          .where(and(
+            eq(templates.ownerEmail, ownerEmail),
+            inArray(templates.id, templateIds),
+          ))
           .groupBy(formAssignments.templateId),
         db
           .select({
@@ -97,7 +172,10 @@ export async function GET(request: Request) {
           })
           .from(templateVersions)
           .innerJoin(templates, eq(templateVersions.templateId, templates.id))
-          .where(eq(templates.ownerEmail, ownerEmail))
+          .where(and(
+            eq(templates.ownerEmail, ownerEmail),
+            inArray(templates.id, templateIds),
+          ))
           .orderBy(desc(templateVersions.versionNumber)),
       ]);
     const linksByTemplate = groupBy(linkRows, (row) => row.templateId);
@@ -156,7 +234,14 @@ export async function GET(request: Request) {
       };
     });
 
-    return Response.json({ templates: result });
+    return Response.json(
+      {
+        items: result,
+        stats,
+        ...createPageMeta(totals[0]?.total ?? 0, pageQuery),
+      },
+      { headers: { "Cache-Control": "private, no-store" } },
+    );
   } catch (error) {
     if (isResponse(error)) return error;
     console.error("Failed to list templates", error);
@@ -183,6 +268,14 @@ function uniqueVersionRoles(rolesJsonValues: string[]) {
     }
   }
   return [...roles.values()];
+}
+
+function templateStatus(value: string | null): "active" | "archived" | "all" {
+  return value === "active" || value === "archived" ? value : "all";
+}
+
+function escapeLike(value: string): string {
+  return value.replaceAll("%", "\\%").replaceAll("_", "\\_");
 }
 
 export async function POST(request: Request) {
@@ -288,6 +381,19 @@ export async function POST(request: Request) {
         publishedAt: now,
       }),
       db.insert(recipientLinks).values(linkRows.map(({ row }) => row)),
+      db.insert(auditEvents).values(
+        createAuditEvent({
+          request,
+          ownerEmail,
+          actorType: "owner",
+          actorId: ownerEmail,
+          action: "template.created",
+          targetType: "template",
+          targetId: templateId,
+          metadata: { roleCount: roles.length, versionNumber: 1 },
+          createdAt: now,
+        }),
+      ),
     ]);
 
     const shareLinks = linkRows.map(({ row, token }) => ({

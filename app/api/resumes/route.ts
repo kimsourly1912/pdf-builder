@@ -1,7 +1,9 @@
-import { and, desc, eq, gte, inArray, like, lte, or, type SQL } from "drizzle-orm";
+import { and, asc, count, desc, eq, gte, inArray, like, lte, or, sql, type SQL } from "drizzle-orm";
 
 import { getDb } from "@/db";
-import { candidateResumeLinks, candidates, resumeExtractions, resumeProcessingJobs, resumes } from "@/db/schema";
+import { auditEvents, candidateResumeLinks, candidates, resumeExtractions, resumeProcessingJobs, resumes } from "@/db/schema";
+import { createAuditEvent } from "@/features/audit/audit.server";
+import { createPageMeta, parsePageQuery } from "@/features/pagination/pagination";
 import { normalizeEmail, normalizePhone } from "@/features/resumes/resume-extraction";
 import {
   candidateInsertFromExtraction,
@@ -28,6 +30,10 @@ export async function GET(request: Request) {
     const statusValue = url.searchParams.get("status")?.trim() ?? "";
     const receivedFrom = url.searchParams.get("receivedFrom")?.trim() ?? "";
     const receivedTo = url.searchParams.get("receivedTo")?.trim() ?? "";
+    const pageQuery = parsePageQuery(url.searchParams, {
+      sorts: ["receivedDate", "createdAt", "updatedAt", "fileName"] as const,
+      defaultSort: "receivedDate",
+    });
     const conditions: SQL[] = [eq(resumes.ownerEmail, ownerEmail)];
     if (source) conditions.push(eq(resumes.source, source));
     if (statusValue && isResumeStatus(statusValue)) conditions.push(eq(resumes.status, statusValue));
@@ -43,16 +49,37 @@ export async function GET(request: Request) {
         like(candidates.phone, pattern),
       )!);
     }
-    const rows = await getDb()
-      .select({ resume: resumes, candidate: candidates })
-      .from(resumes)
-      .leftJoin(candidates, eq(resumes.candidateId, candidates.id))
-      .where(and(...conditions))
-      .orderBy(desc(resumes.receivedDate), desc(resumes.createdAt))
-      .limit(100);
+    const sortColumn = {
+      receivedDate: resumes.receivedDate,
+      createdAt: resumes.createdAt,
+      updatedAt: resumes.updatedAt,
+      fileName: resumes.fileName,
+    }[pageQuery.sort];
+    const direction = pageQuery.order === "asc" ? asc : desc;
+    const db = getDb();
+    const [rows, totals] = await Promise.all([
+      db
+        .select({ resume: resumes, candidate: candidates })
+        .from(resumes)
+        .leftJoin(candidates, eq(resumes.candidateId, candidates.id))
+        .where(and(...conditions))
+        .orderBy(direction(sortColumn), direction(resumes.id))
+        .limit(pageQuery.pageSize)
+        .offset(pageQuery.offset),
+      db
+        .select({
+          total: count(),
+          ready: sql<number>`sum(case when ${resumes.status} = 'ready' then 1 else 0 end)`,
+          needsAttention: sql<number>`sum(case when ${resumes.status} in ('needs_attention', 'failed') then 1 else 0 end)`,
+          possibleDuplicates: sql<number>`sum(case when ${resumes.status} = 'possible_duplicate' then 1 else 0 end)`,
+        })
+        .from(resumes)
+        .leftJoin(candidates, eq(resumes.candidateId, candidates.id))
+        .where(and(...conditions)),
+    ]);
     const duplicateIds = [...new Set(rows.map((row) => row.resume.duplicateCandidateId).filter((id): id is string => Boolean(id)))];
     const duplicateRows = duplicateIds.length > 0
-      ? await getDb().select().from(candidates).where(and(eq(candidates.ownerEmail, ownerEmail), inArray(candidates.id, duplicateIds)))
+      ? await db.select().from(candidates).where(and(eq(candidates.ownerEmail, ownerEmail), inArray(candidates.id, duplicateIds)))
       : [];
     const duplicates = new Map(duplicateRows.map((row) => [row.id, row]));
     const items: ResumeSummary[] = rows.map((row) => ({
@@ -70,12 +97,15 @@ export async function GET(request: Request) {
       updatedAt: row.resume.updatedAt,
     }));
     const stats = {
-      total: items.length,
-      ready: items.filter((item) => item.status === "ready").length,
-      needsAttention: items.filter((item) => item.status === "needs_attention" || item.status === "failed").length,
-      possibleDuplicates: items.filter((item) => item.status === "possible_duplicate").length,
+      total: totals[0]?.total ?? 0,
+      ready: totals[0]?.ready ?? 0,
+      needsAttention: totals[0]?.needsAttention ?? 0,
+      possibleDuplicates: totals[0]?.possibleDuplicates ?? 0,
     };
-    return Response.json({ items, stats }, { headers: { "Cache-Control": "no-store" } });
+    return Response.json(
+      { items, stats, ...createPageMeta(stats.total, pageQuery) },
+      { headers: { "Cache-Control": "private, no-store" } },
+    );
   } catch (error) {
     if (isResponse(error)) return error;
     console.error("Failed to list resumes", error);
@@ -167,6 +197,17 @@ export async function POST(request: Request) {
       errorCode: extractionFailed ? "TEXT_EXTRACTION_FAILED" : null,
       startedAt: now, completedAt: now, createdAt: now,
     }));
+    statements.push(db.insert(auditEvents).values(createAuditEvent({
+      request,
+      ownerEmail,
+      actorType: "owner",
+      actorId: ownerEmail,
+      action: "resume.uploaded",
+      targetType: "resume",
+      targetId: resumeId,
+      metadata: { pageCount: inspected.pageCount, source: input.source, status },
+      createdAt: now,
+    })));
     await db.batch(statements as [typeof statements[number], ...typeof statements]);
     return Response.json({ resume: { id: resumeId, status } }, { status: 201 });
   } catch (error) {

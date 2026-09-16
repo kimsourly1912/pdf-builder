@@ -8,6 +8,7 @@ import {
   resumeProcessingJobs,
   resumes,
 } from "@/db/schema";
+import { createAuditEvent } from "@/features/audit/audit.server";
 import { normalizeEmail, normalizePhone } from "@/features/resumes/resume-extraction";
 import {
   candidateInsertFromExtraction,
@@ -147,6 +148,17 @@ export async function DELETE(request: Request, context: { params: Promise<{ id: 
     if (!resume) return jsonError("Resume not found.", 404);
     const database = getDatabaseBinding();
     const now = new Date().toISOString();
+    const auditEvent = createAuditEvent({
+      request,
+      ownerEmail,
+      actorType: "owner",
+      actorId: ownerEmail,
+      action: "resume.deleted",
+      targetType: "resume",
+      targetId: id,
+      metadata: { candidateLinked: Boolean(resume.candidateId) },
+      createdAt: now,
+    });
     const results = await database.batch([
       database
         .prepare(
@@ -160,10 +172,35 @@ export async function DELETE(request: Request, context: { params: Promise<{ id: 
         )
         .bind(crypto.randomUUID(), now, now, id, ownerEmail),
       database
+        .prepare(
+          `INSERT INTO audit_events (
+            id, owner_email, actor_type, actor_id, action, target_type,
+            target_id, request_id, metadata_json, created_at
+          )
+          SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+          WHERE EXISTS (
+            SELECT 1 FROM resumes WHERE id = ? AND owner_email = ?
+          )`,
+        )
+        .bind(
+          auditEvent.id,
+          auditEvent.ownerEmail,
+          auditEvent.actorType,
+          auditEvent.actorId,
+          auditEvent.action,
+          auditEvent.targetType,
+          auditEvent.targetId,
+          auditEvent.requestId,
+          auditEvent.metadataJson,
+          auditEvent.createdAt,
+          id,
+          ownerEmail,
+        ),
+      database
         .prepare("DELETE FROM resumes WHERE id = ? AND owner_email = ?")
         .bind(id, ownerEmail),
     ]);
-    if (Number(results[1]?.meta?.changes ?? 0) === 0) {
+    if (Number(results[2]?.meta?.changes ?? 0) === 0) {
       return jsonError("Resume not found.", 404);
     }
     await processStorageCleanupJobs({ objectKeys: [resume.fileKey] }).catch(

@@ -1,7 +1,13 @@
 import { and, eq, isNull } from "drizzle-orm";
 
 import { getDb } from "@/db";
-import { recipientLinks, templates, templateVersions } from "@/db/schema";
+import {
+  auditEvents,
+  recipientLinks,
+  templates,
+  templateVersions,
+} from "@/db/schema";
+import { createAuditEvent } from "@/features/audit/audit.server";
 import {
   parseLinkExpiration,
   parseMaxSubmissions,
@@ -50,20 +56,40 @@ export async function POST(
 
     const token = createRecipientToken();
     const updatedAt = now.toISOString();
-    await getDb()
-      .update(recipientLinks)
-      .set({
-        templateVersionId: result.template.currentVersionId,
-        tokenHash: await hashRecipientToken(token),
-        status: "active",
-        expiresAt,
-        maxSubmissions,
-        submissionCount: 0,
-        revokedAt: null,
-        completedAt: null,
-        updatedAt,
-      })
-      .where(eq(recipientLinks.id, result.link.id));
+    const db = getDb();
+    await db.batch([
+      db
+        .update(recipientLinks)
+        .set({
+          templateVersionId: result.template.currentVersionId,
+          tokenHash: await hashRecipientToken(token),
+          status: "active",
+          expiresAt,
+          maxSubmissions,
+          submissionCount: 0,
+          revokedAt: null,
+          completedAt: null,
+          updatedAt,
+        })
+        .where(eq(recipientLinks.id, result.link.id)),
+      db.insert(auditEvents).values(
+        createAuditEvent({
+          request,
+          ownerEmail,
+          actorType: "owner",
+          actorId: ownerEmail,
+          action: "link.regenerated",
+          targetType: "recipient_link",
+          targetId: result.link.id,
+          metadata: {
+            maxSubmissions,
+            roleId: result.link.roleId,
+            templateId: id,
+          },
+          createdAt: updatedAt,
+        }),
+      ),
+    ]);
 
     return Response.json({
       link: {
@@ -101,10 +127,26 @@ export async function PATCH(
     if (!result) return jsonError("Recipient role not found.", 404);
 
     const now = new Date().toISOString();
-    await getDb()
-      .update(recipientLinks)
-      .set({ status: "revoked", revokedAt: now, updatedAt: now })
-      .where(eq(recipientLinks.id, result.link.id));
+    const db = getDb();
+    await db.batch([
+      db
+        .update(recipientLinks)
+        .set({ status: "revoked", revokedAt: now, updatedAt: now })
+        .where(eq(recipientLinks.id, result.link.id)),
+      db.insert(auditEvents).values(
+        createAuditEvent({
+          request,
+          ownerEmail,
+          actorType: "owner",
+          actorId: ownerEmail,
+          action: "link.revoked",
+          targetType: "recipient_link",
+          targetId: result.link.id,
+          metadata: { roleId: result.link.roleId, templateId: id },
+          createdAt: now,
+        }),
+      ),
+    ]);
 
     return Response.json({
       link: {

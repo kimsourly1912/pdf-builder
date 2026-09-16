@@ -1,6 +1,6 @@
 import "server-only";
 
-import { and, count, desc, eq, gte, like, lt, or } from "drizzle-orm";
+import { and, asc, count, desc, eq, gte, like, lt, or } from "drizzle-orm";
 import type { SQL } from "drizzle-orm";
 
 import { getDb } from "@/db";
@@ -24,9 +24,13 @@ import type { TemplateAnnotation } from "@/features/templates/template.types";
 export async function queryOwnedSubmissions(
   ownerEmail: string,
   filters: SubmissionFilters,
-  limit = 200,
+  pagination: number | { pageSize: number; offset: number; order?: "asc" | "desc" } = 200,
 ) {
   const conditions = submissionConditions(ownerEmail, filters);
+  const pageSize = typeof pagination === "number" ? pagination : pagination.pageSize;
+  const offset = typeof pagination === "number" ? 0 : pagination.offset;
+  const order = typeof pagination === "number" ? "desc" : pagination.order ?? "desc";
+  const direction = order === "asc" ? asc : desc;
   const db = getDb();
   const [rows, totals] = await Promise.all([
     db
@@ -58,8 +62,9 @@ export async function queryOwnedSubmissions(
         eq(submissions.recipientLinkId, recipientLinks.id),
       )
       .where(and(...conditions))
-      .orderBy(desc(submissions.submittedAt))
-      .limit(limit),
+      .orderBy(direction(submissions.submittedAt), direction(submissions.id))
+      .limit(pageSize)
+      .offset(offset),
     db
       .select({ total: count() })
       .from(submissions)

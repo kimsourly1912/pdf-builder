@@ -35,6 +35,7 @@ import {
 } from "@/components/patterns/data-view";
 import { MetricCard } from "@/components/patterns/metric-card";
 import { PageHeader } from "@/components/patterns/page-header";
+import { ServerPagination } from "@/components/patterns/server-pagination";
 import { StatusBadge } from "@/components/patterns/status-badge";
 import type { StatusTone } from "@/components/patterns/status-badge";
 import { Button } from "@/components/ui/button";
@@ -102,6 +103,8 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { formatCambodiaAddress } from "@/features/gazetteer/gazetteer";
+import { pageMetaFromPayload } from "@/features/pagination/pagination";
+import type { PageMeta } from "@/features/pagination/pagination";
 import {
   formatLocalDateTime,
   resolvedLocalTimeZone,
@@ -176,11 +179,33 @@ const EMPTY_FILTERS: DashboardFilters = {
   toDate: "",
 };
 
+const EMPTY_PAGE_META: PageMeta = {
+  page: 1,
+  pageSize: 25,
+  totalItems: 0,
+  totalPages: 0,
+  hasPreviousPage: false,
+  hasNextPage: false,
+};
+
 export function TemplatesDashboard(props: { displayName: string }) {
   const copyLinkTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [templates, setTemplates] = useState<TemplateSummary[]>([]);
+  const [templateOptions, setTemplateOptions] = useState<TemplateSummary[]>([]);
   const [submissions, setSubmissions] = useState<SubmissionSummary[]>([]);
   const [submissionTotal, setSubmissionTotal] = useState(0);
+  const [templateStats, setTemplateStats] = useState({
+    active: 0,
+    archived: 0,
+    recipientRoles: 0,
+  });
+  const [activePageMeta, setActivePageMeta] = useState<PageMeta>(EMPTY_PAGE_META);
+  const [archivedPageMeta, setArchivedPageMeta] = useState<PageMeta>(EMPTY_PAGE_META);
+  const [submissionPageMeta, setSubmissionPageMeta] = useState<PageMeta>(EMPTY_PAGE_META);
+  const [activeSearchDraft, setActiveSearchDraft] = useState("");
+  const [activeSearch, setActiveSearch] = useState("");
+  const [archivedSearchDraft, setArchivedSearchDraft] = useState("");
+  const [archivedSearch, setArchivedSearch] = useState("");
   const [activeView, setActiveView] = useState<DashboardView>("templates");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -204,35 +229,94 @@ export function TemplatesDashboard(props: { displayName: string }) {
     setError("");
     try {
       const submissionParams = submissionFilterParams(appliedFilters);
-      const [templateResponse, submissionResponse] = await Promise.all([
-        fetch("/api/templates", { cache: "no-store" }),
+      submissionParams.set("page", String(submissionPageMeta.page));
+      submissionParams.set("pageSize", String(submissionPageMeta.pageSize));
+      const activeParams = new URLSearchParams({
+        status: "active",
+        page: String(activePageMeta.page),
+        pageSize: String(activePageMeta.pageSize),
+      });
+      const archivedParams = new URLSearchParams({
+        status: "archived",
+        page: String(archivedPageMeta.page),
+        pageSize: String(archivedPageMeta.pageSize),
+      });
+      if (activeSearch) activeParams.set("search", activeSearch);
+      if (archivedSearch) archivedParams.set("search", archivedSearch);
+      const [activeResponse, archivedResponse, optionsResponse, submissionResponse] = await Promise.all([
+        fetch(`/api/templates?${activeParams}`, { cache: "no-store" }),
+        fetch(`/api/templates?${archivedParams}`, { cache: "no-store" }),
+        fetch("/api/templates?status=all&pageSize=100&sort=name&order=asc", { cache: "no-store" }),
         fetch(`/api/submissions?${submissionParams}`, { cache: "no-store" }),
       ]);
-      const templatePayload = (await templateResponse.json()) as {
-        templates?: TemplateSummary[];
+      const activePayload = (await activeResponse.json()) as {
+        items?: TemplateSummary[];
+        stats?: { active: number; archived: number; recipientRoles: number };
+        page?: number;
+        pageSize?: number;
+        totalItems?: number;
+        totalPages?: number;
+        hasPreviousPage?: boolean;
+        hasNextPage?: boolean;
+        error?: string;
+      };
+      const archivedPayload = (await archivedResponse.json()) as {
+        items?: TemplateSummary[];
+        page?: number;
+        pageSize?: number;
+        totalItems?: number;
+        totalPages?: number;
+        hasPreviousPage?: boolean;
+        hasNextPage?: boolean;
+        error?: string;
+      };
+      const optionsPayload = (await optionsResponse.json()) as {
+        items?: TemplateSummary[];
         error?: string;
       };
       const submissionPayload = (await submissionResponse.json()) as {
-        submissions?: SubmissionSummary[];
-        total?: number;
+        items?: SubmissionSummary[];
+        page?: number;
+        pageSize?: number;
+        totalItems?: number;
+        totalPages?: number;
+        hasPreviousPage?: boolean;
+        hasNextPage?: boolean;
         error?: string;
       };
-      if (!templateResponse.ok || !submissionResponse.ok) {
+      if (!activeResponse.ok || !archivedResponse.ok || !optionsResponse.ok || !submissionResponse.ok) {
         throw new Error(
-          templatePayload.error ||
+          activePayload.error ||
+            archivedPayload.error ||
+            optionsPayload.error ||
             submissionPayload.error ||
             "Dashboard could not be loaded.",
         );
       }
-      setTemplates(templatePayload.templates ?? []);
-      setSubmissions(submissionPayload.submissions ?? []);
-      setSubmissionTotal(submissionPayload.total ?? 0);
+      setTemplates([...(activePayload.items ?? []), ...(archivedPayload.items ?? [])]);
+      setTemplateOptions(optionsPayload.items ?? []);
+      setSubmissions(submissionPayload.items ?? []);
+      setTemplateStats(activePayload.stats ?? { active: 0, archived: 0, recipientRoles: 0 });
+      setActivePageMeta((current) => pageMetaFromPayload(activePayload, current));
+      setArchivedPageMeta((current) => pageMetaFromPayload(archivedPayload, current));
+      setSubmissionPageMeta((current) => pageMetaFromPayload(submissionPayload, current));
+      setSubmissionTotal(submissionPayload.totalItems ?? 0);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Dashboard could not be loaded.");
     } finally {
       setLoading(false);
     }
-  }, [appliedFilters]);
+  }, [
+    activePageMeta.page,
+    activePageMeta.pageSize,
+    activeSearch,
+    appliedFilters,
+    archivedPageMeta.page,
+    archivedPageMeta.pageSize,
+    archivedSearch,
+    submissionPageMeta.page,
+    submissionPageMeta.pageSize,
+  ]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => void loadData(), 0);
@@ -261,11 +345,6 @@ export function TemplatesDashboard(props: { displayName: string }) {
     () => templates.filter((template) => template.archivedAt),
     [templates],
   );
-  const totalRecipients = useMemo(
-    () => activeTemplates.reduce((total, template) => total + template.recipients.length, 0),
-    [activeTemplates],
-  );
-
   async function regenerateLink(templateId: string, roleId: string) {
     const key = `${templateId}:${roleId}`;
     setLinkActionKey(key);
@@ -389,6 +468,7 @@ export function TemplatesDashboard(props: { displayName: string }) {
           `“${template.name}” was archived. Pending assignments were cancelled and submission history was preserved.`,
         );
       }
+      await loadData();
     } catch (cause) {
       setError(
         cause instanceof Error ? cause.message : "The template could not be removed.",
@@ -429,6 +509,7 @@ export function TemplatesDashboard(props: { displayName: string }) {
       setNotice(
         `“${template.name}” was restored. Old links and cancelled assignments remain inactive.`,
       );
+      await loadData();
     } catch (cause) {
       setError(
         cause instanceof Error ? cause.message : "The template could not be restored.",
@@ -442,6 +523,7 @@ export function TemplatesDashboard(props: { displayName: string }) {
     const filters = { ...EMPTY_FILTERS, templateId: template.id };
     setFilterDraft(filters);
     setAppliedFilters(filters);
+    setSubmissionPageMeta((current) => ({ ...current, page: 1 }));
     setActiveView("submissions");
   }
 
@@ -486,9 +568,9 @@ export function TemplatesDashboard(props: { displayName: string }) {
         />
 
         <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <MetricCard label="Active templates" value={activeTemplates.length} icon={<FolderOpen />} tone="primary" />
-          <MetricCard label="Archived templates" value={archivedTemplates.length} icon={<Archive />} tone="warning" />
-          <MetricCard label="Recipient roles" value={totalRecipients} icon={<Link2 />} />
+          <MetricCard label="Active templates" value={templateStats.active} icon={<FolderOpen />} tone="primary" />
+          <MetricCard label="Archived templates" value={templateStats.archived} icon={<Archive />} tone="warning" />
+          <MetricCard label="Recipient roles" value={templateStats.recipientRoles} icon={<Link2 />} />
           <MetricCard label="Submissions" value={submissionTotal} icon={<Inbox />} tone="success" />
         </section>
 
@@ -511,33 +593,37 @@ export function TemplatesDashboard(props: { displayName: string }) {
           <DataView>
             <DataViewHeader>
             <TabsList variant="line" className="grid h-auto w-full grid-cols-3 sm:w-auto">
-              <TabsTrigger value="templates"><FolderOpen /> Templates <Badge variant="secondary" className="ml-1 hidden sm:inline-flex">{activeTemplates.length}</Badge></TabsTrigger>
+              <TabsTrigger value="templates"><FolderOpen /> Templates <Badge variant="secondary" className="ml-1 hidden sm:inline-flex">{templateStats.active}</Badge></TabsTrigger>
               <TabsTrigger value="submissions"><Inbox /> Submissions <Badge variant="secondary" className="ml-1 hidden sm:inline-flex">{submissionTotal}</Badge></TabsTrigger>
-              <TabsTrigger value="archived"><Archive /> Archived <Badge variant="secondary" className="ml-1 hidden sm:inline-flex">{archivedTemplates.length}</Badge></TabsTrigger>
+              <TabsTrigger value="archived"><Archive /> Archived <Badge variant="secondary" className="ml-1 hidden sm:inline-flex">{templateStats.archived}</Badge></TabsTrigger>
             </TabsList>
             <Button type="button" variant="outline" size="sm" onClick={() => void loadData()} disabled={loading}><RefreshCw className={loading ? "animate-spin" : ""} /> Refresh</Button>
             </DataViewHeader>
             <DataViewContent>
 
           <TabsContent value="templates">
-            {loading ? <DashboardSkeleton /> : <TemplateTable templates={activeTemplates} generatedLinks={generatedLinks} linkActionKey={linkActionKey} copiedLinkKey={copiedLinkKey} removingTemplateId={removingTemplateId} localTimeZone={localTimeZone} onRegenerate={regenerateLink} onRevoke={revokeLink} onCopy={copyGeneratedLink} onRequestRemove={setTemplatePendingRemoval} />}
+            {loading ? <DashboardSkeleton /> : <TemplateTable templates={activeTemplates} generatedLinks={generatedLinks} linkActionKey={linkActionKey} copiedLinkKey={copiedLinkKey} removingTemplateId={removingTemplateId} localTimeZone={localTimeZone} pageMeta={activePageMeta} searchDraft={activeSearchDraft} onSearchDraftChange={setActiveSearchDraft} onSearch={() => { setActivePageMeta((current) => ({ ...current, page: 1 })); setActiveSearch(activeSearchDraft.trim()); }} onPageChange={(page) => setActivePageMeta((current) => ({ ...current, page }))} onPageSizeChange={(pageSize) => setActivePageMeta((current) => ({ ...current, page: 1, pageSize }))} onRegenerate={regenerateLink} onRevoke={revokeLink} onCopy={copyGeneratedLink} onRequestRemove={setTemplatePendingRemoval} />}
           </TabsContent>
           <TabsContent value="submissions">
             {loading ? <DashboardSkeleton /> : <div>
             <SubmissionFilterPanel
-              templates={templates}
+              templates={templateOptions}
               draft={filterDraft}
               applied={appliedFilters}
               total={submissionTotal}
               localTimeZone={localTimeZone}
               onDraftChange={setFilterDraft}
-              onApply={() => setAppliedFilters(filterDraft)}
+              onApply={() => {
+                setSubmissionPageMeta((current) => ({ ...current, page: 1 }));
+                setAppliedFilters(filterDraft);
+              }}
               onClear={() => {
                 setFilterDraft(EMPTY_FILTERS);
                 setAppliedFilters(EMPTY_FILTERS);
+                setSubmissionPageMeta((current) => ({ ...current, page: 1 }));
               }}
             />
-            <SubmissionTable submissions={submissions} localTimeZone={localTimeZone} />
+            <SubmissionTable submissions={submissions} localTimeZone={localTimeZone} pageMeta={submissionPageMeta} onPageChange={(page) => setSubmissionPageMeta((current) => ({ ...current, page }))} onPageSizeChange={(pageSize) => setSubmissionPageMeta((current) => ({ ...current, page: 1, pageSize }))} />
             </div>}
           </TabsContent>
           <TabsContent value="archived">
@@ -547,6 +633,12 @@ export function TemplatesDashboard(props: { displayName: string }) {
             localTimeZone={localTimeZone}
             onRestore={(template) => void restoreTemplate(template)}
             onViewSubmissions={viewTemplateSubmissions}
+            pageMeta={archivedPageMeta}
+            searchDraft={archivedSearchDraft}
+            onSearchDraftChange={setArchivedSearchDraft}
+            onSearch={() => { setArchivedPageMeta((current) => ({ ...current, page: 1 })); setArchivedSearch(archivedSearchDraft.trim()); }}
+            onPageChange={(page) => setArchivedPageMeta((current) => ({ ...current, page }))}
+            onPageSizeChange={(pageSize) => setArchivedPageMeta((current) => ({ ...current, page: 1, pageSize }))}
             />}
           </TabsContent>
             </DataViewContent>
@@ -575,6 +667,12 @@ function TemplateTable(props: {
   copiedLinkKey: string | null;
   removingTemplateId: string | null;
   localTimeZone: string;
+  pageMeta: PageMeta;
+  searchDraft: string;
+  onSearchDraftChange: (value: string) => void;
+  onSearch: () => void;
+  onPageChange: (page: number) => void;
+  onPageSizeChange: (pageSize: number) => void;
   onRegenerate: (templateId: string, roleId: string) => Promise<void>;
   onRevoke: (templateId: string, roleId: string) => Promise<void>;
   onCopy: (key: string, url: string) => Promise<void>;
@@ -714,6 +812,12 @@ function TemplateTable(props: {
 
   return (
     <>
+      <TemplateListSearch
+        value={props.searchDraft}
+        placeholder="Search active templates"
+        onChange={props.onSearchDraftChange}
+        onSearch={props.onSearch}
+      />
       <DataTable
         columns={columns}
         data={props.templates}
@@ -722,10 +826,15 @@ function TemplateTable(props: {
         emptyTitle="No templates yet"
         emptyDescription="Open the editor, add fields, and choose Save template."
         emptyIcon={<FolderOpen />}
-        filterColumn="name"
-        filterPlaceholder="Filter templates..."
         enableRowSelection
+        initialPageSize={props.pageMeta.pageSize}
+        hidePagination
         surface="embedded"
+      />
+      <ServerPagination
+        meta={props.pageMeta}
+        onPageChange={props.onPageChange}
+        onPageSizeChange={props.onPageSizeChange}
       />
       <TemplateLinksDialog
         template={linksTemplate ?? null}
@@ -1011,6 +1120,12 @@ function ArchivedTemplateTable(props: {
   localTimeZone: string;
   onRestore: (template: TemplateSummary) => void;
   onViewSubmissions: (template: TemplateSummary) => void;
+  pageMeta: PageMeta;
+  searchDraft: string;
+  onSearchDraftChange: (value: string) => void;
+  onSearch: () => void;
+  onPageChange: (page: number) => void;
+  onPageSizeChange: (pageSize: number) => void;
 }) {
   const columns: ColumnDef<DataTableFeatures, TemplateSummary>[] = [
     {
@@ -1135,7 +1250,14 @@ function ArchivedTemplateTable(props: {
   ];
 
   return (
-    <DataTable
+    <>
+      <TemplateListSearch
+        value={props.searchDraft}
+        placeholder="Search archived templates"
+        onChange={props.onSearchDraftChange}
+        onSearch={props.onSearch}
+      />
+      <DataTable
       columns={columns}
       data={props.templates}
       getRowId={(template) => template.id}
@@ -1143,11 +1265,45 @@ function ArchivedTemplateTable(props: {
       emptyTitle="No archived templates"
       emptyDescription="Templates you archive will appear here with their assignment and submission history."
       emptyIcon={<Archive />}
-      filterColumn="name"
-      filterPlaceholder="Filter archived templates..."
       enableRowSelection
+      initialPageSize={props.pageMeta.pageSize}
+      hidePagination
       surface="embedded"
-    />
+      />
+      <ServerPagination
+        meta={props.pageMeta}
+        onPageChange={props.onPageChange}
+        onPageSizeChange={props.onPageSizeChange}
+      />
+    </>
+  );
+}
+
+function TemplateListSearch(props: {
+  value: string;
+  placeholder: string;
+  onChange: (value: string) => void;
+  onSearch: () => void;
+}) {
+  return (
+    <form
+      className="flex max-w-xl gap-2 border-b p-4"
+      onSubmit={(event) => {
+        event.preventDefault();
+        props.onSearch();
+      }}
+    >
+      <InputGroup>
+        <InputGroupAddon><Search /></InputGroupAddon>
+        <InputGroupInput
+          value={props.value}
+          onChange={(event) => props.onChange(event.target.value)}
+          placeholder={props.placeholder}
+          aria-label={props.placeholder}
+        />
+      </InputGroup>
+      <Button type="submit" variant="outline">Search</Button>
+    </form>
   );
 }
 
@@ -1398,6 +1554,9 @@ function SubmissionFilterPanel(props: {
 function SubmissionTable(props: {
   submissions: SubmissionSummary[];
   localTimeZone: string;
+  pageMeta: PageMeta;
+  onPageChange: (page: number) => void;
+  onPageSizeChange: (pageSize: number) => void;
 }) {
   const [detailSubmissionId, setDetailSubmissionId] = useState<string | null>(
     null,
@@ -1532,10 +1691,15 @@ function SubmissionTable(props: {
         emptyTitle="No submissions yet"
         emptyDescription="Completed recipient forms will appear here."
         emptyIcon={<Inbox />}
-        filterColumn="recipientName"
-        filterPlaceholder="Filter recipients..."
         enableRowSelection
+        initialPageSize={props.pageMeta.pageSize}
+        hidePagination
         surface="embedded"
+      />
+      <ServerPagination
+        meta={props.pageMeta}
+        onPageChange={props.onPageChange}
+        onPageSizeChange={props.onPageSizeChange}
       />
       <SubmissionDetailsDialog
         submission={detailSubmission ?? null}

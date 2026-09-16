@@ -9,6 +9,7 @@ import {
   templateVersions,
 } from "@/db/schema";
 import { authorizeAssignedRecipient } from "@/features/accounts/account.server";
+import { createAuditEvent } from "@/features/audit/audit.server";
 import { compensateStorageWrites } from "@/features/storage/storage-cleanup.server";
 import { buildSubmissionAnswers } from "@/features/templates/label-binding";
 import {
@@ -267,6 +268,22 @@ export async function POST(
     });
 
     const now = new Date().toISOString();
+    const auditEvent = createAuditEvent({
+      request,
+      ownerEmail: fillContext.template.ownerEmail,
+      actorType: "recipient",
+      actorId: assignedAccount?.session.user.id ?? fillContext.link.id,
+      action: "submission.completed",
+      targetType: "submission",
+      targetId: submissionId,
+      metadata: {
+        assigned: Boolean(assignedAccount),
+        roleId: fillContext.link.roleId,
+        templateId: fillContext.template.id,
+        versionNumber: fillContext.version.versionNumber,
+      },
+      createdAt: now,
+    });
     const database = getDatabaseBinding();
     const results = await database.batch([
       database
@@ -328,6 +345,28 @@ export async function POST(
             AND EXISTS (SELECT 1 FROM submissions WHERE id = ?)`,
         )
         .bind(now, now, fillContext.link.id, submissionId),
+      database
+        .prepare(
+          `INSERT INTO audit_events (
+            id, owner_email, actor_type, actor_id, action, target_type,
+            target_id, request_id, metadata_json, created_at
+          )
+          SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+          WHERE EXISTS (SELECT 1 FROM submissions WHERE id = ?)`,
+        )
+        .bind(
+          auditEvent.id,
+          auditEvent.ownerEmail,
+          auditEvent.actorType,
+          auditEvent.actorId,
+          auditEvent.action,
+          auditEvent.targetType,
+          auditEvent.targetId,
+          auditEvent.requestId,
+          auditEvent.metadataJson,
+          auditEvent.createdAt,
+          submissionId,
+        ),
     ]);
 
     const inserted = Number(results[0]?.meta?.changes ?? 0) > 0;

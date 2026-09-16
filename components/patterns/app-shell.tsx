@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  Activity,
   FilePenLine,
   Files,
   FileText,
@@ -39,6 +40,7 @@ const navigationItems = [
   { href: "/templates", label: "Templates", icon: Files },
   { href: "/resumes", label: "Resumes", icon: FileText },
   { href: "/accounts", label: "Accounts", icon: UsersRound },
+  { href: "/activity", label: "Activity", icon: Activity },
 ];
 
 function AppShell(props: AppShellProps) {

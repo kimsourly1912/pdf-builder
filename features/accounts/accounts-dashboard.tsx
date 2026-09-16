@@ -7,17 +7,19 @@ import {
   LoaderCircle,
   Plus,
   RefreshCw,
+  Search,
   Send,
   ShieldCheck,
   UserPlus,
   UsersRound,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import { AppShell } from "@/components/patterns/app-shell";
 import { FeedbackAlert } from "@/components/patterns/feedback-alert";
 import { MetricCard } from "@/components/patterns/metric-card";
 import { PageHeader } from "@/components/patterns/page-header";
+import { ServerPagination } from "@/components/patterns/server-pagination";
 import { StatusBadge } from "@/components/patterns/status-badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -33,6 +35,11 @@ import {
 } from "@/components/ui/empty";
 import { Input } from "@/components/ui/input";
 import {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupInput,
+} from "@/components/ui/input-group";
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -46,6 +53,8 @@ import {
   generateTemporaryPassword,
 } from "@/features/accounts/account-share";
 import { assignmentDisplay } from "@/features/accounts/assignment-status";
+import { pageMetaFromPayload } from "@/features/pagination/pagination";
+import type { PageMeta } from "@/features/pagination/pagination";
 import type {
   RecipientAccountSummary,
   RecipientAccountType,
@@ -74,9 +83,22 @@ type CreatedCredentials = {
 
 type AssignmentDraft = { templateId: string; roleId: string };
 
+const EMPTY_PAGE_META: PageMeta = {
+  page: 1,
+  pageSize: 25,
+  totalItems: 0,
+  totalPages: 0,
+  hasPreviousPage: false,
+  hasNextPage: false,
+};
+
 export function AccountsDashboard(props: { displayName: string }) {
   const [accounts, setAccounts] = useState<RecipientAccountSummary[]>([]);
   const [templates, setTemplates] = useState<TemplateSummary[]>([]);
+  const [pageMeta, setPageMeta] = useState<PageMeta>(EMPTY_PAGE_META);
+  const [assignmentCount, setAssignmentCount] = useState(0);
+  const [searchDraft, setSearchDraft] = useState("");
+  const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [assigningUserId, setAssigningUserId] = useState<string | null>(null);
@@ -98,16 +120,28 @@ export function AccountsDashboard(props: { displayName: string }) {
     setLoading(true);
     setError("");
     try {
+      const accountQuery = new URLSearchParams({
+        page: String(pageMeta.page),
+        pageSize: String(pageMeta.pageSize),
+      });
+      if (search) accountQuery.set("search", search);
       const [accountsResponse, templatesResponse] = await Promise.all([
-        fetch("/api/accounts", { cache: "no-store" }),
-        fetch("/api/templates", { cache: "no-store" }),
+        fetch(`/api/accounts?${accountQuery}`, { cache: "no-store" }),
+        fetch("/api/templates?status=active&pageSize=100&sort=name&order=asc", { cache: "no-store" }),
       ]);
       const accountsPayload = (await accountsResponse.json()) as {
-        accounts?: RecipientAccountSummary[];
+        items?: RecipientAccountSummary[];
+        stats?: { accounts: number; assignments: number };
+        page?: number;
+        pageSize?: number;
+        totalItems?: number;
+        totalPages?: number;
+        hasPreviousPage?: boolean;
+        hasNextPage?: boolean;
         error?: string;
       };
       const templatesPayload = (await templatesResponse.json()) as {
-        templates?: TemplateSummary[];
+        items?: TemplateSummary[];
         error?: string;
       };
       if (!accountsResponse.ok || !templatesResponse.ok) {
@@ -117,12 +151,10 @@ export function AccountsDashboard(props: { displayName: string }) {
             "Accounts could not be loaded.",
         );
       }
-      setAccounts(accountsPayload.accounts ?? []);
-      setTemplates(
-        (templatesPayload.templates ?? []).filter(
-          (template) => !template.archivedAt,
-        ),
-      );
+      setAccounts(accountsPayload.items ?? []);
+      setAssignmentCount(accountsPayload.stats?.assignments ?? 0);
+      setPageMeta((current) => pageMetaFromPayload(accountsPayload, current));
+      setTemplates(templatesPayload.items ?? []);
     } catch (cause) {
       setError(
         cause instanceof Error ? cause.message : "Accounts could not be loaded.",
@@ -130,7 +162,7 @@ export function AccountsDashboard(props: { displayName: string }) {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [pageMeta.page, pageMeta.pageSize, search]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -140,11 +172,6 @@ export function AccountsDashboard(props: { displayName: string }) {
     }, 0);
     return () => window.clearTimeout(timer);
   }, [loadData]);
-
-  const assignmentCount = useMemo(
-    () => accounts.reduce((total, account) => total + account.assignments.length, 0),
-    [accounts],
-  );
 
   async function createAccount(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -165,7 +192,7 @@ export function AccountsDashboard(props: { displayName: string }) {
         throw new Error(payload.error || "The account could not be created.");
       }
       const created = payload.account;
-      setAccounts((current) => [created, ...current]);
+      await loadData();
       setCredentials({
         name: created.name,
         email: created.email,
@@ -286,7 +313,7 @@ export function AccountsDashboard(props: { displayName: string }) {
         <section className="grid gap-3 sm:grid-cols-2">
           <MetricCard
             icon={<UsersRound />}
-            value={accounts.length}
+            value={pageMeta.totalItems}
             label="Recipient accounts"
             tone="primary"
           />
@@ -437,6 +464,25 @@ export function AccountsDashboard(props: { displayName: string }) {
                   Assign published template roles to each person.
                 </p>
               </div>
+              <form
+                className="flex w-full max-w-md gap-2 sm:w-auto"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  setPageMeta((current) => ({ ...current, page: 1 }));
+                  setSearch(searchDraft.trim());
+                }}
+              >
+                <InputGroup>
+                  <InputGroupAddon><Search /></InputGroupAddon>
+                  <InputGroupInput
+                    value={searchDraft}
+                    onChange={(event) => setSearchDraft(event.target.value)}
+                    placeholder="Search name or email"
+                    aria-label="Search accounts"
+                  />
+                </InputGroup>
+                <Button type="submit" variant="outline">Search</Button>
+              </form>
             </div>
             {loading ? (
               <div className="mt-5 space-y-3">
@@ -466,6 +512,12 @@ export function AccountsDashboard(props: { displayName: string }) {
                     onAssign={() => void assignForm(account.id)}
                   />
                 ))}
+                <ServerPagination
+                  meta={pageMeta}
+                  disabled={loading || assigningUserId !== null}
+                  onPageChange={(page) => setPageMeta((current) => ({ ...current, page }))}
+                  onPageSizeChange={(pageSize) => setPageMeta((current) => ({ ...current, page: 1, pageSize }))}
+                />
               </div>
             )}
           </section>

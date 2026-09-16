@@ -6,17 +6,28 @@ import {
 import { isStoredSubmissionImage } from "@/features/templates/file-validation";
 import { parseSubmissionFilters } from "@/features/templates/submission-filters";
 import { queryOwnedSubmissions } from "@/features/templates/submission-query.server";
+import {
+  createPageMeta,
+  parsePageQuery,
+} from "@/features/pagination/pagination";
 
 export async function GET(request: Request) {
   try {
     const ownerEmail = await requireRequestOwner(request);
-    const parsed = parseSubmissionFilters(new URL(request.url).searchParams);
+    const searchParams = new URL(request.url).searchParams;
+    const parsed = parseSubmissionFilters(searchParams);
     if (!parsed.filters) return jsonError(parsed.error, 400);
-    const result = await queryOwnedSubmissions(ownerEmail, parsed.filters, 500);
+    const pageQuery = parsePageQuery(searchParams, {
+      sorts: ["submittedAt"] as const,
+      defaultSort: "submittedAt",
+    });
+    const result = await queryOwnedSubmissions(ownerEmail, parsed.filters, {
+      pageSize: pageQuery.pageSize,
+      offset: pageQuery.offset,
+      order: pageQuery.order,
+    });
 
-    return Response.json({
-      total: result.total,
-      submissions: result.rows.map((row) => {
+    const items = result.rows.map((row) => {
         const answers = row.answers.map(
           (answer) => ({
             ...answer,
@@ -47,8 +58,11 @@ export async function GET(request: Request) {
           values: Object.fromEntries(answers.map((answer) => [answer.label, answer.value])),
           hasCompletedPdf: Boolean(row.completedFileKey),
         };
-      }),
-    });
+      });
+    return Response.json(
+      { items, ...createPageMeta(result.total, pageQuery) },
+      { headers: { "Cache-Control": "private, no-store" } },
+    );
   } catch (error) {
     if (isResponse(error)) return error;
     console.error("Failed to list submissions", error);

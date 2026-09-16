@@ -2,12 +2,14 @@ import { and, count, eq, isNull } from "drizzle-orm";
 
 import { getDatabaseBinding, getDb } from "@/db";
 import {
+  auditEvents,
   formAssignments,
   recipientLinks,
   submissions,
   templates,
   templateVersions,
 } from "@/db/schema";
+import { createAuditEvent } from "@/features/audit/audit.server";
 import { toUtcIsoString } from "@/features/templates/date-time";
 import { inspectPdf } from "@/features/templates/file-validation";
 import { defaultLinkExpiration } from "@/features/templates/recipient-link-lifecycle";
@@ -221,6 +223,19 @@ export async function PUT(
           .set({ status: "revoked", revokedAt: now, updatedAt: now })
           .where(eq(recipientLinks.id, link.id)),
       ),
+      db.insert(auditEvents).values(
+        createAuditEvent({
+          request,
+          ownerEmail,
+          actorType: "owner",
+          actorId: ownerEmail,
+          action: "template.published",
+          targetType: "template",
+          targetId: id,
+          metadata: { roleCount: roles.length, versionNumber },
+          createdAt: now,
+        }),
+      ),
     ]);
 
     const origin = new URL(request.url).origin;
@@ -271,16 +286,30 @@ export async function PATCH(
 
     if (template.archivedAt) {
       const restoredAt = new Date().toISOString();
-      await db
-        .update(templates)
-        .set({ archivedAt: null, updatedAt: restoredAt })
-        .where(
-          and(
-            eq(templates.id, id),
-            eq(templates.ownerEmail, ownerEmail),
-            eq(templates.archivedAt, template.archivedAt),
+      await db.batch([
+        db
+          .update(templates)
+          .set({ archivedAt: null, updatedAt: restoredAt })
+          .where(
+            and(
+              eq(templates.id, id),
+              eq(templates.ownerEmail, ownerEmail),
+              eq(templates.archivedAt, template.archivedAt),
+            ),
           ),
-        );
+        db.insert(auditEvents).values(
+          createAuditEvent({
+            request,
+            ownerEmail,
+            actorType: "owner",
+            actorId: ownerEmail,
+            action: "template.restored",
+            targetType: "template",
+            targetId: id,
+            createdAt: restoredAt,
+          }),
+        ),
+      ]);
     }
 
     return Response.json({
@@ -342,7 +371,7 @@ export async function DELETE(
 
     if (disposition === "archive") {
       const archivedAt = new Date().toISOString();
-      await archiveOwnedTemplate({ id, ownerEmail, archivedAt });
+      await archiveOwnedTemplate({ request, id, ownerEmail, archivedAt });
       return Response.json({
         template: { id, disposition, archivedAt },
       });
@@ -352,6 +381,17 @@ export async function DELETE(
       ...new Set([template.fileKey, ...versionRows.map((row) => row.fileKey)]),
     ];
     const deletedAt = new Date().toISOString();
+    const auditEvent = createAuditEvent({
+      request,
+      ownerEmail,
+      actorType: "owner",
+      actorId: ownerEmail,
+      action: "template.deleted",
+      targetType: "template",
+      targetId: id,
+      metadata: { fileCount: fileKeys.length },
+      createdAt: deletedAt,
+    });
     const database = getDatabaseBinding();
     const cleanupStatements = fileKeys.map((fileKey) =>
       database
@@ -392,16 +432,51 @@ export async function DELETE(
           )
           AND NOT EXISTS (
             SELECT 1 FROM form_assignments WHERE template_id = ?
-          )`,
+      )`,
       )
       .bind(id, ownerEmail, id, id);
+    const auditStatement = database
+      .prepare(
+        `INSERT INTO audit_events (
+          id, owner_email, actor_type, actor_id, action, target_type,
+          target_id, request_id, metadata_json, created_at
+        )
+        SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+        WHERE EXISTS (
+          SELECT 1 FROM templates
+          WHERE id = ? AND owner_email = ?
+            AND NOT EXISTS (
+              SELECT 1 FROM submissions WHERE template_id = ?
+            )
+            AND NOT EXISTS (
+              SELECT 1 FROM form_assignments WHERE template_id = ?
+            )
+        )`,
+      )
+      .bind(
+        auditEvent.id,
+        auditEvent.ownerEmail,
+        auditEvent.actorType,
+        auditEvent.actorId,
+        auditEvent.action,
+        auditEvent.targetType,
+        auditEvent.targetId,
+        auditEvent.requestId,
+        auditEvent.metadataJson,
+        auditEvent.createdAt,
+        id,
+        ownerEmail,
+        id,
+        id,
+      );
     const results = await database.batch([
       ...cleanupStatements,
+      auditStatement,
       deleteStatement,
     ]);
     if (Number(results.at(-1)?.meta?.changes ?? 0) === 0) {
       const archivedAt = new Date().toISOString();
-      await archiveOwnedTemplate({ id, ownerEmail, archivedAt });
+      await archiveOwnedTemplate({ request, id, ownerEmail, archivedAt });
       return Response.json({
         template: { id, disposition: "archive", archivedAt },
       });
@@ -440,11 +515,12 @@ async function findOwnedTemplateVersion(id: string, ownerEmail: string) {
 }
 
 async function archiveOwnedTemplate(options: {
+  request: Request;
   id: string;
   ownerEmail: string;
   archivedAt: string;
 }) {
-  const { id, ownerEmail, archivedAt } = options;
+  const { request, id, ownerEmail, archivedAt } = options;
   const db = getDb();
   await db.batch([
     db
@@ -469,5 +545,18 @@ async function archiveOwnedTemplate(options: {
           eq(formAssignments.status, "assigned"),
         ),
       ),
+    db.insert(auditEvents).values(
+      createAuditEvent({
+        request,
+        ownerEmail,
+        actorType: "owner",
+        actorId: ownerEmail,
+        action: "template.archived",
+        targetType: "template",
+        targetId: id,
+        metadata: { evidencePreserved: true },
+        createdAt: archivedAt,
+      }),
+    ),
   ]);
 }

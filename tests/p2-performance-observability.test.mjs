@@ -59,7 +59,8 @@ test("templates are enriched with bounded batch queries instead of N+1 queries",
   );
   assert.match(route, /groupBy\(submissions\.templateId\)/u);
   assert.match(route, /groupBy\(formAssignments\.templateId\)/u);
-  assert.doesNotMatch(route, /inArray/u);
+  assert.match(route, /inArray\(templates\.id, templateIds\)/u);
+  assert.match(route, /\.limit\(pageQuery\.pageSize\)/u);
   assert.doesNotMatch(route, /templateRows\.map\(async/u);
 });
 

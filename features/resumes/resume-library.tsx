@@ -21,6 +21,7 @@ import { DataView, DataViewContent, DataViewHeader } from "@/components/patterns
 import { FeedbackAlert } from "@/components/patterns/feedback-alert";
 import { MetricCard } from "@/components/patterns/metric-card";
 import { PageHeader } from "@/components/patterns/page-header";
+import { ServerPagination } from "@/components/patterns/server-pagination";
 import { StatusBadge } from "@/components/patterns/status-badge";
 import {
   AlertDialog,
@@ -81,6 +82,8 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { extractResumeFile } from "@/features/resumes/resume-client-extraction";
+import { pageMetaFromPayload } from "@/features/pagination/pagination";
+import type { PageMeta } from "@/features/pagination/pagination";
 import { MAX_RESUME_UPLOAD_COUNT } from "@/features/resumes/resume.types";
 import type {
   ResumeSource,
@@ -112,6 +115,15 @@ const EMPTY_STATS: ResumeStats = {
   possibleDuplicates: 0,
 };
 
+const EMPTY_PAGE_META: PageMeta = {
+  page: 1,
+  pageSize: 25,
+  totalItems: 0,
+  totalPages: 0,
+  hasPreviousPage: false,
+  hasNextPage: false,
+};
+
 const SOURCE_LABELS: Record<ResumeSource, string> = {
   telegram: "Telegram",
   facebook_messenger: "Facebook Messenger",
@@ -124,6 +136,7 @@ const SOURCE_LABELS: Record<ResumeSource, string> = {
 function ResumeLibrary(props: { displayName: string }) {
   const [items, setItems] = useState<ResumeSummary[]>([]);
   const [stats, setStats] = useState<ResumeStats>(EMPTY_STATS);
+  const [pageMeta, setPageMeta] = useState<PageMeta>(EMPTY_PAGE_META);
   const [loading, setLoading] = useState(true);
   const [uploadOpen, setUploadOpen] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
@@ -149,12 +162,20 @@ function ResumeLibrary(props: { displayName: string }) {
       if (source) query.set("source", source);
       if (receivedFrom) query.set("receivedFrom", receivedFrom);
       if (receivedTo) query.set("receivedTo", receivedTo);
+      query.set("page", String(pageMeta.page));
+      query.set("pageSize", String(pageMeta.pageSize));
       const response = await fetch(`/api/resumes?${query}`, {
         cache: "no-store",
       });
       const payload = (await response.json()) as {
         items?: ResumeSummary[];
         stats?: ResumeStats;
+        page?: number;
+        pageSize?: number;
+        totalItems?: number;
+        totalPages?: number;
+        hasPreviousPage?: boolean;
+        hasNextPage?: boolean;
         error?: string;
       };
       if (!response.ok) {
@@ -162,6 +183,7 @@ function ResumeLibrary(props: { displayName: string }) {
       }
       setItems(payload.items ?? []);
       setStats(payload.stats ?? EMPTY_STATS);
+      setPageMeta((current) => pageMetaFromPayload(payload, current));
       setSelected(new Set());
     } catch (cause) {
       setError(
@@ -170,7 +192,7 @@ function ResumeLibrary(props: { displayName: string }) {
     } finally {
       setLoading(false);
     }
-  }, [receivedFrom, receivedTo, search, source, status]);
+  }, [pageMeta.page, pageMeta.pageSize, receivedFrom, receivedTo, search, source, status]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -264,6 +286,7 @@ function ResumeLibrary(props: { displayName: string }) {
     setSource("");
     setReceivedFrom("");
     setReceivedTo("");
+    setPageMeta((current) => ({ ...current, page: 1 }));
     setFiltersOpen(false);
   }
 
@@ -305,7 +328,10 @@ function ResumeLibrary(props: { displayName: string }) {
               <InputGroupAddon><Search /></InputGroupAddon>
               <InputGroupInput
                 value={search}
-                onChange={(event) => setSearch(event.target.value)}
+                onChange={(event) => {
+                  setSearch(event.target.value);
+                  setPageMeta((current) => ({ ...current, page: 1 }));
+                }}
                 placeholder="Search name, phone, email, filename, or position"
                 aria-label="Search resumes"
               />
@@ -333,7 +359,10 @@ function ResumeLibrary(props: { displayName: string }) {
                     <Select
                       value={status || "all-statuses"}
                       onValueChange={(value) =>
-                        setStatus(value === "all-statuses" ? "" : value as ResumeStatus)
+                        {
+                          setStatus(value === "all-statuses" ? "" : value as ResumeStatus);
+                          setPageMeta((current) => ({ ...current, page: 1 }));
+                        }
                       }
                     >
                       <SelectTrigger className="w-full">
@@ -352,7 +381,10 @@ function ResumeLibrary(props: { displayName: string }) {
                     <Select
                       value={source || "all-sources"}
                       onValueChange={(value) =>
-                        setSource(value === "all-sources" ? "" : value as ResumeSource)
+                        {
+                          setSource(value === "all-sources" ? "" : value as ResumeSource);
+                          setPageMeta((current) => ({ ...current, page: 1 }));
+                        }
                       }
                     >
                       <SelectTrigger className="w-full">
@@ -371,7 +403,10 @@ function ResumeLibrary(props: { displayName: string }) {
                       <DatePicker
                         value={receivedFrom}
                         max={receivedTo || undefined}
-                        onValueChange={setReceivedFrom}
+                        onValueChange={(value) => {
+                          setReceivedFrom(value);
+                          setPageMeta((current) => ({ ...current, page: 1 }));
+                        }}
                         placeholder="From date"
                         aria-label="Received from date"
                       />
@@ -380,7 +415,10 @@ function ResumeLibrary(props: { displayName: string }) {
                       <DatePicker
                         value={receivedTo}
                         min={receivedFrom || undefined}
-                        onValueChange={setReceivedTo}
+                        onValueChange={(value) => {
+                          setReceivedTo(value);
+                          setPageMeta((current) => ({ ...current, page: 1 }));
+                        }}
                         placeholder="To date"
                         aria-label="Received to date"
                       />
@@ -480,9 +518,12 @@ function ResumeLibrary(props: { displayName: string }) {
               </Table>
             </div>
           )}
-          <div className="border-t px-4 py-3 text-xs text-muted-foreground">
-            {items.length} resume{items.length === 1 ? "" : "s"} shown
-          </div>
+          <ServerPagination
+            meta={pageMeta}
+            disabled={loading || busy}
+            onPageChange={(page) => setPageMeta((current) => ({ ...current, page }))}
+            onPageSizeChange={(pageSize) => setPageMeta((current) => ({ ...current, page: 1, pageSize }))}
+          />
         </DataViewContent>
       </DataView>
 

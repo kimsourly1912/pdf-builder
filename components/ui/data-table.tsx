@@ -81,6 +81,7 @@ type DataTableProps<TData extends RowData> = {
   surface?: "card" | "embedded"
   className?: string
   rowClassName?: (row: TData) => string | undefined
+  hidePagination?: boolean
 }
 
 type DataTableColumnHeaderProps<TData extends RowData, TValue> = {
@@ -137,6 +138,7 @@ function DataTable<TData extends RowData>(props: DataTableProps<TData>) {
     surface = "card",
     className,
     rowClassName,
+    hidePagination = false,
   } = props
   const [sorting, setSorting] = useState<SortingState>([])
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([])
@@ -184,6 +186,9 @@ function DataTable<TData extends RowData>(props: DataTableProps<TData>) {
       rowSelection,
     },
     enableRowSelection,
+    enableSorting: !hidePagination,
+    manualPagination: hidePagination,
+    rowCount: data.length,
     initialState: {
       pagination: { pageIndex: 0, pageSize: initialPageSize },
     },
@@ -331,7 +336,7 @@ function DataTable<TData extends RowData>(props: DataTableProps<TData>) {
         </Table>
       </div>
 
-      <div className="flex flex-col gap-3 border-t px-4 py-3 text-sm sm:flex-row sm:items-center sm:justify-between">
+      {!hidePagination && <div className="flex flex-col gap-3 border-t px-4 py-3 text-sm sm:flex-row sm:items-center sm:justify-between">
         <p className="text-muted-foreground" aria-live="polite">
           {enableRowSelection
             ? `${table.getFilteredSelectedRowModel().rows.length} of ${filteredRows.length} row(s) selected.`
@@ -364,7 +369,7 @@ function DataTable<TData extends RowData>(props: DataTableProps<TData>) {
             </Button>
           </div>
         </div>
-      </div>
+      </div>}
     </>
   )
 
