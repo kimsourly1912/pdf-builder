@@ -31,6 +31,8 @@ import type {
   FieldDetectionSource,
 } from "@/features/ai-field-detection/field-detection";
 import type { AiFieldDetectionRunStatus } from "@/features/ai-field-detection/run-types";
+import { CANDIDATE_PREFILL_KEYS } from "@/features/resumes/resume.types";
+import type { CandidatePrefillKey } from "@/features/resumes/resume.types";
 
 export function AiFieldDetectionDialog(props: {
   open: boolean;
@@ -202,7 +204,7 @@ export function AiFieldDetectionDialog(props: {
                             </span>
                           )}
                         </div>
-                        <div className="grid gap-3 sm:grid-cols-[1fr_1fr_10rem]">
+                        <div className="grid gap-3 sm:grid-cols-2">
                           <label className="space-y-1 text-xs font-medium">
                             <span>Field label</span>
                             <Input
@@ -246,6 +248,31 @@ export function AiFieldDetectionDialog(props: {
                                 ).map((tool) => (
                                   <SelectItem key={tool} value={tool}>
                                     {toolLabel(tool)}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </label>
+                          <label className="space-y-1 text-xs font-medium">
+                            <span>Candidate auto-fill</span>
+                            <Select
+                              value={candidate.suggestedPrefillKey ?? "none"}
+                              onValueChange={(value) =>
+                                updateCandidate(candidate.candidateId, {
+                                  suggestedPrefillKey: value === "none"
+                                    ? undefined
+                                    : value as CandidatePrefillKey,
+                                })
+                              }
+                            >
+                              <SelectTrigger className="w-full">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="none">No auto-fill</SelectItem>
+                                {CANDIDATE_PREFILL_KEYS.map((key) => (
+                                  <SelectItem key={key} value={key}>
+                                    {candidatePrefillLabel(key)}
                                   </SelectItem>
                                 ))}
                               </SelectContent>
@@ -350,4 +377,12 @@ function toolLabel(tool: AiFieldTool): string {
   if (tool === "dropdown") return "Dropdown";
   if (tool === "checkbox") return "Checkbox";
   return "Date picker";
+}
+
+
+function candidatePrefillLabel(key: CandidatePrefillKey): string {
+  return key
+    .replace(/^candidate\./u, "")
+    .replaceAll("_", " ")
+    .replace(/^./u, (letter) => letter.toUpperCase());
 }
