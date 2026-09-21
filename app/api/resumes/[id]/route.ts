@@ -268,7 +268,13 @@ async function linkCandidate(ownerEmail: string, resumeId: string, candidateIdVa
 
 async function saveRetry(ownerEmail: string, resume: typeof resumes.$inferSelect, value: unknown) {
   const extraction = parseResumeExtraction(value);
-  if (!extraction || extraction.pageCount !== resume.pageCount) return jsonError("Resume extraction data is invalid.", 422);
+  if (
+    !extraction
+    || extraction.schemaVersion !== 1
+    || extraction.pageCount !== resume.pageCount
+  ) {
+    return jsonError("Resume extraction data is invalid.", 422);
+  }
   const [latest] = await getDb().select({ versionNumber: resumeExtractions.versionNumber }).from(resumeExtractions)
     .where(eq(resumeExtractions.resumeId, resume.id)).orderBy(desc(resumeExtractions.versionNumber)).limit(1);
   const email = extraction.fields.emails.value?.[0] ?? "";
