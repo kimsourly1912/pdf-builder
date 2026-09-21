@@ -174,3 +174,44 @@ function parsedList(value: string): string[] {
     return [];
   }
 }
+
+
+const PREFILL_HINTS: Array<{
+  key: CandidatePrefillKey;
+  patterns: RegExp[];
+}> = [
+  { key: "candidate.linkedin_url", patterns: [/linkedin/u] },
+  { key: "candidate.portfolio_url", patterns: [/portfolio/u, /personal website/u] },
+  { key: "candidate.first_name", patterns: [/first name/u, /given name/u] },
+  { key: "candidate.last_name", patterns: [/last name/u, /family name/u, /surname/u] },
+  { key: "candidate.full_name", patterns: [/full name/u, /^name$/u, /candidate name/u] },
+  { key: "candidate.date_of_birth", patterns: [/date of birth/u, /birth date/u, /^dob$/u] },
+  { key: "candidate.primary_email", patterns: [/email/u, /e mail/u] },
+  { key: "candidate.primary_phone", patterns: [/phone/u, /mobile/u, /telephone/u] },
+  { key: "candidate.address", patterns: [/address/u, /residence/u] },
+  { key: "candidate.gender", patterns: [/gender/u, /^sex$/u] },
+  { key: "candidate.nationality", patterns: [/nationality/u, /citizenship/u] },
+  { key: "candidate.current_employer", patterns: [/current employer/u, /current company/u] },
+  { key: "candidate.current_job_title", patterns: [/job title/u, /current position/u, /current role/u] },
+  { key: "candidate.professional_summary", patterns: [/professional summary/u, /career summary/u, /about me/u] },
+  { key: "candidate.skills", patterns: [/skills/u, /competencies/u] },
+  { key: "candidate.work_experience", patterns: [/work experience/u, /employment history/u] },
+  { key: "candidate.education", patterns: [/education/u, /academic background/u] },
+  { key: "candidate.certifications", patterns: [/certification/u, /licen[cs]e/u] },
+  { key: "candidate.languages", patterns: [/languages?/u] },
+  { key: "candidate.links", patterns: [/links?/u, /website/u, /^url$/u] },
+];
+
+export function suggestCandidatePrefillKey(
+  label: string,
+  fieldKey = "",
+): CandidatePrefillKey | undefined {
+  const value = `${label} ${fieldKey}`
+    .normalize("NFKC")
+    .toLocaleLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .trim();
+  return PREFILL_HINTS.find((hint) =>
+    hint.patterns.some((pattern) => pattern.test(value)),
+  )?.key;
+}
