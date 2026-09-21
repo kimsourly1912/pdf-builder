@@ -52,7 +52,6 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
-import { extractResumeFile } from "@/features/resumes/resume-client-extraction";
 import type {
   ResumeCandidateSummary,
   ResumeDetail,
@@ -192,25 +191,8 @@ export function ResumeDetailView(props: { resumeId: string }) {
     setNotice("");
 
     try {
-      const fileResponse = await fetch(
-        `/api/resumes/${resume.id}/download`,
-        { cache: "no-store" },
-      );
-
-      if (!fileResponse.ok) {
-        throw new Error("The PDF could not be opened for extraction.");
-      }
-
-      const file = new File(
-        [await fileResponse.blob()],
-        resume.fileName,
-        { type: "application/pdf" },
-      );
-      const extraction = await extractResumeFile(file);
-      const response = await fetch(`/api/resumes/${resume.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "retry_extraction", extraction }),
+      const response = await fetch(`/api/resumes/${resume.id}/analyze`, {
+        method: "POST",
       });
       const payload = (await response.json()) as { error?: string };
 
@@ -218,7 +200,7 @@ export function ResumeDetailView(props: { resumeId: string }) {
         throw new Error(payload.error || "Extraction could not be retried.");
       }
 
-      setNotice("Resume extraction completed.");
+      setNotice("AI resume analysis completed.");
       await loadResume();
     } catch (cause) {
       setError(
