@@ -1,8 +1,9 @@
-import { and, eq, isNull } from "drizzle-orm";
+import { and, desc, eq, isNull, sql } from "drizzle-orm";
 
 import { getDb } from "@/db";
 import {
   auditEvents,
+  candidateProfileVersions,
   candidates,
   formAssignments,
   recipientLinks,
@@ -12,7 +13,9 @@ import {
   user,
 } from "@/db/schema";
 import { createAuditEvent } from "@/features/audit/audit.server";
-import { buildCandidatePrefillValues } from "@/features/resumes/candidate-prefill";
+import { normalizeCandidateProfile } from "@/features/resumes/candidate-profile";
+import { buildCandidatePrefillSnapshot } from "@/features/resumes/candidate-prefill";
+import { MAX_RESUME_PAGES } from "@/features/resumes/resume.types";
 import type { TemplateAnnotation } from "@/features/templates/template.types";
 import {
   createRecipientToken,
@@ -78,7 +81,31 @@ export async function POST(
     const linkId = crypto.randomUUID();
     const assignmentId = crypto.randomUUID();
     const annotations = parseArray<TemplateAnnotation>(template.version.annotationsJson);
-    const initialValues = buildCandidatePrefillValues(account.candidate, annotations);
+    const [profileRow] = account.candidate
+      ? await db.select().from(candidateProfileVersions).where(and(
+          eq(candidateProfileVersions.ownerEmail, ownerEmail),
+          eq(candidateProfileVersions.candidateId, account.candidate.id),
+        )).orderBy(
+          desc(sql<number>`case when ${candidateProfileVersions.verificationStatus} = 'verified' then 1 else 0 end`),
+          desc(candidateProfileVersions.versionNumber),
+        ).limit(1)
+      : [];
+    const profile = profileRow
+      ? parseProfile(profileRow.profileJson)
+      : null;
+    const snapshot = buildCandidatePrefillSnapshot({
+      candidate: account.candidate,
+      annotations,
+      profileVersion: profileRow && profile
+        ? {
+            id: profileRow.id,
+            profile,
+            verificationStatus: profileRow.verificationStatus === "verified"
+              ? "verified"
+              : "extracted",
+          }
+        : null,
+    });
     await db.batch([
       db.insert(recipientLinks).values({
         id: linkId,
@@ -105,7 +132,9 @@ export async function POST(
         roleId: role.id,
         roleName: role.name,
         roleColor: role.color,
-        initialValuesJson: JSON.stringify(initialValues),
+        initialValuesJson: JSON.stringify(snapshot.values),
+        candidateProfileVersionId: profileRow && profile ? profileRow.id : null,
+        initialValuesMetaJson: JSON.stringify(snapshot.metadata),
         status: "assigned",
         assignedAt: now,
         updatedAt: now,
@@ -124,6 +153,8 @@ export async function POST(
             roleId: role.id,
             templateId,
             versionNumber: template.version.versionNumber,
+            candidateProfileVersionId: profileRow && profile ? profileRow.id : null,
+            prefilledFieldCount: Object.keys(snapshot.values).length,
           },
           createdAt: now,
         }),
@@ -166,5 +197,14 @@ function parseArray<T>(value: string): T[] {
     return Array.isArray(parsed) ? parsed as T[] : [];
   } catch {
     return [];
+  }
+}
+
+
+function parseProfile(value: string) {
+  try {
+    return normalizeCandidateProfile(JSON.parse(value) as unknown, MAX_RESUME_PAGES);
+  } catch {
+    return null;
   }
 }
