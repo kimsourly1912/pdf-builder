@@ -52,6 +52,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
+import { ResumePdfPreview } from "@/features/resumes/resume-pdf-preview";
 import type {
   ResumeCandidateSummary,
   ResumeDetail,
@@ -366,11 +367,10 @@ export function ResumeDetailView(props: { resumeId: string }) {
           )}
 
         <div className="grid items-start gap-5 xl:grid-cols-[minmax(500px,1fr)_minmax(430px,560px)]">
-          <Card className="gap-0 overflow-hidden bg-foreground py-0 xl:sticky xl:top-20">
-            <iframe
-              title={`Preview ${resume.fileName}`}
-              src={`/api/resumes/${resume.id}/download`}
-              className="h-[calc(100vh-7rem)] min-h-[650px] w-full bg-white"
+          <Card className="gap-0 overflow-hidden py-0 xl:sticky xl:top-20">
+            <ResumePdfPreview
+              resumeId={resume.id}
+              fileName={resume.fileName}
             />
           </Card>
 
