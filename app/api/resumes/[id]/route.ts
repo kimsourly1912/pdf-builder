@@ -2,6 +2,8 @@ import { and, desc, eq, ne, or, type SQL } from "drizzle-orm";
 
 import { getDatabaseBinding, getDb } from "@/db";
 import {
+  auditEvents,
+  candidateProfileVersions,
   candidateResumeLinks,
   candidates,
   resumeExtractions,
@@ -9,6 +11,7 @@ import {
   resumes,
 } from "@/db/schema";
 import { createAuditEvent } from "@/features/audit/audit.server";
+import { candidateProfileFromSummary } from "@/features/resumes/candidate-profile";
 import { normalizeEmail, normalizePhone } from "@/features/resumes/resume-extraction";
 import {
   candidateInsertFromExtraction,
@@ -16,7 +19,6 @@ import {
   parseCandidateUpdate,
   parseResumeExtraction,
   resumeStatusForExtraction,
-  updateExtractionWithVerifiedCandidate,
 } from "@/features/resumes/resume.server";
 import type { ResumeDetail } from "@/features/resumes/resume.types";
 import { processStorageCleanupJobs } from "@/features/storage/storage-cleanup.server";
@@ -124,13 +126,48 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
       verificationStatus: "verified",
       updatedAt: now,
     });
-    const extraction = latestExtraction ? parseStoredExtraction(latestExtraction.fieldsJson) : null;
-    if (latestExtraction && extraction && verifiedCandidate) {
-      await getDb().update(resumeExtractions).set({ fieldsJson: JSON.stringify(updateExtractionWithVerifiedCandidate(extraction, verifiedCandidate, ownerEmail)) })
-        .where(eq(resumeExtractions.id, latestExtraction.id));
-    }
-    await getDb().update(resumes).set({ status: "ready", duplicateCandidateId: null, errorMessage: null, updatedAt: now })
-      .where(and(eq(resumes.id, resume.id), eq(resumes.ownerEmail, ownerEmail)));
+    if (!verifiedCandidate) return jsonError("Candidate not found.", 404);
+    const [latestProfile] = await getDb().select({
+      versionNumber: candidateProfileVersions.versionNumber,
+    }).from(candidateProfileVersions).where(and(
+      eq(candidateProfileVersions.ownerEmail, ownerEmail),
+      eq(candidateProfileVersions.candidateId, candidate.id),
+    )).orderBy(desc(candidateProfileVersions.versionNumber)).limit(1);
+    const profileVersion = (latestProfile?.versionNumber ?? 0) + 1;
+    await getDb().batch([
+      getDb().insert(candidateProfileVersions).values({
+        id: crypto.randomUUID(),
+        ownerEmail,
+        candidateId: candidate.id,
+        resumeId: resume.id,
+        extractionId: latestExtraction?.id ?? null,
+        versionNumber: profileVersion,
+        schemaVersion: 2,
+        profileJson: JSON.stringify(candidateProfileFromSummary(verifiedCandidate)),
+        verificationStatus: "verified",
+        source: "hr_review",
+        createdByEmail: ownerEmail,
+        createdAt: now,
+        verifiedAt: now,
+      }),
+      getDb().update(resumes).set({
+        status: "ready",
+        duplicateCandidateId: null,
+        errorMessage: null,
+        updatedAt: now,
+      }).where(and(eq(resumes.id, resume.id), eq(resumes.ownerEmail, ownerEmail))),
+      getDb().insert(auditEvents).values(createAuditEvent({
+        request,
+        ownerEmail,
+        actorType: "owner",
+        actorId: ownerEmail,
+        action: "candidate.profile_verified",
+        targetType: "candidate",
+        targetId: candidate.id,
+        metadata: { resumeId: resume.id, profileVersion },
+        createdAt: now,
+      })),
+    ]);
     return Response.json({ candidate: verifiedCandidate });
   } catch (error) {
     if (isResponse(error)) return error;
