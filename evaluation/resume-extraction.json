@@ -1,0 +1,44 @@
+{
+  "cases": [
+    {
+      "id": "synthetic-khmer-candidate",
+      "pageCount": 2,
+      "expected": {
+        "candidate.full_name": "សុខា ចាន់",
+        "candidate.primary_email": "sokha@example.com",
+        "candidate.current_job_title": "Backend Developer"
+      },
+      "predicted": {
+        "schemaVersion": 2,
+        "identity": {
+          "fullName": { "value": "សុខា ចាន់", "confidence": 0.98, "sourcePage": 1 },
+          "firstName": { "value": "សុខា", "confidence": 0.9, "sourcePage": 1 },
+          "lastName": { "value": "ចាន់", "confidence": 0.9, "sourcePage": 1 },
+          "dateOfBirth": { "value": null, "confidence": 0, "sourcePage": null },
+          "gender": { "value": null, "confidence": 0, "sourcePage": null },
+          "nationality": { "value": "Cambodian", "confidence": 0.9, "sourcePage": 1 }
+        },
+        "contact": {
+          "primaryEmail": { "value": "sokha@example.com", "confidence": 0.99, "sourcePage": 1 },
+          "emails": { "value": ["sokha@example.com"], "confidence": 0.99, "sourcePage": 1 },
+          "primaryPhone": { "value": null, "confidence": 0, "sourcePage": null },
+          "phones": { "value": null, "confidence": 0, "sourcePage": null },
+          "address": { "value": "Phnom Penh", "confidence": 0.8, "sourcePage": 1 },
+          "linkedinUrl": { "value": null, "confidence": 0, "sourcePage": null },
+          "portfolioUrl": { "value": null, "confidence": 0, "sourcePage": null },
+          "links": { "value": null, "confidence": 0, "sourcePage": null }
+        },
+        "professional": {
+          "currentTitle": { "value": "Backend Developer", "confidence": 0.95, "sourcePage": 1 },
+          "currentEmployer": { "value": null, "confidence": 0, "sourcePage": null },
+          "summary": { "value": null, "confidence": 0, "sourcePage": null },
+          "skills": { "value": ["TypeScript"], "confidence": 0.9, "sourcePage": 1 }
+        },
+        "workExperience": { "value": null, "confidence": 0, "sourcePage": null },
+        "education": { "value": null, "confidence": 0, "sourcePage": null },
+        "certifications": { "value": null, "confidence": 0, "sourcePage": null },
+        "languages": { "value": [{ "name": "Khmer", "proficiency": "Native" }], "confidence": 0.9, "sourcePage": 2 }
+      }
+    }
+  ]
+}
