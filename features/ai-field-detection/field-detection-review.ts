@@ -4,6 +4,7 @@ import {
   type DetectedFieldCandidate,
 } from "@/features/ai-field-detection/field-detection";
 import { isCandidatePrefillKey } from "@/features/resumes/candidate-prefill";
+import type { CandidatePrefillKey } from "@/features/resumes/resume.types";
 import {
   createFieldKey,
 } from "@/features/templates/label-binding";
@@ -58,9 +59,13 @@ export function parseReviewedFieldCandidates(options: {
     ) {
       return null;
     }
-    const suggestedPrefillKey = requestedPrefillKey === "none"
-      ? undefined
-      : requestedPrefillKey || original.suggestedPrefillKey;
+    let suggestedPrefillKey: CandidatePrefillKey | undefined =
+      original.suggestedPrefillKey;
+    if (requestedPrefillKey === "none") {
+      suggestedPrefillKey = undefined;
+    } else if (isCandidatePrefillKey(requestedPrefillKey)) {
+      suggestedPrefillKey = requestedPrefillKey;
+    }
     usedCandidateIds.add(candidateId);
     usedKeys.add(suggestedKey);
     reviewed.push({
