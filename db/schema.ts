@@ -229,6 +229,8 @@ export const formAssignments = sqliteTable(
     roleName: text("role_name").notNull(),
     roleColor: text("role_color").notNull(),
     initialValuesJson: text("initial_values_json").notNull().default("{}"),
+    candidateProfileVersionId: text("candidate_profile_version_id"),
+    initialValuesMetaJson: text("initial_values_meta_json").notNull().default("{}"),
     status: text("status").notNull().default("assigned"),
     assignedAt: text("assigned_at").notNull(),
     completedAt: text("completed_at"),
@@ -336,6 +338,45 @@ export const resumeExtractions = sqliteTable(
   (table) => [
     uniqueIndex("resume_extractions_version_unique").on(table.resumeId, table.versionNumber),
     index("resume_extractions_resume_idx").on(table.resumeId),
+  ],
+);
+
+export const candidateProfileVersions = sqliteTable(
+  "candidate_profile_versions",
+  {
+    id: text("id").primaryKey(),
+    ownerEmail: text("owner_email").notNull(),
+    candidateId: text("candidate_id")
+      .notNull()
+      .references(() => candidates.id, { onDelete: "cascade" }),
+    resumeId: text("resume_id").references(() => resumes.id, {
+      onDelete: "set null",
+    }),
+    extractionId: text("extraction_id").references(() => resumeExtractions.id, {
+      onDelete: "set null",
+    }),
+    versionNumber: integer("version_number").notNull(),
+    schemaVersion: integer("schema_version").notNull().default(2),
+    profileJson: text("profile_json").notNull(),
+    verificationStatus: text("verification_status")
+      .notNull()
+      .default("extracted"),
+    source: text("source").notNull(),
+    createdByEmail: text("created_by_email").notNull(),
+    createdAt: text("created_at").notNull(),
+    verifiedAt: text("verified_at"),
+  },
+  (table) => [
+    uniqueIndex("candidate_profile_versions_candidate_number_unique").on(
+      table.candidateId,
+      table.versionNumber,
+    ),
+    index("candidate_profile_versions_owner_candidate_idx").on(
+      table.ownerEmail,
+      table.candidateId,
+      table.versionNumber,
+    ),
+    index("candidate_profile_versions_resume_idx").on(table.resumeId),
   ],
 );
 
