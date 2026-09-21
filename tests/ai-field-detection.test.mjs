@@ -73,6 +73,7 @@ test("normalizes model output, coordinates, keys, and dropdown safety", () => {
   assert.equal(result.candidates[1].suggestedKey, "date_of_birth_2");
   assert.equal(result.candidates[1].tool, "input");
   assert.equal(result.candidates[0].source, "ai");
+  assert.equal(result.candidates[0].suggestedPrefillKey, "candidate.date_of_birth");
   assert.ok(Math.abs(result.candidates[1].fieldBox.width - 0.1) < 1e-10);
   assert.ok(Math.abs(result.candidates[1].fieldBox.height - 0.02) < 1e-10);
 });
@@ -256,6 +257,7 @@ test("converts approved candidates to editable annotations without publishing", 
   assert.equal(result.annotations[2].fieldKey, "date_of_birth_3");
   assert.equal(result.annotations[1].labelBinding.source, "ai-detection");
   assert.equal(result.annotations[1].aiDetection.schemaVersion, 1);
+  assert.equal(result.annotations[1].prefillKey, "candidate.date_of_birth");
 });
 
 test("classifies confidence bands used by the review UI", () => {
