@@ -78,8 +78,9 @@ export function ResumePdfPreview(props: {
           const caption = window.document.createElement("figcaption");
           caption.className = "text-xs text-muted-foreground";
           caption.textContent = `Page ${pageNumber} of ${document.numPages}`;
-          pageElement.append(canvas, caption);
-          container.append(pageElement);
+          pageElement.insertAdjacentElement("beforeend", canvas);
+          pageElement.insertAdjacentElement("beforeend", caption);
+          container.insertAdjacentElement("beforeend", pageElement);
 
           await page.render({ canvas, canvasContext: context, viewport: renderViewport }).promise;
           page.cleanup();
