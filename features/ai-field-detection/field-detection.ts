@@ -3,6 +3,11 @@ import {
   createFieldKey,
   createUniqueFieldKey,
 } from "@/features/templates/label-binding";
+import {
+  isCandidatePrefillKey,
+  suggestCandidatePrefillKey,
+} from "@/features/resumes/candidate-prefill";
+import type { CandidatePrefillKey } from "@/features/resumes/resume.types";
 import type { TemplateAnnotation } from "@/features/templates/template.types";
 
 export const AI_FIELD_TOOLS = [
@@ -30,6 +35,7 @@ export type DetectedFieldCandidate = {
   page: number;
   label: string;
   suggestedKey: string;
+  suggestedPrefillKey?: CandidatePrefillKey;
   tool: AiFieldTool;
   validation: AiFieldValidation;
   labelBox: NormalizedRect;
@@ -335,14 +341,19 @@ function normalizeCandidate(options: {
     ? "input"
     : (tool as AiFieldTool);
 
+  const suggestedKey = createFieldKey(
+    stringValue(candidate.suggestedKey) || label,
+  );
+  const providerPrefillKey = stringValue(candidate.prefillKey);
   return {
     candidateId: idFactory(),
     source: "ai",
     page,
     label,
-    suggestedKey: createFieldKey(
-      stringValue(candidate.suggestedKey) || label,
-    ),
+    suggestedKey,
+    suggestedPrefillKey: isCandidatePrefillKey(providerPrefillKey)
+      ? providerPrefillKey
+      : suggestCandidatePrefillKey(label, suggestedKey),
     tool: normalizedTool,
     validation: normalizedTool === "input" ? validation : "none",
     labelBox,
@@ -381,6 +392,7 @@ function candidateToAnnotation(options: {
     borderColor: "#cbd5e1",
     fieldName: candidate.label,
     fieldKey,
+    prefillKey: candidate.suggestedPrefillKey,
     placeholder: candidate.tool === "textarea" ? "Enter paragraph" : "Enter value",
     required: candidate.required,
     validation: candidate.tool === "input" ? candidate.validation : "none",
