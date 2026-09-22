@@ -130,7 +130,7 @@ export function AccountsDashboard(props: { displayName: string }) {
         error?: string;
       };
       const templatesPayload = (await templatesResponse.json()) as {
-        items?: TemplateSummary[];
+        items?: AssignmentTemplateSummary[];
         error?: string;
       };
       if (!accountsResponse.ok || !templatesResponse.ok) {
