@@ -8,6 +8,7 @@ import {
   CalendarDays,
   FileCheck2,
   LockKeyhole,
+  RotateCcw,
   Sparkles,
   UploadCloud,
 } from "lucide-react";
@@ -16,6 +17,16 @@ import Image from "next/image";
 import khmerFontUrl from "@expo-google-fonts/noto-sans-khmer/400Regular/NotoSansKhmer_400Regular.ttf?url";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -74,6 +85,11 @@ type PdfDocument = {
   destroy(): Promise<void>;
 };
 type FieldOption = { id: string; label: string; checked: boolean };
+type ResumeUndo = {
+  previousValues: Record<string, unknown>;
+  previousAppliedFieldIds: Set<string>;
+  previousProtectedFieldIds: Set<string>;
+};
 
 const KHMER_FONT_FAMILY = "PDF Studio Khmer";
 const KHMER_REGRESSION_SAMPLES = ["សួស្តីបង", "រាត្រីសួស្តី"] as const;
@@ -83,6 +99,7 @@ export function RecipientFill(props: { token: string }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
   const idempotencyKeyRef = useRef(crypto.randomUUID());
+  const dirtyFieldIdsRef = useRef(new Set<string>());
   const [payload, setPayload] = useState<TemplateFillPayload | null>(null);
   const [pdfDocument, setPdfDocument] = useState<PdfDocument | null>(null);
   const [pdfBytes, setPdfBytes] = useState<Uint8Array<ArrayBuffer> | null>(null);
@@ -96,6 +113,13 @@ export function RecipientFill(props: { token: string }) {
   const [submitting, setSubmitting] = useState(false);
   const [completed, setCompleted] = useState(false);
   const [resumePrefillDismissed, setResumePrefillDismissed] = useState(false);
+  const [resumeAppliedFieldIds, setResumeAppliedFieldIds] = useState<Set<string>>(
+    new Set(),
+  );
+  const [resumeUndo, setResumeUndo] = useState<ResumeUndo | null>(null);
+  const [pendingOverwriteFieldId, setPendingOverwriteFieldId] = useState<
+    string | null
+  >(null);
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -133,6 +157,12 @@ export function RecipientFill(props: { token: string }) {
         }
         setPayload(nextPayload);
         setResumePrefillDismissed(false);
+        dirtyFieldIdsRef.current.clear();
+        setResumeAppliedFieldIds(
+          new Set(Object.keys(nextPayload.initialValues ?? {})),
+        );
+        setResumeUndo(null);
+        setPendingOverwriteFieldId(null);
         if (nextPayload.identity) {
           setRecipientName(nextPayload.identity.name);
           setRecipientEmail(nextPayload.identity.email);
@@ -187,38 +217,86 @@ export function RecipientFill(props: { token: string }) {
   }, [pageNumber, payload, pdfDocument]);
 
   const updateValue = useCallback((id: string, value: unknown) => {
+    dirtyFieldIdsRef.current.add(id);
+    setResumeAppliedFieldIds((current) => {
+      const next = new Set(current);
+      next.delete(id);
+      return next;
+    });
+    setResumeUndo(null);
     setValues((current) => ({ ...current, [id]: value }));
     setError("");
   }, []);
 
-  function fillEmptyResumeFields() {
+  function applyResumeFields(fieldIds: string[], overwrite = false) {
     if (!payload?.resumePrefill) return;
-    setValues((current) => applyResumeSuggestions({
-      currentValues: current,
-      suggestions: payload.resumePrefill!.values,
-    }));
+    const next = applyResumeSuggestions({
+      currentValues: values,
+      suggestions: payload.resumePrefill.values,
+      fieldIds,
+      protectedFieldIds: dirtyFieldIdsRef.current,
+      overwrite,
+    });
+    const changedFieldIds = fieldIds.filter(
+      (fieldId) => !prefillValuesEqual(values[fieldId], next[fieldId]),
+    );
+    if (changedFieldIds.length === 0) return;
+    setResumeUndo({
+      previousValues: Object.fromEntries(
+        changedFieldIds.map((fieldId) => [fieldId, values[fieldId]]),
+      ),
+      previousAppliedFieldIds: new Set(resumeAppliedFieldIds),
+      previousProtectedFieldIds: new Set(dirtyFieldIdsRef.current),
+    });
+    if (overwrite) {
+      changedFieldIds.forEach((fieldId) => {
+        dirtyFieldIdsRef.current.delete(fieldId);
+      });
+    }
+    setValues(next);
+    setResumeAppliedFieldIds((current) => {
+      const applied = new Set(current);
+      changedFieldIds.forEach((fieldId) => applied.add(fieldId));
+      return applied;
+    });
     setError("");
+  }
+
+  function fillAvailableResumeFields() {
+    if (!payload?.resumePrefill) return;
+    applyResumeFields(Object.keys(payload.resumePrefill.values));
   }
 
   function useResumeField(fieldId: string) {
     if (!payload?.resumePrefill) return;
-    const suggestion = payload.resumePrefill.values[fieldId];
     const currentValue = values[fieldId];
+    const suggestion = payload.resumePrefill.values[fieldId];
     if (
-      hasRecipientValue(currentValue)
+      dirtyFieldIdsRef.current.has(fieldId)
+      && hasRecipientValue(currentValue)
       && !prefillValuesEqual(currentValue, suggestion)
-      && !window.confirm(
-        "This field already has a value. Replace it with the resume value?",
-      )
     ) {
+      setPendingOverwriteFieldId(fieldId);
       return;
     }
-    setValues((current) => applyResumeSuggestions({
-      currentValues: current,
-      suggestions: payload.resumePrefill!.values,
-      fieldIds: [fieldId],
-      overwrite: true,
+    applyResumeFields([fieldId], true);
+  }
+
+  function confirmResumeOverwrite() {
+    if (!pendingOverwriteFieldId) return;
+    applyResumeFields([pendingOverwriteFieldId], true);
+    setPendingOverwriteFieldId(null);
+  }
+
+  function undoResumeFill() {
+    if (!resumeUndo) return;
+    setValues((current) => ({
+      ...current,
+      ...resumeUndo.previousValues,
     }));
+    setResumeAppliedFieldIds(resumeUndo.previousAppliedFieldIds);
+    dirtyFieldIdsRef.current = new Set(resumeUndo.previousProtectedFieldIds);
+    setResumeUndo(null);
     setError("");
   }
 
@@ -266,6 +344,10 @@ export function RecipientFill(props: { token: string }) {
       }
       formData.set("values", JSON.stringify(submissionValues));
       formData.set(
+        "resumeAppliedFieldIds",
+        JSON.stringify(Array.from(resumeAppliedFieldIds).sort()),
+      );
+      formData.set(
         "completedPdf",
         new File([completedPdf], `${payload.template.name}-completed.pdf`, { type: "application/pdf" }),
       );
@@ -298,12 +380,37 @@ export function RecipientFill(props: { token: string }) {
             <p className="truncate text-xs text-muted-foreground">Complete as {payload.recipient.name}</p>
           </div>
           <div className="flex items-center gap-2 text-xs font-medium text-emerald-700">
+            {payload.resumePrefill && resumePrefillDismissed && (
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => setResumePrefillDismissed(false)}
+              >
+                <Sparkles className="size-3.5" />
+                Resume data
+              </Button>
+            )}
             <LockKeyhole className="size-3.5" />
             <span className="hidden sm:inline">{payload.identity ? "Assigned to your account" : "Private recipient link"}</span>
           </div>
         </div>
       </header>
       <div className="mx-auto grid max-w-7xl gap-5 px-3 py-5 lg:grid-cols-[1fr_320px] lg:px-6">
+        {payload.resumePrefill && !resumePrefillDismissed && (
+          <ResumePrefillPanel
+            className="lg:hidden"
+            annotations={payload.template.annotations}
+            prefill={payload.resumePrefill}
+            values={values}
+            protectedFieldIds={dirtyFieldIdsRef.current}
+            canUndo={Boolean(resumeUndo)}
+            onFillAvailable={fillAvailableResumeFields}
+            onUseField={useResumeField}
+            onUndo={undoResumeFill}
+            onDismiss={() => setResumePrefillDismissed(true)}
+          />
+        )}
         <section ref={viewportRef} className="min-w-0 overflow-auto rounded-xl border bg-muted/55 p-3 sm:p-6">
           <div className="mx-auto">
             <div className="relative mx-auto overflow-hidden bg-white shadow-2xl" style={{ width: pageSize.width, height: pageSize.height }}>
@@ -329,11 +436,15 @@ export function RecipientFill(props: { token: string }) {
           <CardContent className="space-y-5">
             {payload.resumePrefill && !resumePrefillDismissed && (
               <ResumePrefillPanel
+                className="hidden lg:block"
                 annotations={payload.template.annotations}
                 prefill={payload.resumePrefill}
                 values={values}
-                onFillEmpty={fillEmptyResumeFields}
+                protectedFieldIds={dirtyFieldIdsRef.current}
+                canUndo={Boolean(resumeUndo)}
+                onFillAvailable={fillAvailableResumeFields}
                 onUseField={useResumeField}
+                onUndo={undoResumeFill}
                 onDismiss={() => setResumePrefillDismissed(true)}
               />
             )}
@@ -375,16 +486,42 @@ export function RecipientFill(props: { token: string }) {
           </CardContent>
         </Card>
       </div>
+      <AlertDialog
+        open={Boolean(pendingOverwriteFieldId)}
+        onOpenChange={(open) => {
+          if (!open) setPendingOverwriteFieldId(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Replace your entry?</AlertDialogTitle>
+            <AlertDialogDescription>
+              You already edited this field. Using the resume value will replace
+              your current entry. You can undo this change afterward.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Keep my entry</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmResumeOverwrite}>
+              Use resume value
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </main>
   );
 }
 
 function ResumePrefillPanel(props: {
+  className?: string;
   annotations: TemplateAnnotation[];
   prefill: NonNullable<TemplateFillPayload["resumePrefill"]>;
   values: Record<string, unknown>;
-  onFillEmpty: () => void;
+  protectedFieldIds: ReadonlySet<string>;
+  canUndo: boolean;
+  onFillAvailable: () => void;
   onUseField: (fieldId: string) => void;
+  onUndo: () => void;
   onDismiss: () => void;
 }) {
   const fields = Object.entries(props.prefill.values).flatMap(
@@ -393,12 +530,19 @@ function ResumePrefillPanel(props: {
       return annotation ? [{ fieldId, value, annotation }] : [];
     },
   );
-  const emptyFieldCount = fields.filter(
-    ({ fieldId }) => !hasRecipientValue(props.values[fieldId]),
+  const availableFieldCount = fields.filter(
+    ({ fieldId, value }) =>
+      !props.protectedFieldIds.has(fieldId)
+      && !prefillValuesEqual(props.values[fieldId], value),
   ).length;
 
   return (
-    <div className="rounded-lg border border-primary/25 bg-primary/5 p-3">
+    <div
+      className={cn(
+        "rounded-lg border border-primary/25 bg-primary/5 p-3",
+        props.className,
+      )}
+    >
       <div className="flex items-start gap-2">
         <span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
           <Sparkles className="size-4" />
@@ -406,8 +550,8 @@ function ResumePrefillPanel(props: {
         <div className="min-w-0 flex-1">
           <p className="text-sm font-semibold">Resume data available</p>
           <p className="mt-1 text-[11px] leading-4 text-muted-foreground">
-            Review the approved values below. Your existing entries are never
-            replaced unless you confirm a field.
+            Review the approved values below. Fields you edit are never
+            replaced unless you confirm the change.
           </p>
         </div>
       </div>
@@ -440,7 +584,11 @@ function ResumePrefillPanel(props: {
                   onClick={() => props.onUseField(fieldId)}
                   className="h-7 shrink-0 px-2 text-[11px]"
                 >
-                  {applied ? "Applied" : "Use"}
+                  {applied
+                    ? "Applied"
+                    : props.protectedFieldIds.has(fieldId)
+                      ? "Replace"
+                      : "Use"}
                 </Button>
               </div>
             </div>
@@ -451,12 +599,19 @@ function ResumePrefillPanel(props: {
         <Button
           type="button"
           size="sm"
-          disabled={emptyFieldCount === 0}
-          onClick={props.onFillEmpty}
+          disabled={availableFieldCount === 0}
+          onClick={props.onFillAvailable}
           className="flex-1"
         >
-          Fill {emptyFieldCount} empty field{emptyFieldCount === 1 ? "" : "s"}
+          Fill {availableFieldCount} available field
+          {availableFieldCount === 1 ? "" : "s"}
         </Button>
+        {props.canUndo && (
+          <Button type="button" size="sm" variant="outline" onClick={props.onUndo}>
+            <RotateCcw className="size-3.5" />
+            Undo
+          </Button>
+        )}
         <Button type="button" size="sm" variant="ghost" onClick={props.onDismiss}>
           Not now
         </Button>

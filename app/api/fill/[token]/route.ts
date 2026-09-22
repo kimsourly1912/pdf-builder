@@ -177,11 +177,17 @@ export async function POST(
           .toLowerCase()
           .slice(0, 254);
     const values = parseValues(formData.get("values"));
+    const resumeAppliedFieldIds = parseFieldIdList(
+      formData.get("resumeAppliedFieldIds"),
+    );
     if (!recipientName) return jsonError("Your name is required.", 400);
     if (recipientEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/u.test(recipientEmail)) {
       return jsonError("Enter a valid email address.", 400);
     }
     if (!values) return jsonError("Submitted field values are invalid.", 400);
+    if (!resumeAppliedFieldIds) {
+      return jsonError("Resume field history is invalid.", 400);
+    }
 
     const assignedFields = parseArray<TemplateAnnotation>(
       fillContext.version.annotationsJson,
@@ -190,6 +196,27 @@ export async function POST(
         isRecipientFieldType(annotation.type) &&
         annotation.recipientRoleId === fillContext.link.roleId,
     );
+    const assignedFieldIds = new Set(assignedFields.map((field) => field.id));
+    const resumeSourceFieldIds = new Set([
+      ...Object.keys(
+        parseRecord(fillContext.assignment?.initialValuesMetaJson),
+      ),
+      ...Object.keys(
+        parseRecord(fillContext.assignment?.availableValuesMetaJson),
+      ),
+    ]);
+    if (
+      resumeAppliedFieldIds.some(
+        (fieldId) =>
+          !assignedFieldIds.has(fieldId) || !resumeSourceFieldIds.has(fieldId),
+      )
+    ) {
+      return jsonError(
+        "Resume field history does not match this assignment.",
+        422,
+      );
+    }
+
     const imageFiles = collectImageFiles(formData);
     if (!imageFiles.ok) return jsonError(imageFiles.message, 400);
     const validation = validateSubmissionValues({
@@ -290,6 +317,8 @@ export async function POST(
         roleId: fillContext.link.roleId,
         templateId: fillContext.template.id,
         versionNumber: fillContext.version.versionNumber,
+        resumePrefillMode: fillContext.assignment?.prefillMode ?? "none",
+        resumeAppliedFieldIds,
       },
       createdAt: now,
     });
@@ -563,6 +592,24 @@ function parseArray<T>(value: string): T[] {
     return Array.isArray(parsed) ? (parsed as T[]) : [];
   } catch {
     return [];
+  }
+}
+
+function parseFieldIdList(value: FormDataEntryValue | null): string[] | null {
+  if (value === null) return [];
+  if (typeof value !== "string" || value.length > 25_000) return null;
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    if (!Array.isArray(parsed) || parsed.length > 200) return null;
+    const fieldIds = parsed.filter(
+      (fieldId): fieldId is string =>
+        typeof fieldId === "string"
+        && /^[A-Za-z0-9_-]{1,120}$/u.test(fieldId),
+    );
+    if (fieldIds.length !== parsed.length) return null;
+    return Array.from(new Set(fieldIds));
+  } catch {
+    return null;
   }
 }
 

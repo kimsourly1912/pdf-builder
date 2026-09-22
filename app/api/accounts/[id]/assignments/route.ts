@@ -128,8 +128,51 @@ export async function POST(
     });
     const db = getDb();
     const [existingAssignment] = await db
-      .select()
+      .select({
+        assignment: formAssignments,
+        templateName: templates.name,
+        versionNumber: templateVersions.versionNumber,
+        candidateProfileVersionNumber:
+          candidateProfileVersions.versionNumber,
+        candidateName: candidates.fullName,
+        candidateFileName: resumes.fileName,
+      })
       .from(formAssignments)
+      .innerJoin(
+        templates,
+        and(
+          eq(formAssignments.templateId, templates.id),
+          eq(templates.ownerEmail, ownerEmail),
+        ),
+      )
+      .innerJoin(
+        templateVersions,
+        eq(formAssignments.templateVersionId, templateVersions.id),
+      )
+      .leftJoin(
+        candidateProfileVersions,
+        and(
+          eq(
+            formAssignments.candidateProfileVersionId,
+            candidateProfileVersions.id,
+          ),
+          eq(candidateProfileVersions.ownerEmail, ownerEmail),
+        ),
+      )
+      .leftJoin(
+        candidates,
+        and(
+          eq(candidateProfileVersions.candidateId, candidates.id),
+          eq(candidates.ownerEmail, ownerEmail),
+        ),
+      )
+      .leftJoin(
+        resumes,
+        and(
+          eq(candidateProfileVersions.resumeId, resumes.id),
+          eq(resumes.ownerEmail, ownerEmail),
+        ),
+      )
       .where(and(
         eq(formAssignments.userId, userId),
         eq(formAssignments.assignmentRequestKey, idempotencyKey),
@@ -137,7 +180,7 @@ export async function POST(
       .limit(1);
     if (existingAssignment) {
       if (
-        existingAssignment.assignmentRequestFingerprint
+        existingAssignment.assignment.assignmentRequestFingerprint
         !== requestFingerprint
       ) {
         return jsonError(
@@ -147,9 +190,13 @@ export async function POST(
       }
       return Response.json({
         assignment: assignmentResponse({
-          assignment: existingAssignment,
-          templateName: "",
-          versionNumber: 0,
+          assignment: existingAssignment.assignment,
+          templateName: existingAssignment.templateName,
+          versionNumber: existingAssignment.versionNumber,
+          candidateProfileVersionNumber:
+            existingAssignment.candidateProfileVersionNumber,
+          candidateName: existingAssignment.candidateName,
+          candidateFileName: existingAssignment.candidateFileName,
         }),
         reused: true,
       });
@@ -710,6 +757,9 @@ function assignmentResponse(options: {
   assignment: typeof formAssignments.$inferSelect;
   templateName: string;
   versionNumber: number;
+  candidateProfileVersionNumber?: number | null;
+  candidateName?: string | null;
+  candidateFileName?: string | null;
 }) {
   const { assignment } = options;
   return {
@@ -730,9 +780,10 @@ function assignmentResponse(options: {
       ...parseRecord(assignment.availableValuesJson),
     }).length,
     candidateProfileVersionId: assignment.candidateProfileVersionId,
-    candidateProfileVersionNumber: null,
-    candidateName: "",
-    candidateFileName: "",
+    candidateProfileVersionNumber:
+      options.candidateProfileVersionNumber ?? null,
+    candidateName: options.candidateName ?? "",
+    candidateFileName: options.candidateFileName ?? "",
   };
 }
 
