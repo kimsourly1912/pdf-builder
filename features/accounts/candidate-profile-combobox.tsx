@@ -36,9 +36,7 @@ export function CandidateProfileCombobox(props: {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  useEffect(() => {
-    if (!props.value) setSelected(null);
-  }, [props.value]);
+  const activeSelected = props.value ? selected : null;
 
   useEffect(() => {
     if (!open || props.disabled) return;
@@ -86,8 +84,8 @@ export function CandidateProfileCombobox(props: {
     };
   }, [open, search, props.accountId, props.disabled, props.value]);
 
-  const triggerLabel = selected
-    ? `${selected.candidateName} · ${selected.fileName || `profile v${selected.versionNumber}`}`
+  const triggerLabel = activeSelected
+    ? `${activeSelected.candidateName} · ${activeSelected.fileName || `profile v${activeSelected.versionNumber}`}`
     : "Choose resume data";
 
   return (
@@ -102,7 +100,7 @@ export function CandidateProfileCombobox(props: {
           disabled={props.disabled}
           className="h-9 w-full min-w-0 justify-between px-3 font-normal"
         >
-          <span className={cn("truncate", !selected && "text-muted-foreground")}>
+          <span className={cn("truncate", !activeSelected && "text-muted-foreground")}>
             {triggerLabel}
           </span>
           <ChevronsUpDown className="ml-2 size-4 shrink-0 opacity-50" />
