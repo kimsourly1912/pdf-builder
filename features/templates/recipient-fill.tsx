@@ -99,7 +99,7 @@ export function RecipientFill(props: { token: string }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
   const idempotencyKeyRef = useRef(crypto.randomUUID());
-  const dirtyFieldIdsRef = useRef(new Set<string>());
+  const [dirtyFieldIds, setDirtyFieldIds] = useState<Set<string>>(new Set());
   const [payload, setPayload] = useState<TemplateFillPayload | null>(null);
   const [pdfDocument, setPdfDocument] = useState<PdfDocument | null>(null);
   const [pdfBytes, setPdfBytes] = useState<Uint8Array<ArrayBuffer> | null>(null);
@@ -157,7 +157,7 @@ export function RecipientFill(props: { token: string }) {
         }
         setPayload(nextPayload);
         setResumePrefillDismissed(false);
-        dirtyFieldIdsRef.current.clear();
+        setDirtyFieldIds(new Set());
         setResumeAppliedFieldIds(
           new Set(Object.keys(nextPayload.initialValues ?? {})),
         );
@@ -217,7 +217,11 @@ export function RecipientFill(props: { token: string }) {
   }, [pageNumber, payload, pdfDocument]);
 
   const updateValue = useCallback((id: string, value: unknown) => {
-    dirtyFieldIdsRef.current.add(id);
+    setDirtyFieldIds((current) => {
+      const next = new Set(current);
+      next.add(id);
+      return next;
+    });
     setResumeAppliedFieldIds((current) => {
       const next = new Set(current);
       next.delete(id);
@@ -234,7 +238,7 @@ export function RecipientFill(props: { token: string }) {
       currentValues: values,
       suggestions: payload.resumePrefill.values,
       fieldIds,
-      protectedFieldIds: dirtyFieldIdsRef.current,
+      protectedFieldIds: dirtyFieldIds,
       overwrite,
     });
     const changedFieldIds = fieldIds.filter(
@@ -246,11 +250,15 @@ export function RecipientFill(props: { token: string }) {
         changedFieldIds.map((fieldId) => [fieldId, values[fieldId]]),
       ),
       previousAppliedFieldIds: new Set(resumeAppliedFieldIds),
-      previousProtectedFieldIds: new Set(dirtyFieldIdsRef.current),
+      previousProtectedFieldIds: new Set(dirtyFieldIds),
     });
     if (overwrite) {
-      changedFieldIds.forEach((fieldId) => {
-        dirtyFieldIdsRef.current.delete(fieldId);
+      setDirtyFieldIds((current) => {
+        const nextDirtyFields = new Set(current);
+        changedFieldIds.forEach((fieldId) => {
+          nextDirtyFields.delete(fieldId);
+        });
+        return nextDirtyFields;
       });
     }
     setValues(next);
@@ -272,7 +280,7 @@ export function RecipientFill(props: { token: string }) {
     const currentValue = values[fieldId];
     const suggestion = payload.resumePrefill.values[fieldId];
     if (
-      dirtyFieldIdsRef.current.has(fieldId)
+      dirtyFieldIds.has(fieldId)
       && hasRecipientValue(currentValue)
       && !prefillValuesEqual(currentValue, suggestion)
     ) {
@@ -295,7 +303,7 @@ export function RecipientFill(props: { token: string }) {
       ...resumeUndo.previousValues,
     }));
     setResumeAppliedFieldIds(resumeUndo.previousAppliedFieldIds);
-    dirtyFieldIdsRef.current = new Set(resumeUndo.previousProtectedFieldIds);
+    setDirtyFieldIds(new Set(resumeUndo.previousProtectedFieldIds));
     setResumeUndo(null);
     setError("");
   }
@@ -403,7 +411,7 @@ export function RecipientFill(props: { token: string }) {
             annotations={payload.template.annotations}
             prefill={payload.resumePrefill}
             values={values}
-            protectedFieldIds={dirtyFieldIdsRef.current}
+            protectedFieldIds={dirtyFieldIds}
             canUndo={Boolean(resumeUndo)}
             onFillAvailable={fillAvailableResumeFields}
             onUseField={useResumeField}
@@ -440,7 +448,7 @@ export function RecipientFill(props: { token: string }) {
                 annotations={payload.template.annotations}
                 prefill={payload.resumePrefill}
                 values={values}
-                protectedFieldIds={dirtyFieldIdsRef.current}
+                protectedFieldIds={dirtyFieldIds}
                 canUndo={Boolean(resumeUndo)}
                 onFillAvailable={fillAvailableResumeFields}
                 onUseField={useResumeField}

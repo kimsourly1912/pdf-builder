@@ -1,7 +1,7 @@
 "use client";
 
 import { Eye, LoaderCircle, Plus, RefreshCw, ShieldAlert } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 
 import { FeedbackAlert } from "@/components/patterns/feedback-alert";
 import {
@@ -57,7 +57,7 @@ function emptyDraft(
   };
 }
 
-export function AccountAssignmentControls(props: {
+type AccountAssignmentControlsProps = {
   accountId: string;
   accountName: string;
   templates: AssignmentTemplateSummary[];
@@ -70,7 +70,20 @@ export function AccountAssignmentControls(props: {
     draft: AssignmentDraft,
   ) => Promise<boolean>;
   onCancelReplacement?: () => void;
-}) {
+};
+
+export function AccountAssignmentControls(
+  props: AccountAssignmentControlsProps,
+) {
+  const stateKey = props.replacement
+    ? `replace:${props.replacement.id}:${props.replacement.updatedAt}`
+    : "assign";
+  return <AccountAssignmentControlsStateful key={stateKey} {...props} />;
+}
+
+function AccountAssignmentControlsStateful(
+  props: AccountAssignmentControlsProps,
+) {
   const requestKeyRef = useRef(crypto.randomUUID());
   const [draft, setDraft] = useState<AssignmentDraft>(
     () => emptyDraft(props.replacement),
@@ -83,15 +96,6 @@ export function AccountAssignmentControls(props: {
   const [mismatchOpen, setMismatchOpen] = useState(false);
   const [previewing, setPreviewing] = useState(false);
   const [previewError, setPreviewError] = useState("");
-
-  useEffect(() => {
-    setDraft(emptyDraft(props.replacement));
-    setSelectedProfile(null);
-    setPreview(null);
-    setPreviewOpen(false);
-    setPreviewError("");
-    requestKeyRef.current = crypto.randomUUID();
-  }, [props.replacement]);
 
   const selectedTemplate = props.templates.find(
     (template) => template.id === draft.templateId,
