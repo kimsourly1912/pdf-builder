@@ -1,6 +1,6 @@
 import { and, desc, eq, isNull, sql } from "drizzle-orm";
 
-import { getDb } from "@/db";
+import { getDatabaseBinding, getDb } from "@/db";
 import {
   auditEvents,
   candidateProfileVersions,
@@ -413,6 +413,275 @@ export async function POST(
         : "The form could not be assigned.",
       duplicate ? 409 : 500,
     );
+  }
+}
+
+export async function PATCH(
+  request: Request,
+  context: { params: Promise<{ id: string }> },
+) {
+  try {
+    const ownerEmail = await requireRequestOwner(request);
+    const { id: userId } = await context.params;
+    const body = (await request.json()) as Record<string, unknown>;
+    const assignmentId = String(body.assignmentId ?? "").trim();
+    const expectedUpdatedAt = String(body.expectedUpdatedAt ?? "").trim();
+    const prefillMode = body.prefillMode;
+    const profileVersionId =
+      typeof body.candidateProfileVersionId === "string"
+        ? body.candidateProfileVersionId.trim()
+        : null;
+    const profileMismatchConfirmed = body.profileMismatchConfirmed === true;
+    const rawAllowedFieldIds = body.allowedFieldIds;
+    if (
+      !/^[A-Za-z0-9_-]{1,128}$/u.test(assignmentId)
+      || !expectedUpdatedAt
+      || expectedUpdatedAt.length > 40
+      || !isAssignmentPrefillMode(prefillMode)
+      || !Array.isArray(rawAllowedFieldIds)
+      || rawAllowedFieldIds.length > 200
+      || rawAllowedFieldIds.some(
+        (fieldId) =>
+          typeof fieldId !== "string"
+          || !/^[A-Za-z0-9_-]{1,120}$/u.test(fieldId),
+      )
+    ) {
+      return jsonError("The resume-data replacement request is invalid.", 400);
+    }
+    const allowedFieldIds = [...new Set(rawAllowedFieldIds as string[])];
+    if (prefillMode !== "none" && (!profileVersionId || allowedFieldIds.length === 0)) {
+      return jsonError(
+        "Choose resume data and at least one approved field.",
+        400,
+      );
+    }
+
+    const db = getDb();
+    const [target] = await db
+      .select({
+        assignment: formAssignments,
+        template: templates,
+        version: templateVersions,
+      })
+      .from(formAssignments)
+      .innerJoin(templates, eq(formAssignments.templateId, templates.id))
+      .innerJoin(
+        templateVersions,
+        eq(formAssignments.templateVersionId, templateVersions.id),
+      )
+      .innerJoin(
+        recipientProfiles,
+        eq(formAssignments.userId, recipientProfiles.userId),
+      )
+      .where(and(
+        eq(formAssignments.id, assignmentId),
+        eq(formAssignments.userId, userId),
+        eq(templates.ownerEmail, ownerEmail),
+        eq(recipientProfiles.createdByEmail, ownerEmail),
+      ))
+      .limit(1);
+    if (!target) return jsonError("Assignment not found.", 404);
+    if (
+      target.assignment.status !== "assigned"
+      || target.assignment.updatedAt !== expectedUpdatedAt
+    ) {
+      return jsonError(
+        "This assignment changed. Refresh it before replacing resume data.",
+        409,
+      );
+    }
+
+    let selectedProfile: {
+      version: typeof candidateProfileVersions.$inferSelect;
+      candidate: typeof candidates.$inferSelect;
+      fileName: string | null;
+    } | null = null;
+    if (prefillMode !== "none" && profileVersionId) {
+      const [selection] = await db
+        .select({
+          version: candidateProfileVersions,
+          candidate: candidates,
+          fileName: resumes.fileName,
+        })
+        .from(candidateProfileVersions)
+        .innerJoin(
+          candidates,
+          and(
+            eq(candidateProfileVersions.candidateId, candidates.id),
+            eq(candidateProfileVersions.ownerEmail, candidates.ownerEmail),
+          ),
+        )
+        .leftJoin(
+          resumes,
+          and(
+            eq(candidateProfileVersions.resumeId, resumes.id),
+            eq(resumes.ownerEmail, ownerEmail),
+          ),
+        )
+        .where(and(
+          eq(candidateProfileVersions.id, profileVersionId),
+          eq(candidateProfileVersions.ownerEmail, ownerEmail),
+          eq(candidates.ownerEmail, ownerEmail),
+        ))
+        .limit(1);
+      if (!selection) return jsonError("Candidate profile not found.", 404);
+      if (
+        selection.candidate.userId !== userId
+        && !profileMismatchConfirmed
+      ) {
+        return jsonError(
+          "Confirm that this resume belongs to a different account before replacing it.",
+          409,
+        );
+      }
+      selectedProfile = selection;
+    }
+
+    const profile = selectedProfile
+      ? parseProfile(selectedProfile.version.profileJson)
+      : null;
+    if (selectedProfile && !profile) {
+      return jsonError("The selected candidate profile is invalid.", 422);
+    }
+    const snapshot = buildCandidatePrefillSnapshot({
+      candidate: selectedProfile?.candidate ?? null,
+      annotations: parseArray<TemplateAnnotation>(
+        target.version.annotationsJson,
+      ),
+      recipientRoleId: target.assignment.roleId,
+      profileVersion: selectedProfile && profile
+        ? {
+            id: selectedProfile.version.id,
+            profile,
+            verificationStatus:
+              selectedProfile.version.verificationStatus === "verified"
+                ? "verified"
+                : "extracted",
+          }
+        : null,
+    });
+    const storage = buildAssignmentPrefillStorage({
+      mode: prefillMode,
+      snapshot,
+      allowedFieldIds:
+        prefillMode === "none" ? [] : allowedFieldIds,
+    });
+    if (
+      prefillMode !== "none"
+      && storage.approvedFieldIds.length !== allowedFieldIds.length
+    ) {
+      return jsonError(
+        "One or more approved fields are no longer available.",
+        422,
+      );
+    }
+
+    const now = new Date().toISOString();
+    const auditEvent = createAuditEvent({
+      request,
+      ownerEmail,
+      actorType: "owner",
+      actorId: ownerEmail,
+      action: "assignment.prefill_replaced",
+      targetType: "assignment",
+      targetId: assignmentId,
+      metadata: {
+        accountId: userId,
+        previousCandidateProfileVersionId:
+          target.assignment.candidateProfileVersionId,
+        candidateProfileVersionId: selectedProfile?.version.id ?? null,
+        candidateId: selectedProfile?.candidate.id ?? null,
+        prefillMode,
+        approvedFieldCount: storage.approvedFieldIds.length,
+      },
+      createdAt: now,
+    });
+    const database = getDatabaseBinding();
+    const results = await database.batch([
+      database.prepare(
+        `UPDATE form_assignments
+         SET initial_values_json = ?,
+             candidate_profile_version_id = ?,
+             initial_values_meta_json = ?,
+             prefill_mode = ?,
+             available_values_json = ?,
+             available_values_meta_json = ?,
+             updated_at = ?
+         WHERE id = ?
+           AND user_id = ?
+           AND status = 'assigned'
+           AND updated_at = ?`,
+      ).bind(
+        JSON.stringify(storage.initialValues),
+        selectedProfile?.version.id ?? null,
+        JSON.stringify(storage.initialMetadata),
+        prefillMode,
+        JSON.stringify(storage.availableValues),
+        JSON.stringify(storage.availableMetadata),
+        now,
+        assignmentId,
+        userId,
+        expectedUpdatedAt,
+      ),
+      database.prepare(
+        `INSERT INTO audit_events (
+          id, owner_email, actor_type, actor_id, action, target_type,
+          target_id, request_id, metadata_json, created_at
+        )
+        SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+        WHERE EXISTS (
+          SELECT 1 FROM form_assignments
+          WHERE id = ? AND user_id = ? AND updated_at = ?
+        )`,
+      ).bind(
+        auditEvent.id,
+        auditEvent.ownerEmail,
+        auditEvent.actorType,
+        auditEvent.actorId,
+        auditEvent.action,
+        auditEvent.targetType,
+        auditEvent.targetId,
+        auditEvent.requestId,
+        auditEvent.metadataJson,
+        auditEvent.createdAt,
+        assignmentId,
+        userId,
+        now,
+      ),
+    ]);
+    if (Number(results[0]?.meta?.changes ?? 0) < 1) {
+      return jsonError(
+        "This assignment changed. Refresh it before replacing resume data.",
+        409,
+      );
+    }
+
+    return Response.json({
+      assignment: {
+        id: assignmentId,
+        templateId: target.assignment.templateId,
+        templateName: target.template.name,
+        versionNumber: target.version.versionNumber,
+        roleId: target.assignment.roleId,
+        roleName: target.assignment.roleName,
+        roleColor: target.assignment.roleColor,
+        status: "active",
+        assignedAt: target.assignment.assignedAt,
+        completedAt: null,
+        updatedAt: now,
+        prefillMode,
+        approvedFieldCount: storage.approvedFieldIds.length,
+        candidateProfileVersionId: selectedProfile?.version.id ?? null,
+        candidateProfileVersionNumber:
+          selectedProfile?.version.versionNumber ?? null,
+        candidateName: selectedProfile?.candidate.fullName ?? "",
+        candidateFileName: selectedProfile?.fileName ?? "",
+      },
+    });
+  } catch (error) {
+    if (isResponse(error)) return error;
+    console.error("Failed to replace assignment resume data", error);
+    return jsonError("Resume data could not be replaced.", 500);
   }
 }
 
