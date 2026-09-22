@@ -26,6 +26,16 @@ export type TemplateAnnotation = {
   [key: string]: unknown;
 };
 
+export type RecipientResumePrefill = {
+  values: Record<string, unknown>;
+  metadata: Record<string, {
+    prefillKey: import("@/features/resumes/resume.types").CandidatePrefillKey;
+    confidence: number | null;
+    sourcePage: number | null;
+    verificationStatus: "extracted" | "verified";
+  }>;
+};
+
 export type TemplateFillPayload = {
   template: {
     id: string;
@@ -49,4 +59,5 @@ export type TemplateFillPayload = {
     accountType: "candidate" | "employee";
   };
   initialValues?: Record<string, unknown>;
+  resumePrefill?: RecipientResumePrefill;
 };

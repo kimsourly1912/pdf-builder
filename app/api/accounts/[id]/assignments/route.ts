@@ -13,6 +13,10 @@ import {
   user,
 } from "@/db/schema";
 import { createAuditEvent } from "@/features/audit/audit.server";
+import {
+  buildAssignmentPrefillStorage,
+  isAssignmentPrefillMode,
+} from "@/features/accounts/assignment-prefill";
 import { normalizeCandidateProfile } from "@/features/resumes/candidate-profile";
 import { buildCandidatePrefillSnapshot } from "@/features/resumes/candidate-prefill";
 import { MAX_RESUME_PAGES } from "@/features/resumes/resume.types";
@@ -36,6 +40,37 @@ export async function POST(
     const body = (await request.json()) as Record<string, unknown>;
     const templateId = String(body.templateId ?? "").trim();
     const roleId = String(body.roleId ?? "").trim();
+    const prefillModeProvided = Object.prototype.hasOwnProperty.call(
+      body,
+      "prefillMode",
+    );
+    const rawPrefillMode = prefillModeProvided ? body.prefillMode : "automatic";
+    if (!isAssignmentPrefillMode(rawPrefillMode)) {
+      return jsonError("Resume-data behavior is invalid.", 400);
+    }
+    const prefillMode = rawPrefillMode;
+    const allowedFieldIdsProvided = Object.prototype.hasOwnProperty.call(
+      body,
+      "allowedFieldIds",
+    );
+    const rawAllowedFieldIds = body.allowedFieldIds;
+    if (
+      allowedFieldIdsProvided
+      && (
+        !Array.isArray(rawAllowedFieldIds)
+        || rawAllowedFieldIds.length > 200
+        || rawAllowedFieldIds.some(
+          (fieldId) =>
+            typeof fieldId !== "string"
+            || !/^[A-Za-z0-9_-]{1,120}$/u.test(fieldId),
+        )
+      )
+    ) {
+      return jsonError("Resume-data field selection is invalid.", 400);
+    }
+    const allowedFieldIds = allowedFieldIdsProvided
+      ? [...new Set(rawAllowedFieldIds as string[])]
+      : null;
     const profileSelectionProvided = Object.prototype.hasOwnProperty.call(
       body,
       "candidateProfileVersionId",
@@ -58,6 +93,20 @@ export async function POST(
       || (requestedProfileVersionId?.length ?? 0) > 128
     ) {
       return jsonError("Choose a template and recipient role.", 400);
+    }
+    if (
+      prefillModeProvided
+      && prefillMode !== "none"
+      && !requestedProfileVersionId
+    ) {
+      return jsonError("Choose resume data for this assignment.", 400);
+    }
+    if (
+      prefillMode !== "none"
+      && allowedFieldIds !== null
+      && allowedFieldIds.length === 0
+    ) {
+      return jsonError("Choose at least one resume-data field.", 400);
     }
 
     const db = getDb();
@@ -108,7 +157,7 @@ export async function POST(
       candidate: typeof candidates.$inferSelect;
     } | null = null;
 
-    if (requestedProfileVersionId) {
+    if (prefillMode !== "none" && requestedProfileVersionId) {
       const [selection] = await db
         .select({
           version: candidateProfileVersions,
@@ -130,7 +179,11 @@ export async function POST(
         .limit(1);
       if (!selection) return jsonError("Candidate profile not found.", 404);
       selectedProfile = selection;
-    } else if (!profileSelectionProvided && account.candidate) {
+    } else if (
+      prefillMode !== "none"
+      && !profileSelectionProvided
+      && account.candidate
+    ) {
       const [version] = await db.select().from(candidateProfileVersions)
         .where(and(
           eq(candidateProfileVersions.ownerEmail, ownerEmail),
@@ -155,9 +208,11 @@ export async function POST(
     if (selectedProfile && !profile) {
       return jsonError("The selected candidate profile is invalid.", 422);
     }
-    const snapshotCandidate = profileSelectionProvided
-      ? selectedProfile?.candidate ?? null
-      : account.candidate;
+    const snapshotCandidate = prefillMode === "none"
+      ? null
+      : profileSelectionProvided
+        ? selectedProfile?.candidate ?? null
+        : account.candidate;
     const snapshot = buildCandidatePrefillSnapshot({
       candidate: snapshotCandidate,
       annotations,
@@ -176,6 +231,11 @@ export async function POST(
     const selectedProfileVersionId = selectedProfile && profile
       ? selectedProfile.version.id
       : null;
+    const prefillStorage = buildAssignmentPrefillStorage({
+      mode: prefillMode,
+      snapshot,
+      allowedFieldIds: allowedFieldIds ?? Object.keys(snapshot.values),
+    });
     await db.batch([
       db.insert(recipientLinks).values({
         id: linkId,
@@ -202,9 +262,14 @@ export async function POST(
         roleId: role.id,
         roleName: role.name,
         roleColor: role.color,
-        initialValuesJson: JSON.stringify(snapshot.values),
+        initialValuesJson: JSON.stringify(prefillStorage.initialValues),
         candidateProfileVersionId: selectedProfileVersionId,
-        initialValuesMetaJson: JSON.stringify(snapshot.metadata),
+        initialValuesMetaJson: JSON.stringify(prefillStorage.initialMetadata),
+        prefillMode,
+        availableValuesJson: JSON.stringify(prefillStorage.availableValues),
+        availableValuesMetaJson: JSON.stringify(
+          prefillStorage.availableMetadata,
+        ),
         status: "assigned",
         assignedAt: now,
         updatedAt: now,
@@ -225,7 +290,9 @@ export async function POST(
             versionNumber: template.version.versionNumber,
             candidateProfileVersionId: selectedProfileVersionId,
             candidateId: snapshotCandidate?.id ?? null,
-            prefilledFieldCount: Object.keys(snapshot.values).length,
+            prefillMode,
+            approvedFieldCount: prefillStorage.approvedFieldIds.length,
+            prefilledFieldCount: Object.keys(prefillStorage.initialValues).length,
           },
           createdAt: now,
         }),
@@ -245,6 +312,7 @@ export async function POST(
           status: "active",
           assignedAt: now,
           completedAt: null,
+          prefillMode,
         },
       },
       { status: 201 },

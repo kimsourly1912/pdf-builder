@@ -7,7 +7,10 @@ import {
   isCandidatePrefillEligibleAnnotation,
   isCandidatePrefillKey,
 } from "@/features/resumes/candidate-prefill";
-import type { CandidatePrefillSnapshot } from "@/features/resumes/candidate-prefill";
+import type {
+  CandidatePrefillMetadata,
+  CandidatePrefillSnapshot,
+} from "@/features/resumes/candidate-prefill";
 import type { TemplateAnnotation } from "@/features/templates/template.types";
 
 export function buildAssignmentAutofillPreview(options: {
@@ -58,6 +61,71 @@ export function buildAssignmentAutofillPreview(options: {
       unmappedFields: eligibleFields.length - mappedFields.length,
     },
     fields,
+  };
+}
+
+export type AssignmentPrefillMode = "suggested" | "automatic" | "none";
+
+export type AssignmentPrefillStorage = {
+  initialValues: Record<string, unknown>;
+  initialMetadata: Record<string, CandidatePrefillMetadata>;
+  availableValues: Record<string, unknown>;
+  availableMetadata: Record<string, CandidatePrefillMetadata>;
+  approvedFieldIds: string[];
+};
+
+export function isAssignmentPrefillMode(
+  value: unknown,
+): value is AssignmentPrefillMode {
+  return value === "suggested" || value === "automatic" || value === "none";
+}
+
+export function buildAssignmentPrefillStorage(options: {
+  mode: AssignmentPrefillMode;
+  snapshot: CandidatePrefillSnapshot;
+  allowedFieldIds: string[];
+}): AssignmentPrefillStorage {
+  const allowed = new Set(options.allowedFieldIds);
+  const approvedFieldIds = Object.keys(options.snapshot.values).filter(
+    (fieldId) => allowed.has(fieldId),
+  );
+  const values = Object.fromEntries(
+    approvedFieldIds.map((fieldId) => [
+      fieldId,
+      options.snapshot.values[fieldId],
+    ]),
+  );
+  const metadata = Object.fromEntries(
+    approvedFieldIds.flatMap((fieldId) => {
+      const item = options.snapshot.metadata[fieldId];
+      return item ? [[fieldId, item]] : [];
+    }),
+  );
+
+  if (options.mode === "automatic") {
+    return {
+      initialValues: values,
+      initialMetadata: metadata,
+      availableValues: {},
+      availableMetadata: {},
+      approvedFieldIds,
+    };
+  }
+  if (options.mode === "suggested") {
+    return {
+      initialValues: {},
+      initialMetadata: {},
+      availableValues: values,
+      availableMetadata: metadata,
+      approvedFieldIds,
+    };
+  }
+  return {
+    initialValues: {},
+    initialMetadata: {},
+    availableValues: {},
+    availableMetadata: {},
+    approvedFieldIds: [],
   };
 }
 

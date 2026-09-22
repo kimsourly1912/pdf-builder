@@ -70,3 +70,67 @@ test("builds a reviewable assignment autofill preview", () => {
   assert.equal(result.fields[0].status, "needs_review");
   assert.equal(result.fields[1].status, "empty");
 });
+
+
+test("stores only approved fields as recipient suggestions", () => {
+  const snapshot = {
+    values: {
+      name: "Sokha Chan",
+      email: "sokha@example.com",
+    },
+    metadata: {
+      name: {
+        prefillKey: "candidate.full_name",
+        candidateId: "candidate-1",
+        candidateProfileVersionId: "profile-2",
+        confidence: 0.94,
+        sourcePage: 1,
+        source: "candidate_profile",
+        verificationStatus: "verified",
+      },
+      email: {
+        prefillKey: "candidate.primary_email",
+        candidateId: "candidate-1",
+        candidateProfileVersionId: "profile-2",
+        confidence: 0.91,
+        sourcePage: 1,
+        source: "candidate_profile",
+        verificationStatus: "verified",
+      },
+    },
+  };
+  const stored = preview.buildAssignmentPrefillStorage({
+    mode: "suggested",
+    snapshot,
+    allowedFieldIds: ["email", "not-a-template-field"],
+  });
+
+  assert.deepEqual(stored.initialValues, {});
+  assert.deepEqual(stored.availableValues, {
+    email: "sokha@example.com",
+  });
+  assert.deepEqual(stored.approvedFieldIds, ["email"]);
+  assert.equal(stored.availableMetadata.email.candidateId, "candidate-1");
+});
+
+test("automatic and disabled modes keep their snapshots separate", () => {
+  const snapshot = {
+    values: { name: "Sokha Chan" },
+    metadata: {},
+  };
+  const automatic = preview.buildAssignmentPrefillStorage({
+    mode: "automatic",
+    snapshot,
+    allowedFieldIds: ["name"],
+  });
+  const disabled = preview.buildAssignmentPrefillStorage({
+    mode: "none",
+    snapshot,
+    allowedFieldIds: ["name"],
+  });
+
+  assert.deepEqual(automatic.initialValues, { name: "Sokha Chan" });
+  assert.deepEqual(automatic.availableValues, {});
+  assert.deepEqual(disabled.initialValues, {});
+  assert.deepEqual(disabled.availableValues, {});
+});

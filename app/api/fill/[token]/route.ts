@@ -10,6 +10,7 @@ import {
 } from "@/db/schema";
 import { authorizeAssignedRecipient } from "@/features/accounts/account.server";
 import { createAuditEvent } from "@/features/audit/audit.server";
+import { isCandidatePrefillKey } from "@/features/resumes/candidate-prefill";
 import { compensateStorageWrites } from "@/features/storage/storage-cleanup.server";
 import { buildSubmissionAnswers } from "@/features/templates/label-binding";
 import {
@@ -105,6 +106,14 @@ export async function GET(
       initialValues: assignedAccount
         ? parseRecord(fillContext.assignment?.initialValuesJson)
         : undefined,
+      resumePrefill:
+        assignedAccount
+        && fillContext.assignment?.prefillMode === "suggested"
+          ? buildRecipientResumePrefill(
+              fillContext.assignment.availableValuesJson,
+              fillContext.assignment.availableValuesMetaJson,
+            )
+          : undefined,
     };
     return Response.json(payload, {
       headers: { "Cache-Control": "no-store" },
@@ -489,6 +498,46 @@ function parseRecord(value: string | null | undefined): Record<string, unknown> 
   } catch {
     return {};
   }
+}
+
+function buildRecipientResumePrefill(
+  valuesJson: string,
+  metadataJson: string,
+): NonNullable<TemplateFillPayload["resumePrefill"]> | undefined {
+  const values = parseRecord(valuesJson);
+  const rawMetadata = parseRecord(metadataJson);
+  const metadata: NonNullable<
+    TemplateFillPayload["resumePrefill"]
+  >["metadata"] = {};
+
+  for (const fieldId of Object.keys(values)) {
+    const item = rawMetadata[fieldId];
+    if (!item || Array.isArray(item) || typeof item !== "object") continue;
+    const record = item as Record<string, unknown>;
+    if (!isCandidatePrefillKey(record.prefillKey)) continue;
+    metadata[fieldId] = {
+      prefillKey: record.prefillKey,
+      confidence:
+        typeof record.confidence === "number"
+        && Number.isFinite(record.confidence)
+          ? Math.min(1, Math.max(0, record.confidence))
+          : null,
+      sourcePage:
+        typeof record.sourcePage === "number"
+        && Number.isInteger(record.sourcePage)
+        && record.sourcePage > 0
+          ? record.sourcePage
+          : null,
+      verificationStatus:
+        record.verificationStatus === "verified"
+          ? "verified"
+          : "extracted",
+    };
+  }
+
+  return Object.keys(values).length > 0
+    ? { values, metadata }
+    : undefined;
 }
 
 async function findIdempotentSubmission(
