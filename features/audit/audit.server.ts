@@ -7,8 +7,10 @@ const REQUEST_ID_PATTERN = /^[A-Za-z0-9._-]{8,128}$/u;
 export type AuditAction =
   | "account.created"
   | "assignment.created"
+  | "candidate.profile_verified"
   | "link.regenerated"
   | "link.revoked"
+  | "resume.ai_analyzed"
   | "resume.deleted"
   | "resume.uploaded"
   | "submission.completed"
@@ -22,6 +24,7 @@ export type AuditActorType = "owner" | "recipient";
 export type AuditTargetType =
   | "account"
   | "assignment"
+  | "candidate"
   | "recipient_link"
   | "resume"
   | "submission"

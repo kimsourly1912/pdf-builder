@@ -52,7 +52,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
-import { extractResumeFile } from "@/features/resumes/resume-client-extraction";
+import { ResumePdfPreview } from "@/features/resumes/resume-pdf-preview";
 import type {
   ResumeCandidateSummary,
   ResumeDetail,
@@ -192,25 +192,8 @@ export function ResumeDetailView(props: { resumeId: string }) {
     setNotice("");
 
     try {
-      const fileResponse = await fetch(
-        `/api/resumes/${resume.id}/download`,
-        { cache: "no-store" },
-      );
-
-      if (!fileResponse.ok) {
-        throw new Error("The PDF could not be opened for extraction.");
-      }
-
-      const file = new File(
-        [await fileResponse.blob()],
-        resume.fileName,
-        { type: "application/pdf" },
-      );
-      const extraction = await extractResumeFile(file);
-      const response = await fetch(`/api/resumes/${resume.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "retry_extraction", extraction }),
+      const response = await fetch(`/api/resumes/${resume.id}/analyze`, {
+        method: "POST",
       });
       const payload = (await response.json()) as { error?: string };
 
@@ -218,7 +201,7 @@ export function ResumeDetailView(props: { resumeId: string }) {
         throw new Error(payload.error || "Extraction could not be retried.");
       }
 
-      setNotice("Resume extraction completed.");
+      setNotice("AI resume analysis completed.");
       await loadResume();
     } catch (cause) {
       setError(
@@ -384,11 +367,10 @@ export function ResumeDetailView(props: { resumeId: string }) {
           )}
 
         <div className="grid items-start gap-5 xl:grid-cols-[minmax(500px,1fr)_minmax(430px,560px)]">
-          <Card className="gap-0 overflow-hidden bg-foreground py-0 xl:sticky xl:top-20">
-            <iframe
-              title={`Preview ${resume.fileName}`}
-              src={`/api/resumes/${resume.id}/download`}
-              className="h-[calc(100vh-7rem)] min-h-[650px] w-full bg-white"
+          <Card className="gap-0 overflow-hidden py-0 xl:sticky xl:top-20">
+            <ResumePdfPreview
+              resumeId={resume.id}
+              fileName={resume.fileName}
             />
           </Card>
 

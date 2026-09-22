@@ -1,6 +1,7 @@
 import "server-only";
 
 import type { candidates } from "@/db/schema";
+import { normalizeCandidateProfile } from "@/features/resumes/candidate-profile";
 import type {
   ExtractedValue,
   ResumeCandidateSummary,
@@ -31,18 +32,32 @@ export function validDateOnly(value: string): boolean {
 
 export function parseResumeExtraction(value: unknown): ResumeExtractionPayload | null {
   if (!value || Array.isArray(value) || typeof value !== "object") return null;
-  const extraction = value as Partial<ResumeExtractionPayload>;
+  const extraction = value as Record<string, unknown>;
+  const pageCount = extraction.pageCount;
   if (
-    extraction.schemaVersion !== 1 ||
-    extraction.engine !== "pdf-text-heuristic-v1" ||
-    !integerInRange(extraction.pageCount, 1, MAX_RESUME_PAGES) ||
-    !integerInRange(extraction.scannedPageCount, 0, extraction.pageCount) ||
+    !integerInRange(pageCount, 1, MAX_RESUME_PAGES) ||
+    !integerInRange(extraction.scannedPageCount, 0, pageCount) ||
     !integerInRange(extraction.totalCharacters, 0, 500_000) ||
     !validFields(extraction.fields)
   ) {
     return null;
   }
-  return extraction as ResumeExtractionPayload;
+  if (
+    extraction.schemaVersion === 1 &&
+    extraction.engine === "pdf-text-heuristic-v1"
+  ) {
+    return extraction as ResumeExtractionPayload;
+  }
+  if (
+    extraction.schemaVersion === 2 &&
+    typeof extraction.engine === "string" &&
+    extraction.engine.startsWith("hybrid:openai:")
+  ) {
+    const profile = normalizeCandidateProfile(extraction.profile, pageCount);
+    if (!profile) return null;
+    return { ...extraction, profile } as ResumeExtractionPayload;
+  }
+  return null;
 }
 
 export function resumeStatusForExtraction(

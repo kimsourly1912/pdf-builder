@@ -56,3 +56,41 @@ test("creates an immutable assignment snapshot from explicit prefill keys", () =
     skills: "TypeScript\nD1",
   });
 });
+
+
+test("suggests explicit candidate keys from form labels", () => {
+  assert.equal(
+    prefill.suggestCandidatePrefillKey("Email address", "email_address"),
+    "candidate.primary_email",
+  );
+  assert.equal(
+    prefill.suggestCandidatePrefillKey("Current employer", "company"),
+    "candidate.current_employer",
+  );
+  assert.equal(prefill.suggestCandidatePrefillKey("Approval signature", "signature"), undefined);
+});
+
+test("prefills dropdowns only when an option matches exactly", () => {
+  const snapshot = prefill.buildCandidatePrefillSnapshot({
+    candidate,
+    annotations: [
+      {
+        id: "nationality",
+        page: 1,
+        type: "dropdown",
+        x: 0,
+        y: 0,
+        width: 1,
+        height: 1,
+        color: "#000",
+        prefillKey: "candidate.nationality",
+        options: [
+          { id: "kh", label: "Cambodian" },
+          { id: "other", label: "Other" },
+        ],
+      },
+    ],
+  });
+  assert.deepEqual(snapshot.values, { nationality: "Cambodian" });
+  assert.equal(snapshot.metadata.nationality.source, "candidate_record");
+});

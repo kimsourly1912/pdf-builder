@@ -10,6 +10,7 @@ import type {
   DetectedFieldCandidate,
   FieldDetectionResult,
 } from "@/features/ai-field-detection/field-detection";
+import { CANDIDATE_PREFILL_KEYS } from "@/features/resumes/resume.types";
 
 type OpenAiRuntime = {
   OPENAI_API_KEY?: string;
@@ -191,6 +192,7 @@ For every field:
 - page is the 1-based PDF page number.
 - label is the visible human label. Preserve Khmer and other source languages.
 - suggestedKey is a short English snake_case semantic key when meaning is clear. Otherwise transliterate or use field plus a meaningful suffix.
+- prefillKey identifies candidate resume data that should auto-fill this field. Use exactly one of: none, ${CANDIDATE_PREFILL_KEYS.join(", ")}. Use none unless the visible label clearly matches.
 - tool must be exactly one of: ${AI_FIELD_TOOLS.join(", ")}.
 - Use input for short text, email, phone, and numeric values. Set validation accordingly.
 - Use textarea only for a visibly large multi-line writing area.
@@ -227,6 +229,10 @@ const FIELD_DETECTION_SCHEMA = {
           page: { type: "integer" },
           label: { type: "string" },
           suggestedKey: { type: "string" },
+          prefillKey: {
+            type: "string",
+            enum: ["none", ...CANDIDATE_PREFILL_KEYS],
+          },
           tool: { type: "string", enum: AI_FIELD_TOOLS },
           validation: {
             type: "string",
@@ -243,6 +249,7 @@ const FIELD_DETECTION_SCHEMA = {
           "page",
           "label",
           "suggestedKey",
+          "prefillKey",
           "tool",
           "validation",
           "labelBox",

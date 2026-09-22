@@ -3,6 +3,8 @@ import {
   type AiFieldTool,
   type DetectedFieldCandidate,
 } from "@/features/ai-field-detection/field-detection";
+import { isCandidatePrefillKey } from "@/features/resumes/candidate-prefill";
+import type { CandidatePrefillKey } from "@/features/resumes/resume.types";
 import {
   createFieldKey,
 } from "@/features/templates/label-binding";
@@ -11,6 +13,7 @@ type ReviewCandidateInput = {
   candidateId?: unknown;
   label?: unknown;
   suggestedKey?: unknown;
+  suggestedPrefillKey?: unknown;
   tool?: unknown;
 };
 
@@ -48,12 +51,28 @@ export function parseReviewedFieldCandidates(options: {
       cleanString(input.suggestedKey, 120) || label,
     );
     const suggestedKey = uniqueReviewedKey(requestedKey, usedKeys);
+    const requestedPrefillKey = cleanString(input.suggestedPrefillKey, 120);
+    if (
+      requestedPrefillKey
+      && requestedPrefillKey !== "none"
+      && !isCandidatePrefillKey(requestedPrefillKey)
+    ) {
+      return null;
+    }
+    let suggestedPrefillKey: CandidatePrefillKey | undefined =
+      original.suggestedPrefillKey;
+    if (requestedPrefillKey === "none") {
+      suggestedPrefillKey = undefined;
+    } else if (isCandidatePrefillKey(requestedPrefillKey)) {
+      suggestedPrefillKey = requestedPrefillKey;
+    }
     usedCandidateIds.add(candidateId);
     usedKeys.add(suggestedKey);
     reviewed.push({
       ...original,
       label,
       suggestedKey,
+      suggestedPrefillKey,
       tool,
       validation: tool === "input" ? original.validation : "none",
     });

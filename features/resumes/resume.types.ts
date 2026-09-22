@@ -1,3 +1,5 @@
+import type { CandidateProfile } from "@/features/resumes/candidate-profile";
+
 export const RESUME_SOURCES = [
   "telegram",
   "facebook_messenger",
@@ -52,7 +54,7 @@ export type ResumeExtractionFields = {
   links: ExtractedValue<string[]>;
 };
 
-export type ResumeExtractionPayload = {
+export type ResumeExtractionPayloadV1 = {
   schemaVersion: 1;
   engine: "pdf-text-heuristic-v1";
   pageCount: number;
@@ -60,6 +62,26 @@ export type ResumeExtractionPayload = {
   totalCharacters: number;
   fields: ResumeExtractionFields;
 };
+
+export type ResumeExtractionPayloadV2 = {
+  schemaVersion: 2;
+  engine: `hybrid:openai:${string}`;
+  pageCount: number;
+  scannedPageCount: number;
+  totalCharacters: number;
+  fields: ResumeExtractionFields;
+  profile: CandidateProfile;
+  providerResponseId?: string;
+  usage?: {
+    inputTokens: number;
+    outputTokens: number;
+    totalTokens: number;
+  };
+};
+
+export type ResumeExtractionPayload =
+  | ResumeExtractionPayloadV1
+  | ResumeExtractionPayloadV2;
 
 export type ResumeCandidateSummary = {
   id: string;
@@ -108,12 +130,16 @@ export const CANDIDATE_PREFILL_KEYS = [
   "candidate.first_name",
   "candidate.last_name",
   "candidate.email",
+  "candidate.primary_email",
   "candidate.phone",
+  "candidate.primary_phone",
   "candidate.address",
   "candidate.date_of_birth",
   "candidate.gender",
   "candidate.nationality",
   "candidate.current_title",
+  "candidate.current_job_title",
+  "candidate.current_employer",
   "candidate.professional_summary",
   "candidate.skills",
   "candidate.work_experience",
@@ -121,6 +147,14 @@ export const CANDIDATE_PREFILL_KEYS = [
   "candidate.certifications",
   "candidate.languages",
   "candidate.links",
+  "candidate.linkedin_url",
+  "candidate.portfolio_url",
+  "candidate.highest_degree",
+  "candidate.highest_institution",
+  "candidate.latest_employer",
+  "candidate.latest_job_title",
+  "candidate.latest_job_start_date",
+  "candidate.latest_job_end_date",
 ] as const;
 
 export type CandidatePrefillKey = (typeof CANDIDATE_PREFILL_KEYS)[number];

@@ -1,10 +1,14 @@
 import { and, asc, count, desc, eq, gte, inArray, like, lte, or, sql, type SQL } from "drizzle-orm";
 
 import { getDb } from "@/db";
-import { auditEvents, candidateResumeLinks, candidates, resumeExtractions, resumeProcessingJobs, resumes } from "@/db/schema";
+import { auditEvents, candidateProfileVersions, candidateResumeLinks, candidates, resumeExtractions, resumeProcessingJobs, resumes } from "@/db/schema";
 import { createAuditEvent } from "@/features/audit/audit.server";
 import { createPageMeta, parsePageQuery } from "@/features/pagination/pagination";
 import { normalizeEmail, normalizePhone } from "@/features/resumes/resume-extraction";
+import {
+  extractResumeWithOpenAi,
+  ResumeExtractionProviderError,
+} from "@/features/resumes/openai-resume-extraction.server";
 import {
   candidateInsertFromExtraction,
   candidateSummary,
@@ -16,7 +20,11 @@ import {
   validDateOnly,
 } from "@/features/resumes/resume.server";
 import { MAX_RESUME_BYTES, MAX_RESUME_PAGES, isResumeStatus } from "@/features/resumes/resume.types";
-import type { ResumeSummary } from "@/features/resumes/resume.types";
+import type {
+  ResumeExtractionPayload,
+  ResumeExtractionPayloadV1,
+  ResumeSummary,
+} from "@/features/resumes/resume.types";
 import { inspectPdf } from "@/features/templates/file-validation";
 import { getFilesBucket, isResponse, jsonError, requireRequestOwner } from "@/features/templates/template.server";
 import { compensateStorageWrites } from "@/features/storage/storage-cleanup.server";
@@ -130,20 +138,43 @@ export async function POST(request: Request) {
       return jsonError("The PDF is invalid, password-protected, or longer than 20 pages.", 422);
     }
     const extractionText = formData.get("extraction");
-    let extraction = null;
+    let extraction: ResumeExtractionPayload | null = null;
     if (typeof extractionText === "string" && extractionText.length <= 500_000) {
-      try { extraction = parseResumeExtraction(JSON.parse(extractionText) as unknown); } catch { extraction = null; }
+      try {
+        const parsed = parseResumeExtraction(JSON.parse(extractionText) as unknown);
+        extraction = parsed?.schemaVersion === 1 ? parsed : null;
+      } catch {
+        extraction = null;
+      }
     }
     if (extraction && extraction.pageCount !== inspected.pageCount) {
       return jsonError("The extracted page count does not match the PDF.", 422);
     }
-    const extractionFailed = formData.get("extractionFailed") === "true";
-    if (!extraction && !extractionFailed) return jsonError("Resume extraction data is invalid.", 422);
+    const clientExtractionFailed = formData.get("extractionFailed") === "true";
+    if (!extraction && !clientExtractionFailed) {
+      return jsonError("Resume extraction data is invalid.", 422);
+    }
 
     const checksum = await sha256(bytes);
     const existing = await getDb().select({ id: resumes.id }).from(resumes).where(and(eq(resumes.ownerEmail, ownerEmail), eq(resumes.checksum, checksum))).limit(1);
     if (existing[0]) return jsonError("This PDF is already in the Resume Library.", 409);
 
+    let aiErrorCode: string | null = null;
+    if (extraction?.schemaVersion === 1) {
+      try {
+        extraction = await extractResumeWithOpenAi({
+          bytes,
+          fileName: file.name,
+          pageCount: inspected.pageCount,
+          fallback: extraction as ResumeExtractionPayloadV1,
+        });
+      } catch (error) {
+        aiErrorCode = error instanceof ResumeExtractionProviderError
+          ? error.code
+          : "AI_PROVIDER_FAILED";
+      }
+    }
+    const extractionFailed = !extraction && clientExtractionFailed;
     const email = extraction?.fields.emails.value?.[0] ?? "";
     const phone = extraction?.fields.phones.value?.[0] ?? "";
     const matches: SQL[] = [];
@@ -157,6 +188,7 @@ export async function POST(request: Request) {
     const candidateId = !duplicate ? crypto.randomUUID() : null;
     const now = new Date().toISOString();
     const status = resumeStatusForExtraction(extraction, Boolean(duplicate), extractionFailed);
+    const extractionId = extraction ? crypto.randomUUID() : null;
     fileKey = `resumes/${resumeId}/original.pdf`;
     await getFilesBucket().put(fileKey, bytes.buffer, { httpMetadata: { contentType: "application/pdf" } });
     const db = getDb();
@@ -179,10 +211,26 @@ export async function POST(request: Request) {
     }));
     if (extraction) {
       statements.push(db.insert(resumeExtractions).values({
-        id: crypto.randomUUID(), resumeId, versionNumber: 1, engine: extraction.engine,
+        id: extractionId!, resumeId, versionNumber: 1, engine: extraction.engine,
         status: status === "failed" ? "failed" : "completed", fieldsJson: JSON.stringify(extraction),
         pageCount: extraction.pageCount, scannedPageCount: extraction.scannedPageCount,
         createdByEmail: ownerEmail, createdAt: now,
+      }));
+    }
+    if (candidateId && extraction?.schemaVersion === 2 && extractionId) {
+      statements.push(db.insert(candidateProfileVersions).values({
+        id: crypto.randomUUID(),
+        ownerEmail,
+        candidateId,
+        resumeId,
+        extractionId,
+        versionNumber: 1,
+        schemaVersion: 2,
+        profileJson: JSON.stringify(extraction.profile),
+        verificationStatus: "extracted",
+        source: extraction.engine,
+        createdByEmail: ownerEmail,
+        createdAt: now,
       }));
     }
     if (candidateId) {
@@ -194,7 +242,7 @@ export async function POST(request: Request) {
     statements.push(db.insert(resumeProcessingJobs).values({
       id: crypto.randomUUID(), resumeId, attemptNumber: 1,
       status: extractionFailed ? "failed" : "completed",
-      errorCode: extractionFailed ? "TEXT_EXTRACTION_FAILED" : null,
+      errorCode: extractionFailed ? "TEXT_EXTRACTION_FAILED" : aiErrorCode,
       startedAt: now, completedAt: now, createdAt: now,
     }));
     statements.push(db.insert(auditEvents).values(createAuditEvent({
@@ -205,7 +253,13 @@ export async function POST(request: Request) {
       action: "resume.uploaded",
       targetType: "resume",
       targetId: resumeId,
-      metadata: { pageCount: inspected.pageCount, source: input.source, status },
+      metadata: {
+        pageCount: inspected.pageCount,
+        source: input.source,
+        status,
+        extractionEngine: extraction?.engine ?? null,
+        aiFallbackUsed: Boolean(aiErrorCode && extraction),
+      },
       createdAt: now,
     })));
     await db.batch(statements as [typeof statements[number], ...typeof statements]);
