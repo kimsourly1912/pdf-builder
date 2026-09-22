@@ -7,6 +7,7 @@ const REQUEST_ID_PATTERN = /^[A-Za-z0-9._-]{8,128}$/u;
 export type AuditAction =
   | "account.created"
   | "assignment.created"
+  | "assignment.prefill_replaced"
   | "candidate.profile_verified"
   | "link.regenerated"
   | "link.revoked"
@@ -38,7 +39,10 @@ type AuditEventOptions = {
   action: AuditAction;
   targetType: AuditTargetType;
   targetId: string;
-  metadata?: Record<string, boolean | number | string | null>;
+  metadata?: Record<
+    string,
+    boolean | number | string | null | readonly string[]
+  >;
   createdAt?: string;
 };
 

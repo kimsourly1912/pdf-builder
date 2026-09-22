@@ -172,7 +172,7 @@ export function AccountsDashboard(props: { displayName: string }) {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "Idempotency-Key": draft.requestKey ?? crypto.randomUUID(),
+          "Idempotency-Key": crypto.randomUUID(),
         },
         body: JSON.stringify({ name, email, password, accountType }),
       });
@@ -220,7 +220,10 @@ export function AccountsDashboard(props: { displayName: string }) {
     try {
       const response = await fetch(`/api/accounts/${userId}/assignments`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "Idempotency-Key": draft.requestKey ?? crypto.randomUUID(),
+        },
         body: JSON.stringify(draft),
       });
       const payload = (await response.json()) as {
