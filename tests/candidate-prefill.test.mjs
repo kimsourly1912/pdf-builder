@@ -94,3 +94,21 @@ test("prefills dropdowns only when an option matches exactly", () => {
   assert.deepEqual(snapshot.values, { nationality: "Cambodian" });
   assert.equal(snapshot.metadata.nationality.source, "candidate_record");
 });
+
+
+test("limits assignment snapshots to the selected recipient role", () => {
+  const snapshot = prefill.buildCandidatePrefillSnapshot({
+    candidate,
+    recipientRoleId: "candidate-role",
+    annotations: [
+      { id: "candidate-name", page: 1, type: "input", x: 0, y: 0, width: 1, height: 1, color: "#000", recipientRoleId: "candidate-role", prefillKey: "candidate.full_name" },
+      { id: "hr-name", page: 1, type: "input", x: 0, y: 0, width: 1, height: 1, color: "#000", recipientRoleId: "hr-role", prefillKey: "candidate.full_name" },
+      { id: "shared-email", page: 1, type: "input", x: 0, y: 0, width: 1, height: 1, color: "#000", prefillKey: "candidate.primary_email" },
+    ],
+  });
+  assert.deepEqual(snapshot.values, {
+    "candidate-name": "Sokha Chan",
+    "shared-email": "sokha@example.com",
+  });
+  assert.equal(snapshot.metadata["candidate-name"].verificationStatus, "verified");
+});
