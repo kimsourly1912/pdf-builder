@@ -52,10 +52,13 @@ import {
   buildTelegramShareUrl,
   generateTemporaryPassword,
 } from "@/features/accounts/account-share";
+import { AccountAssignmentControls } from "@/features/accounts/account-assignment-controls";
 import { assignmentDisplay } from "@/features/accounts/assignment-status";
 import { pageMetaFromPayload } from "@/features/pagination/pagination";
 import type { PageMeta } from "@/features/pagination/pagination";
 import type {
+  AssignmentDraft,
+  AssignmentTemplateSummary,
   RecipientAccountSummary,
   RecipientAccountType,
   RecipientAssignmentSummary,
@@ -65,23 +68,12 @@ import {
   resolvedLocalTimeZone,
 } from "@/features/templates/date-time";
 
-type TemplateSummary = {
-  id: string;
-  name: string;
-  archivedAt: string | null;
-  versionNumber: number;
-  currentRoles: Array<{ id: string; name: string; color: string }>;
-  filterRoles: Array<{ id: string; name: string; color: string }>;
-};
-
 type CreatedCredentials = {
   name: string;
   email: string;
   accountType: RecipientAccountType;
   temporaryPassword: string;
 };
-
-type AssignmentDraft = { templateId: string; roleId: string };
 
 const EMPTY_PAGE_META: PageMeta = {
   page: 1,
@@ -94,7 +86,7 @@ const EMPTY_PAGE_META: PageMeta = {
 
 export function AccountsDashboard(props: { displayName: string }) {
   const [accounts, setAccounts] = useState<RecipientAccountSummary[]>([]);
-  const [templates, setTemplates] = useState<TemplateSummary[]>([]);
+  const [templates, setTemplates] = useState<AssignmentTemplateSummary[]>([]);
   const [pageMeta, setPageMeta] = useState<PageMeta>(EMPTY_PAGE_META);
   const [assignmentCount, setAssignmentCount] = useState(0);
   const [searchDraft, setSearchDraft] = useState("");
@@ -111,9 +103,6 @@ export function AccountsDashboard(props: { displayName: string }) {
   const [password, setPassword] = useState("");
   const [credentials, setCredentials] =
     useState<CreatedCredentials | null>(null);
-  const [assignmentDrafts, setAssignmentDrafts] = useState<
-    Record<string, AssignmentDraft>
-  >({});
   const [timeZone, setTimeZone] = useState("UTC");
 
   const loadData = useCallback(async () => {
@@ -214,11 +203,13 @@ export function AccountsDashboard(props: { displayName: string }) {
     }
   }
 
-  async function assignForm(userId: string) {
-    const draft = assignmentDrafts[userId];
-    if (!draft?.templateId || !draft.roleId) {
+  async function assignForm(
+    userId: string,
+    draft: AssignmentDraft,
+  ): Promise<boolean> {
+    if (!draft.templateId || !draft.roleId) {
       setError("Choose a template and recipient role.");
-      return;
+      return false;
     }
     setAssigningUserId(userId);
     setError("");
@@ -246,32 +237,20 @@ export function AccountsDashboard(props: { displayName: string }) {
             : account,
         ),
       );
-      setAssignmentDrafts((current) => ({
-        ...current,
-        [userId]: { templateId: "", roleId: "" },
-      }));
-      setNotice("Form assigned. It is now available in the recipient portal.");
+      setNotice(
+        draft.candidateProfileVersionId
+          ? "Form assigned with a frozen resume-data snapshot."
+          : "Form assigned without resume autofill.",
+      );
+      return true;
     } catch (cause) {
       setError(
         cause instanceof Error ? cause.message : "The form could not be assigned.",
       );
+      return false;
     } finally {
       setAssigningUserId(null);
     }
-  }
-
-  function updateAssignmentDraft(
-    userId: string,
-    changes: Partial<AssignmentDraft>,
-  ) {
-    setAssignmentDrafts((current) => ({
-      ...current,
-      [userId]: {
-        templateId: current[userId]?.templateId ?? "",
-        roleId: current[userId]?.roleId ?? "",
-        ...changes,
-      },
-    }));
   }
 
   async function copyCredentials() {
@@ -505,11 +484,9 @@ export function AccountsDashboard(props: { displayName: string }) {
                     key={account.id}
                     account={account}
                     templates={templates}
-                    draft={assignmentDrafts[account.id] ?? { templateId: "", roleId: "" }}
                     busy={assigningUserId === account.id}
                     timeZone={timeZone}
-                    onDraftChange={(changes) => updateAssignmentDraft(account.id, changes)}
-                    onAssign={() => void assignForm(account.id)}
+                    onAssign={(draft) => assignForm(account.id, draft)}
                   />
                 ))}
                 <ServerPagination
@@ -528,16 +505,11 @@ export function AccountsDashboard(props: { displayName: string }) {
 
 function AccountCard(props: {
   account: RecipientAccountSummary;
-  templates: TemplateSummary[];
-  draft: AssignmentDraft;
+  templates: AssignmentTemplateSummary[];
   busy: boolean;
   timeZone: string;
-  onDraftChange: (changes: Partial<AssignmentDraft>) => void;
-  onAssign: () => void;
+  onAssign: (draft: AssignmentDraft) => Promise<boolean>;
 }) {
-  const selectedTemplate = props.templates.find(
-    (template) => template.id === props.draft.templateId,
-  );
   return (
     <Card className="gap-0 overflow-hidden py-0 shadow-none">
       <div className="flex flex-wrap items-start justify-between gap-3 p-5">
@@ -559,63 +531,13 @@ function AccountCard(props: {
         </span>
       </div>
 
-      <div className="border-y bg-muted/30 p-4">
-        <p className="text-xs font-semibold">Assign a form</p>
-        <div className="mt-2 grid gap-2 sm:grid-cols-[1fr_1fr_auto]">
-          <Select
-            value={props.draft.templateId || "choose-template"}
-            onValueChange={(value) =>
-              props.onDraftChange({
-                templateId: value === "choose-template" ? "" : value,
-                roleId: "",
-              })
-            }
-          >
-            <SelectTrigger className="w-full">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="choose-template">Choose template</SelectItem>
-              {props.templates.map((template) => (
-                <SelectItem key={template.id} value={template.id}>
-                  {template.name} · v{template.versionNumber}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Select
-            value={props.draft.roleId || "choose-role"}
-            disabled={!selectedTemplate}
-            onValueChange={(value) =>
-              props.onDraftChange({
-                roleId: value === "choose-role" ? "" : value,
-              })
-            }
-          >
-            <SelectTrigger className="w-full">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="choose-role">Choose role</SelectItem>
-              {(selectedTemplate?.currentRoles ?? selectedTemplate?.filterRoles)?.map((role) => (
-                <SelectItem key={role.id} value={role.id}>{role.name}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Button
-            type="button"
-            disabled={props.busy || !props.draft.templateId || !props.draft.roleId}
-            onClick={props.onAssign}
-            className="h-9"
-          >
-            {props.busy ? <LoaderCircle className="size-4 animate-spin" /> : <Plus className="size-4" />}
-            Assign
-          </Button>
-        </div>
-        {props.templates.length === 0 && (
-          <p className="mt-2 text-[11px] text-warning">Create and save a template before assigning forms.</p>
-        )}
-      </div>
+      <AccountAssignmentControls
+        accountId={props.account.id}
+        accountName={props.account.name}
+        templates={props.templates}
+        busy={props.busy}
+        onAssign={props.onAssign}
+      />
 
       <div className="p-4">
         {props.account.assignments.length === 0 ? (
