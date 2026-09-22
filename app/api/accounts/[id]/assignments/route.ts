@@ -36,7 +36,27 @@ export async function POST(
     const body = (await request.json()) as Record<string, unknown>;
     const templateId = String(body.templateId ?? "").trim();
     const roleId = String(body.roleId ?? "").trim();
-    if (!templateId || !roleId) {
+    const profileSelectionProvided = Object.prototype.hasOwnProperty.call(
+      body,
+      "candidateProfileVersionId",
+    );
+    const rawProfileVersionId = body.candidateProfileVersionId;
+    if (
+      profileSelectionProvided
+      && rawProfileVersionId !== null
+      && typeof rawProfileVersionId !== "string"
+    ) {
+      return jsonError("Candidate profile selection is invalid.", 400);
+    }
+    const requestedProfileVersionId =
+      typeof rawProfileVersionId === "string"
+        ? rawProfileVersionId.trim()
+        : null;
+    if (
+      !templateId
+      || !roleId
+      || (requestedProfileVersionId?.length ?? 0) > 128
+    ) {
       return jsonError("Choose a template and recipient role.", 400);
     }
 
@@ -80,32 +100,82 @@ export async function POST(
     const now = new Date().toISOString();
     const linkId = crypto.randomUUID();
     const assignmentId = crypto.randomUUID();
-    const annotations = parseArray<TemplateAnnotation>(template.version.annotationsJson);
-    const [profileRow] = account.candidate
-      ? await db.select().from(candidateProfileVersions).where(and(
+    const annotations = parseArray<TemplateAnnotation>(
+      template.version.annotationsJson,
+    );
+    let selectedProfile: {
+      version: typeof candidateProfileVersions.$inferSelect;
+      candidate: typeof candidates.$inferSelect;
+    } | null = null;
+
+    if (requestedProfileVersionId) {
+      const [selection] = await db
+        .select({
+          version: candidateProfileVersions,
+          candidate: candidates,
+        })
+        .from(candidateProfileVersions)
+        .innerJoin(
+          candidates,
+          and(
+            eq(candidateProfileVersions.candidateId, candidates.id),
+            eq(candidateProfileVersions.ownerEmail, candidates.ownerEmail),
+          ),
+        )
+        .where(and(
+          eq(candidateProfileVersions.id, requestedProfileVersionId),
+          eq(candidateProfileVersions.ownerEmail, ownerEmail),
+          eq(candidates.ownerEmail, ownerEmail),
+        ))
+        .limit(1);
+      if (!selection) return jsonError("Candidate profile not found.", 404);
+      selectedProfile = selection;
+    } else if (!profileSelectionProvided && account.candidate) {
+      const [version] = await db.select().from(candidateProfileVersions)
+        .where(and(
           eq(candidateProfileVersions.ownerEmail, ownerEmail),
           eq(candidateProfileVersions.candidateId, account.candidate.id),
-        )).orderBy(
+        ))
+        .orderBy(
           desc(sql<number>`case when ${candidateProfileVersions.verificationStatus} = 'verified' then 1 else 0 end`),
           desc(candidateProfileVersions.versionNumber),
-        ).limit(1)
-      : [];
-    const profile = profileRow
-      ? parseProfile(profileRow.profileJson)
+        )
+        .limit(1);
+      if (version) {
+        selectedProfile = {
+          version,
+          candidate: account.candidate,
+        };
+      }
+    }
+
+    const profile = selectedProfile
+      ? parseProfile(selectedProfile.version.profileJson)
       : null;
+    if (selectedProfile && !profile) {
+      return jsonError("The selected candidate profile is invalid.", 422);
+    }
+    const snapshotCandidate = profileSelectionProvided
+      ? selectedProfile?.candidate ?? null
+      : account.candidate;
     const snapshot = buildCandidatePrefillSnapshot({
-      candidate: account.candidate,
+      candidate: snapshotCandidate,
       annotations,
-      profileVersion: profileRow && profile
+      recipientRoleId: role.id,
+      profileVersion: selectedProfile && profile
         ? {
-            id: profileRow.id,
+            id: selectedProfile.version.id,
             profile,
-            verificationStatus: profileRow.verificationStatus === "verified"
-              ? "verified"
-              : "extracted",
+            verificationStatus:
+              selectedProfile.version.verificationStatus === "verified"
+                ? "verified"
+                : "extracted",
           }
         : null,
     });
+    const selectedProfileVersionId = selectedProfile && profile
+      ? selectedProfile.version.id
+      : null;
     await db.batch([
       db.insert(recipientLinks).values({
         id: linkId,
@@ -133,7 +203,7 @@ export async function POST(
         roleName: role.name,
         roleColor: role.color,
         initialValuesJson: JSON.stringify(snapshot.values),
-        candidateProfileVersionId: profileRow && profile ? profileRow.id : null,
+        candidateProfileVersionId: selectedProfileVersionId,
         initialValuesMetaJson: JSON.stringify(snapshot.metadata),
         status: "assigned",
         assignedAt: now,
@@ -153,7 +223,8 @@ export async function POST(
             roleId: role.id,
             templateId,
             versionNumber: template.version.versionNumber,
-            candidateProfileVersionId: profileRow && profile ? profileRow.id : null,
+            candidateProfileVersionId: selectedProfileVersionId,
+            candidateId: snapshotCandidate?.id ?? null,
             prefilledFieldCount: Object.keys(snapshot.values).length,
           },
           createdAt: now,
