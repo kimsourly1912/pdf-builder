@@ -170,7 +170,10 @@ export function AccountsDashboard(props: { displayName: string }) {
     try {
       const response = await fetch("/api/accounts", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "Idempotency-Key": draft.requestKey ?? crypto.randomUUID(),
+        },
         body: JSON.stringify({ name, email, password, accountType }),
       });
       const payload = (await response.json()) as {
@@ -248,6 +251,62 @@ export function AccountsDashboard(props: { displayName: string }) {
     } catch (cause) {
       setError(
         cause instanceof Error ? cause.message : "The form could not be assigned.",
+      );
+      return false;
+    } finally {
+      setAssigningUserId(null);
+    }
+  }
+
+  async function replaceAssignmentResume(
+    userId: string,
+    assignmentId: string,
+    expectedUpdatedAt: string,
+    draft: AssignmentDraft,
+  ): Promise<boolean> {
+    setAssigningUserId(userId);
+    setError("");
+    setNotice("");
+    try {
+      const response = await fetch(`/api/accounts/${userId}/assignments`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...draft,
+          assignmentId,
+          expectedUpdatedAt,
+        }),
+      });
+      const payload = (await response.json()) as {
+        assignment?: RecipientAssignmentSummary;
+        error?: string;
+      };
+      if (!response.ok || !payload.assignment) {
+        throw new Error(
+          payload.error || "Resume data could not be replaced.",
+        );
+      }
+      setAccounts((current) =>
+        current.map((account) =>
+          account.id === userId
+            ? {
+                ...account,
+                assignments: account.assignments.map((assignment) =>
+                  assignment.id === assignmentId
+                    ? payload.assignment!
+                    : assignment,
+                ),
+              }
+            : account,
+        ),
+      );
+      setNotice("The assignment now uses the new frozen resume snapshot.");
+      return true;
+    } catch (cause) {
+      setError(
+        cause instanceof Error
+          ? cause.message
+          : "Resume data could not be replaced.",
       );
       return false;
     } finally {
@@ -489,6 +548,13 @@ export function AccountsDashboard(props: { displayName: string }) {
                     busy={assigningUserId === account.id}
                     timeZone={timeZone}
                     onAssign={(draft) => assignForm(account.id, draft)}
+                    onReplace={(assignmentId, expectedUpdatedAt, draft) =>
+                      replaceAssignmentResume(
+                        account.id,
+                        assignmentId,
+                        expectedUpdatedAt,
+                        draft,
+                      )}
                   />
                 ))}
                 <ServerPagination
@@ -511,7 +577,14 @@ function AccountCard(props: {
   busy: boolean;
   timeZone: string;
   onAssign: (draft: AssignmentDraft) => Promise<boolean>;
+  onReplace: (
+    assignmentId: string,
+    expectedUpdatedAt: string,
+    draft: AssignmentDraft,
+  ) => Promise<boolean>;
 }) {
+  const [replacement, setReplacement] =
+    useState<RecipientAssignmentSummary | null>(null);
   return (
     <Card className="gap-0 overflow-hidden py-0 shadow-none">
       <div className="flex flex-wrap items-start justify-between gap-3 p-5">
@@ -538,7 +611,10 @@ function AccountCard(props: {
         accountName={props.account.name}
         templates={props.templates}
         busy={props.busy}
+        replacement={replacement}
         onAssign={props.onAssign}
+        onReplace={props.onReplace}
+        onCancelReplacement={() => setReplacement(null)}
       />
 
       <div className="p-4">
@@ -551,6 +627,7 @@ function AccountCard(props: {
                 key={assignment.id}
                 assignment={assignment}
                 timeZone={props.timeZone}
+                onReplace={() => setReplacement(assignment)}
               />
             ))}
           </div>
@@ -563,6 +640,7 @@ function AccountCard(props: {
 function AccountAssignmentRow(props: {
   assignment: RecipientAssignmentSummary;
   timeZone: string;
+  onReplace: () => void;
 }) {
   const display = assignmentDisplay(props.assignment.status);
   const statusTone =
@@ -578,8 +656,44 @@ function AccountAssignmentRow(props: {
       <span className="size-2.5 shrink-0 rounded-full" style={{ backgroundColor: props.assignment.roleColor }} />
       <div className="min-w-0 flex-1">
         <p className="truncate text-xs font-semibold">{props.assignment.templateName}</p>
-        <p className="mt-0.5 text-[11px] text-muted-foreground">v{props.assignment.versionNumber} · {props.assignment.roleName} · {formatLocalDateTime(props.assignment.assignedAt, { timeZone: props.timeZone })}</p>
+        <p className="mt-0.5 text-[11px] text-muted-foreground">
+          v{props.assignment.versionNumber} · {props.assignment.roleName} · {formatLocalDateTime(props.assignment.assignedAt, { timeZone: props.timeZone })}
+        </p>
+        <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[10px] text-muted-foreground">
+          <span className="rounded border bg-muted px-1.5 py-0.5">
+            {props.assignment.prefillMode === "suggested"
+              ? "Recipient chooses"
+              : props.assignment.prefillMode === "automatic"
+                ? "Automatic"
+                : "No resume data"}
+          </span>
+          {props.assignment.candidateProfileVersionId && (
+            <span>
+              {props.assignment.candidateFileName
+                || props.assignment.candidateName
+                || "Candidate profile"}
+              {props.assignment.candidateProfileVersionNumber
+                ? ` · profile v${props.assignment.candidateProfileVersionNumber}`
+                : ""}
+            </span>
+          )}
+          <span>
+            {props.assignment.approvedFieldCount} approved field{props.assignment.approvedFieldCount === 1 ? "" : "s"}
+          </span>
+        </div>
       </div>
+      {display.state === "active" && (
+        <Button
+          type="button"
+          size="sm"
+          variant="ghost"
+          onClick={props.onReplace}
+          className="h-7 text-[11px]"
+        >
+          <RefreshCw className="size-3.5" />
+          Replace data
+        </Button>
+      )}
       <StatusBadge
         label={display.label}
         tone={statusTone}

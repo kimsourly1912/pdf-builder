@@ -1,9 +1,19 @@
 "use client";
 
-import { Eye, LoaderCircle, Plus } from "lucide-react";
-import { useState } from "react";
+import { Eye, LoaderCircle, Plus, RefreshCw, ShieldAlert } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 
 import { FeedbackAlert } from "@/components/patterns/feedback-alert";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -21,42 +31,107 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  defaultApprovedPrefillFieldIds,
+} from "@/features/accounts/assignment-prefill";
 import type {
   AssignmentAutofillPreview,
   AssignmentDraft,
   AssignmentTemplateSummary,
+  CandidateProfileOption,
+  RecipientAssignmentSummary,
 } from "@/features/accounts/account.types";
 import { CandidateProfileCombobox } from "@/features/accounts/candidate-profile-combobox";
 import { candidatePrefillLabel } from "@/features/resumes/candidate-prefill-options";
 import { cn } from "@/lib/utils";
 
-const EMPTY_DRAFT: AssignmentDraft = {
-  templateId: "",
-  roleId: "",
-  candidateProfileVersionId: null,
-  prefillMode: "suggested",
-  allowedFieldIds: [],
-};
+function emptyDraft(
+  replacement?: RecipientAssignmentSummary | null,
+): AssignmentDraft {
+  return {
+    templateId: replacement?.templateId ?? "",
+    roleId: replacement?.roleId ?? "",
+    candidateProfileVersionId: null,
+    prefillMode: replacement?.prefillMode ?? "suggested",
+    allowedFieldIds: [],
+  };
+}
 
 export function AccountAssignmentControls(props: {
   accountId: string;
   accountName: string;
   templates: AssignmentTemplateSummary[];
   busy: boolean;
+  replacement?: RecipientAssignmentSummary | null;
   onAssign: (draft: AssignmentDraft) => Promise<boolean>;
+  onReplace?: (
+    assignmentId: string,
+    expectedUpdatedAt: string,
+    draft: AssignmentDraft,
+  ) => Promise<boolean>;
+  onCancelReplacement?: () => void;
 }) {
-  const [draft, setDraft] = useState<AssignmentDraft>(EMPTY_DRAFT);
-  const [preview, setPreview] = useState<AssignmentAutofillPreview | null>(null);
+  const requestKeyRef = useRef(crypto.randomUUID());
+  const [draft, setDraft] = useState<AssignmentDraft>(
+    () => emptyDraft(props.replacement),
+  );
+  const [selectedProfile, setSelectedProfile] =
+    useState<CandidateProfileOption | null>(null);
+  const [preview, setPreview] =
+    useState<AssignmentAutofillPreview | null>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
+  const [mismatchOpen, setMismatchOpen] = useState(false);
   const [previewing, setPreviewing] = useState(false);
   const [previewError, setPreviewError] = useState("");
+
+  useEffect(() => {
+    setDraft(emptyDraft(props.replacement));
+    setSelectedProfile(null);
+    setPreview(null);
+    setPreviewOpen(false);
+    setPreviewError("");
+    requestKeyRef.current = crypto.randomUUID();
+  }, [props.replacement]);
+
   const selectedTemplate = props.templates.find(
     (template) => template.id === draft.templateId,
   );
   const roles =
     selectedTemplate?.currentRoles ?? selectedTemplate?.filterRoles ?? [];
+  const replacing = Boolean(props.replacement);
 
-  async function assign() {
+  function resetPreview() {
+    setPreview(null);
+    setPreviewOpen(false);
+    setPreviewError("");
+    setDraft((current) => ({ ...current, allowedFieldIds: [] }));
+  }
+
+  async function performSubmit(profileMismatchConfirmed: boolean) {
+    const submittedDraft: AssignmentDraft = {
+      ...draft,
+      profileMismatchConfirmed,
+      requestKey: requestKeyRef.current,
+    };
+    const completed = props.replacement && props.onReplace
+      ? await props.onReplace(
+          props.replacement.id,
+          props.replacement.updatedAt,
+          submittedDraft,
+        )
+      : await props.onAssign(submittedDraft);
+    if (completed) {
+      requestKeyRef.current = crypto.randomUUID();
+      setDraft(emptyDraft());
+      setSelectedProfile(null);
+      setPreview(null);
+      setPreviewOpen(false);
+      setPreviewError("");
+      props.onCancelReplacement?.();
+    }
+  }
+
+  async function submit() {
     if (
       draft.prefillMode !== "none"
       && (
@@ -66,17 +141,19 @@ export function AccountAssignmentControls(props: {
       )
     ) {
       setPreviewError(
-        "Preview the resume data and approve at least one field before assigning.",
+        "Review the resume data and approve at least one field first.",
       );
       return;
     }
-    const assigned = await props.onAssign(draft);
-    if (assigned) {
-      setDraft(EMPTY_DRAFT);
-      setPreview(null);
-      setPreviewOpen(false);
-      setPreviewError("");
+    if (
+      draft.prefillMode !== "none"
+      && selectedProfile
+      && !selectedProfile.linkedToAccount
+    ) {
+      setMismatchOpen(true);
+      return;
     }
+    await performSubmit(true);
   }
 
   async function loadPreview() {
@@ -106,21 +183,22 @@ export function AccountAssignmentControls(props: {
         error?: string;
       };
       if (!response.ok || !payload.profile) {
-        throw new Error(payload.error || "The autofill preview could not be generated.");
+        throw new Error(
+          payload.error || "The resume preview could not be generated.",
+        );
       }
       setPreview(payload);
+      setSelectedProfile(payload.profile);
       setDraft((current) => ({
         ...current,
-        allowedFieldIds: payload.fields
-          .filter((field) => Boolean(field.value))
-          .map((field) => field.fieldId),
+        allowedFieldIds: defaultApprovedPrefillFieldIds(payload.fields),
       }));
       setPreviewOpen(true);
     } catch (cause) {
       setPreviewError(
         cause instanceof Error
           ? cause.message
-          : "The autofill preview could not be generated.",
+          : "The resume preview could not be generated.",
       );
     } finally {
       setPreviewing(false);
@@ -130,103 +208,151 @@ export function AccountAssignmentControls(props: {
   return (
     <>
       <div className="border-y bg-muted/30 p-4">
-        <p className="text-xs font-semibold">Assign a form</p>
-        <div className="mt-2 grid gap-2 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)_minmax(0,.8fr)_minmax(0,.9fr)_auto]">
-          <Select
-            value={draft.templateId || "choose-template"}
-            onValueChange={(value) => {
-              setDraft((current) => ({
-                ...current,
-                templateId: value === "choose-template" ? "" : value,
-                roleId: "",
-                allowedFieldIds: [],
-              }));
-              setPreview(null);
-              setPreviewError("");
-            }}
-          >
-            <SelectTrigger className="w-full">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="choose-template">Choose template</SelectItem>
-              {props.templates.map((template) => (
-                <SelectItem key={template.id} value={template.id}>
-                  {template.name} · v{template.versionNumber}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <p className="text-xs font-semibold">
+              {replacing ? "Replace resume data" : "Assign a form"}
+            </p>
+            <p className="mt-1 text-[11px] text-muted-foreground">
+              {replacing
+                ? `Update the frozen resume snapshot for ${props.replacement?.templateName}. The form version and role stay unchanged.`
+                : "Follow the four steps, review the exact fields, then assign."}
+            </p>
+          </div>
+          {replacing && (
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              disabled={props.busy}
+              onClick={props.onCancelReplacement}
+            >
+              Cancel replacement
+            </Button>
+          )}
+        </div>
 
-          <CandidateProfileCombobox
-            accountId={props.accountId}
-            value={draft.candidateProfileVersionId}
-            disabled={props.busy || draft.prefillMode === "none"}
-            onValueChange={(candidateProfileVersionId) => {
-              setDraft((current) => ({
-                ...current,
-                candidateProfileVersionId,
-                allowedFieldIds: [],
-              }));
-              setPreview(null);
-              setPreviewError("");
-            }}
-          />
+        <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <GuidedField step="1" label="Template">
+            <Select
+              value={draft.templateId || "choose-template"}
+              disabled={replacing}
+              onValueChange={(value) => {
+                setDraft((current) => ({
+                  ...current,
+                  templateId: value === "choose-template" ? "" : value,
+                  roleId: "",
+                  allowedFieldIds: [],
+                }));
+                setSelectedProfile(null);
+                resetPreview();
+              }}
+            >
+              <SelectTrigger className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="choose-template">Choose template</SelectItem>
+                {props.templates.map((template) => (
+                  <SelectItem key={template.id} value={template.id}>
+                    {template.name} · v{template.versionNumber}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </GuidedField>
 
-          <Select
-            value={draft.roleId || "choose-role"}
-            disabled={!selectedTemplate}
-            onValueChange={(value) => {
-              setDraft((current) => ({
-                ...current,
-                roleId: value === "choose-role" ? "" : value,
-                allowedFieldIds: [],
-              }));
-              setPreview(null);
-              setPreviewError("");
-            }}
-          >
-            <SelectTrigger className="w-full">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="choose-role">Choose role</SelectItem>
-              {roles.map((role) => (
-                <SelectItem key={role.id} value={role.id}>
-                  {role.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <GuidedField step="2" label="Resume profile">
+            <CandidateProfileCombobox
+              accountId={props.accountId}
+              value={draft.candidateProfileVersionId}
+              disabled={props.busy || draft.prefillMode === "none"}
+              onValueChange={(candidateProfileVersionId, option) => {
+                setDraft((current) => ({
+                  ...current,
+                  candidateProfileVersionId,
+                  profileMismatchConfirmed: false,
+                  allowedFieldIds: [],
+                }));
+                setSelectedProfile(option);
+                resetPreview();
+              }}
+            />
+          </GuidedField>
 
-          <Select
-            value={draft.prefillMode}
-            onValueChange={(value) => {
-              const prefillMode = value as AssignmentDraft["prefillMode"];
-              setDraft((current) => ({
-                ...current,
-                prefillMode,
-                candidateProfileVersionId:
-                  prefillMode === "none"
-                    ? null
-                    : current.candidateProfileVersionId,
-                allowedFieldIds: [],
-              }));
-              setPreview(null);
-              setPreviewOpen(false);
-              setPreviewError("");
-            }}
-          >
-            <SelectTrigger className="w-full">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="suggested">Recipient chooses</SelectItem>
-              <SelectItem value="automatic">Fill automatically</SelectItem>
-              <SelectItem value="none">No resume data</SelectItem>
-            </SelectContent>
-          </Select>
+          <GuidedField step="3" label="Recipient role">
+            <Select
+              value={draft.roleId || "choose-role"}
+              disabled={!selectedTemplate || replacing}
+              onValueChange={(value) => {
+                setDraft((current) => ({
+                  ...current,
+                  roleId: value === "choose-role" ? "" : value,
+                  allowedFieldIds: [],
+                }));
+                resetPreview();
+              }}
+            >
+              <SelectTrigger className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="choose-role">Choose role</SelectItem>
+                {roles.map((role) => (
+                  <SelectItem key={role.id} value={role.id}>
+                    {role.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </GuidedField>
 
+          <GuidedField step="4" label="Resume behavior">
+            <Select
+              value={draft.prefillMode}
+              onValueChange={(value) => {
+                const prefillMode = value as AssignmentDraft["prefillMode"];
+                setDraft((current) => ({
+                  ...current,
+                  prefillMode,
+                  candidateProfileVersionId:
+                    prefillMode === "none"
+                      ? null
+                      : current.candidateProfileVersionId,
+                  allowedFieldIds: [],
+                }));
+                if (prefillMode === "none") setSelectedProfile(null);
+                resetPreview();
+              }}
+            >
+              <SelectTrigger className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="suggested">Recipient chooses</SelectItem>
+                <SelectItem value="automatic">Fill automatically</SelectItem>
+                <SelectItem value="none">No resume data</SelectItem>
+              </SelectContent>
+            </Select>
+          </GuidedField>
+        </div>
+
+        {selectedProfile && !selectedProfile.linkedToAccount && (
+          <div className="mt-3 flex items-start gap-2 rounded-lg border border-warning/30 bg-warning/10 p-3 text-xs text-warning-foreground">
+            <ShieldAlert className="mt-0.5 size-4 shrink-0" />
+            This profile is not linked to {props.accountName}. You will need to
+            confirm the mismatch before sharing any values.
+          </div>
+        )}
+
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+          <p className="text-[11px] text-muted-foreground">
+            {draft.prefillMode === "none"
+              ? "No resume values will be exposed or filled."
+              : draft.allowedFieldIds.length > 0
+                ? `${draft.allowedFieldIds.length} approved field${draft.allowedFieldIds.length === 1 ? "" : "s"} will be frozen with this assignment.`
+                : "Choose a resume and review the fields. Low-confidence values are unchecked by default."}
+          </p>
           <div className="flex gap-2">
             <Button
               type="button"
@@ -240,12 +366,11 @@ export function AccountAssignmentControls(props: {
                 || draft.prefillMode === "none"
               }
               onClick={() => void loadPreview()}
-              className="h-9 flex-1 lg:flex-none"
             >
               {previewing
                 ? <LoaderCircle className="size-4 animate-spin" />
                 : <Eye className="size-4" />}
-              Choose fields
+              Review fields
             </Button>
             <Button
               type="button"
@@ -255,19 +380,17 @@ export function AccountAssignmentControls(props: {
                 || !draft.roleId
                 || (
                   draft.prefillMode !== "none"
-                  && (
-                    !preview
-                    || draft.allowedFieldIds.length === 0
-                  )
+                  && (!preview || draft.allowedFieldIds.length === 0)
                 )
               }
-              onClick={() => void assign()}
-              className="h-9 flex-1 lg:flex-none"
+              onClick={() => void submit()}
             >
               {props.busy
                 ? <LoaderCircle className="size-4 animate-spin" />
-                : <Plus className="size-4" />}
-              Assign
+                : replacing
+                  ? <RefreshCw className="size-4" />
+                  : <Plus className="size-4" />}
+              {replacing ? "Replace snapshot" : "Assign"}
             </Button>
           </div>
         </div>
@@ -275,31 +398,14 @@ export function AccountAssignmentControls(props: {
         {previewError && (
           <FeedbackAlert
             tone="error"
-            title="Preview unavailable"
+            title="Resume data unavailable"
             description={previewError}
             className="mt-3"
           />
         )}
-        <p className="mt-2 text-[11px] text-muted-foreground">
-          {draft.prefillMode === "none"
-            ? "This assignment will not expose or fill any resume data."
-            : draft.candidateProfileVersionId
-              ? draft.allowedFieldIds.length > 0
-                ? `${draft.allowedFieldIds.length} approved field${draft.allowedFieldIds.length === 1 ? "" : "s"} will be frozen with this assignment.`
-                : "Choose fields to approve the exact resume data available for this assignment."
-              : "Search and choose a resume profile, then approve the fields this user may use."}
-        </p>
-        {props.templates.length === 0 && (
-          <p className="mt-2 text-[11px] text-warning">
-            Create and save a template before assigning forms.
-          </p>
-        )}
       </div>
 
-      <Dialog
-        open={previewOpen}
-        onOpenChange={setPreviewOpen}
-      >
+      <Dialog open={previewOpen} onOpenChange={setPreviewOpen}>
         <DialogContent className="flex max-h-[calc(100vh-2rem)] flex-col gap-0 overflow-hidden p-0 sm:max-w-3xl">
           {preview && (
             <>
@@ -311,19 +417,20 @@ export function AccountAssignmentControls(props: {
                     {preview.profile.candidateName}
                   </span>
                   {" · "}
-                  {preview.profile.fileName || `profile v${preview.profile.versionNumber}`}
+                  {preview.profile.fileName
+                    || `profile v${preview.profile.versionNumber}`}
                 </DialogDescription>
               </DialogHeader>
 
               <div className="grid grid-cols-2 gap-2 border-b bg-muted/30 p-4 sm:grid-cols-5">
-                <PreviewMetric label="Filled" value={preview.summary.filledFields} />
+                <PreviewMetric label="Available" value={preview.summary.filledFields} />
                 <PreviewMetric label="Needs review" value={preview.summary.needsReviewFields} tone="warning" />
                 <PreviewMetric label="Empty" value={preview.summary.emptyFields} />
                 <PreviewMetric label="Unmapped" value={preview.summary.unmappedFields} />
                 <PreviewMetric label="Total fields" value={preview.summary.totalFields} />
               </div>
 
-              <div className="flex items-center justify-between gap-3 border-b bg-muted/20 px-4 py-3">
+              <div className="flex flex-wrap items-center justify-between gap-3 border-b bg-muted/20 px-4 py-3">
                 <p className="text-xs text-muted-foreground">
                   {draft.allowedFieldIds.length} of {preview.summary.filledFields} available fields approved
                 </p>
@@ -350,7 +457,7 @@ export function AccountAssignmentControls(props: {
                         .map((field) => field.fieldId),
                     }))}
                   >
-                    Select all available
+                    Select all, including review
                   </Button>
                 </div>
               </div>
@@ -363,7 +470,8 @@ export function AccountAssignmentControls(props: {
                 ) : (
                   <div className="space-y-2">
                     {preview.fields.map((field) => {
-                      const checked = draft.allowedFieldIds.includes(field.fieldId);
+                      const checked =
+                        draft.allowedFieldIds.includes(field.fieldId);
                       return (
                         <div
                           key={field.fieldId}
@@ -387,7 +495,8 @@ export function AccountAssignmentControls(props: {
                                         field.fieldId,
                                       ])]
                                     : current.allowedFieldIds.filter(
-                                        (fieldId) => fieldId !== field.fieldId,
+                                        (fieldId) =>
+                                          fieldId !== field.fieldId,
                                       ),
                                 }));
                               }}
@@ -395,9 +504,12 @@ export function AccountAssignmentControls(props: {
                             <div className="min-w-0 flex-1">
                               <div className="flex flex-wrap items-start justify-between gap-2">
                                 <div className="min-w-0">
-                                  <p className="text-sm font-semibold">{field.fieldLabel}</p>
+                                  <p className="text-sm font-semibold">
+                                    {field.fieldLabel}
+                                  </p>
                                   <p className="mt-0.5 font-mono text-[10px] text-muted-foreground">
-                                    {candidatePrefillLabel(field.prefillKey)} · {field.prefillKey}
+                                    {candidatePrefillLabel(field.prefillKey)}
+                                    {" · "}{field.prefillKey}
                                   </p>
                                 </div>
                                 <span className={cn(
@@ -424,8 +536,12 @@ export function AccountAssignmentControls(props: {
                               {field.confidence !== null && (
                                 <p className="mt-1.5 text-[10px] text-muted-foreground">
                                   {Math.round(field.confidence * 100)}% confidence
-                                  {field.sourcePage ? ` · source page ${field.sourcePage}` : ""}
-                                  {field.verificationStatus ? ` · ${field.verificationStatus}` : ""}
+                                  {field.sourcePage
+                                    ? ` · source page ${field.sourcePage}`
+                                    : ""}
+                                  {field.verificationStatus
+                                    ? ` · ${field.verificationStatus}`
+                                    : ""}
                                 </p>
                               )}
                             </div>
@@ -457,7 +573,46 @@ export function AccountAssignmentControls(props: {
           )}
         </DialogContent>
       </Dialog>
+
+      <AlertDialog open={mismatchOpen} onOpenChange={setMismatchOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Share a different candidate’s data?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {selectedProfile?.candidateName || "This candidate profile"} is
+              not linked to {props.accountName}. Confirm only if you intentionally
+              want this account to receive the selected resume fields.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Go back</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => void performSubmit(true)}
+            >
+              Confirm and continue
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
+  );
+}
+
+function GuidedField(props: {
+  step: string;
+  label: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="min-w-0 space-y-1.5">
+      <p className="flex items-center gap-2 text-[11px] font-semibold">
+        <span className="flex size-5 items-center justify-center rounded-full bg-primary/10 text-[10px] text-primary">
+          {props.step}
+        </span>
+        {props.label}
+      </p>
+      {props.children}
+    </div>
   );
 }
 
