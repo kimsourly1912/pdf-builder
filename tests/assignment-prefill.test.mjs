@@ -134,3 +134,42 @@ test("automatic and disabled modes keep their snapshots separate", () => {
   assert.deepEqual(disabled.initialValues, {});
   assert.deepEqual(disabled.availableValues, {});
 });
+
+
+test("defaults to verified high-confidence fields only", () => {
+  assert.deepEqual(
+    preview.defaultApprovedPrefillFieldIds([
+      {
+        fieldId: "verified",
+        fieldLabel: "Verified",
+        prefillKey: "candidate.full_name",
+        value: "Sokha Chan",
+        confidence: 0.95,
+        sourcePage: 1,
+        verificationStatus: "verified",
+        status: "filled",
+      },
+      {
+        fieldId: "review",
+        fieldLabel: "Review",
+        prefillKey: "candidate.phone",
+        value: "+855 12 345 678",
+        confidence: 0.7,
+        sourcePage: 1,
+        verificationStatus: "extracted",
+        status: "needs_review",
+      },
+      {
+        fieldId: "empty",
+        fieldLabel: "Empty",
+        prefillKey: "candidate.email",
+        value: "",
+        confidence: null,
+        sourcePage: null,
+        verificationStatus: null,
+        status: "empty",
+      },
+    ]),
+    ["verified"],
+  );
+});

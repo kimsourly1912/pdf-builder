@@ -64,6 +64,14 @@ export function buildAssignmentAutofillPreview(options: {
   };
 }
 
+export function defaultApprovedPrefillFieldIds(
+  fields: AssignmentAutofillField[],
+): string[] {
+  return fields
+    .filter((field) => field.status === "filled" && Boolean(field.value))
+    .map((field) => field.fieldId);
+}
+
 export type AssignmentPrefillMode = "suggested" | "automatic" | "none";
 
 export type AssignmentPrefillStorage = {

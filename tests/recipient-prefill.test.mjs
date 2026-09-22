@@ -29,6 +29,7 @@ test("bulk resume fill preserves values already entered by the recipient", () =>
       name: "Resume name",
       email: "resume@example.com",
     },
+    protectedFieldIds: ["name"],
   });
   assert.deepEqual(result, {
     name: "Recipient edit",
@@ -44,4 +45,14 @@ test("an explicit field replacement can overwrite after confirmation", () => {
     overwrite: true,
   });
   assert.deepEqual(result, { name: "Resume name" });
+});
+
+
+test("template defaults are replaced when the recipient has not edited them", () => {
+  const result = prefill.applyResumeSuggestions({
+    currentValues: { title: "Template default" },
+    suggestions: { title: "Resume title" },
+    protectedFieldIds: [],
+  });
+  assert.deepEqual(result, { title: "Resume title" });
 });

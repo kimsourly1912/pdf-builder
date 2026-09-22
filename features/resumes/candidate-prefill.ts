@@ -178,8 +178,9 @@ function matchingDropdownOption(
   for (const option of annotation.options) {
     if (!option || typeof option !== "object" || Array.isArray(option)) continue;
     const record = option as Record<string, unknown>;
+    const id = typeof record.id === "string" ? record.id.trim() : "";
     const label = typeof record.label === "string" ? record.label.trim() : "";
-    if (label && normalizedOption(label) === requested) return label;
+    if (id && label && normalizedOption(label) === requested) return id;
   }
   return "";
 }

@@ -91,7 +91,7 @@ test("prefills dropdowns only when an option matches exactly", () => {
       },
     ],
   });
-  assert.deepEqual(snapshot.values, { nationality: "Cambodian" });
+  assert.deepEqual(snapshot.values, { nationality: "kh" });
   assert.equal(snapshot.metadata.nationality.source, "candidate_record");
 });
 
