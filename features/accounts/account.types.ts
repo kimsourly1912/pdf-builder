@@ -21,6 +21,13 @@ export type RecipientAssignmentSummary = {
   status: string;
   assignedAt: string;
   completedAt: string | null;
+  updatedAt: string;
+  prefillMode: AssignmentPrefillMode;
+  approvedFieldCount: number;
+  candidateProfileVersionId: string | null;
+  candidateProfileVersionNumber: number | null;
+  candidateName: string;
+  candidateFileName: string;
   url?: string;
 };
 
@@ -41,6 +48,8 @@ export type AssignmentDraft = {
   candidateProfileVersionId: string | null;
   prefillMode: AssignmentPrefillMode;
   allowedFieldIds: string[];
+  profileMismatchConfirmed?: boolean;
+  requestKey?: string;
 };
 
 export type CandidateProfileOption = {

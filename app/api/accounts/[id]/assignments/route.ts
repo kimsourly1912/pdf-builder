@@ -8,6 +8,7 @@ import {
   formAssignments,
   recipientLinks,
   recipientProfiles,
+  resumes,
   templates,
   templateVersions,
   user,
@@ -28,6 +29,9 @@ import {
   jsonError,
   requireRequestOwner,
 } from "@/features/templates/template.server";
+import {
+  validIdempotencyKey,
+} from "@/features/templates/recipient-link-lifecycle";
 import { parseVersionRoles } from "@/features/templates/template-write";
 
 export async function POST(
@@ -37,9 +41,14 @@ export async function POST(
   try {
     const ownerEmail = await requireRequestOwner(request);
     const { id: userId } = await context.params;
+    const idempotencyKey = request.headers.get("Idempotency-Key");
+    if (!validIdempotencyKey(idempotencyKey)) {
+      return jsonError("A valid idempotency key is required.", 400);
+    }
     const body = (await request.json()) as Record<string, unknown>;
     const templateId = String(body.templateId ?? "").trim();
     const roleId = String(body.roleId ?? "").trim();
+    const profileMismatchConfirmed = body.profileMismatchConfirmed === true;
     const prefillModeProvided = Object.prototype.hasOwnProperty.call(
       body,
       "prefillMode",
@@ -109,7 +118,43 @@ export async function POST(
       return jsonError("Choose at least one resume-data field.", 400);
     }
 
+    const requestFingerprint = await assignmentRequestFingerprint({
+      templateId,
+      roleId,
+      prefillMode,
+      candidateProfileVersionId: requestedProfileVersionId,
+      allowedFieldIds: allowedFieldIds ?? [],
+      profileMismatchConfirmed,
+    });
     const db = getDb();
+    const [existingAssignment] = await db
+      .select()
+      .from(formAssignments)
+      .where(and(
+        eq(formAssignments.userId, userId),
+        eq(formAssignments.assignmentRequestKey, idempotencyKey),
+      ))
+      .limit(1);
+    if (existingAssignment) {
+      if (
+        existingAssignment.assignmentRequestFingerprint
+        !== requestFingerprint
+      ) {
+        return jsonError(
+          "This assignment request key was already used with different data.",
+          409,
+        );
+      }
+      return Response.json({
+        assignment: assignmentResponse({
+          assignment: existingAssignment,
+          templateName: "",
+          versionNumber: 0,
+        }),
+        reused: true,
+      });
+    }
+
     const [account] = await db
       .select({ id: user.id, candidate: candidates })
       .from(recipientProfiles)
@@ -155,6 +200,7 @@ export async function POST(
     let selectedProfile: {
       version: typeof candidateProfileVersions.$inferSelect;
       candidate: typeof candidates.$inferSelect;
+      fileName: string | null;
     } | null = null;
 
     if (prefillMode !== "none" && requestedProfileVersionId) {
@@ -162,6 +208,7 @@ export async function POST(
         .select({
           version: candidateProfileVersions,
           candidate: candidates,
+          fileName: resumes.fileName,
         })
         .from(candidateProfileVersions)
         .innerJoin(
@@ -169,6 +216,13 @@ export async function POST(
           and(
             eq(candidateProfileVersions.candidateId, candidates.id),
             eq(candidateProfileVersions.ownerEmail, candidates.ownerEmail),
+          ),
+        )
+        .leftJoin(
+          resumes,
+          and(
+            eq(candidateProfileVersions.resumeId, resumes.id),
+            eq(resumes.ownerEmail, ownerEmail),
           ),
         )
         .where(and(
@@ -184,7 +238,19 @@ export async function POST(
       && !profileSelectionProvided
       && account.candidate
     ) {
-      const [version] = await db.select().from(candidateProfileVersions)
+      const [version] = await db
+        .select({
+          version: candidateProfileVersions,
+          fileName: resumes.fileName,
+        })
+        .from(candidateProfileVersions)
+        .leftJoin(
+          resumes,
+          and(
+            eq(candidateProfileVersions.resumeId, resumes.id),
+            eq(resumes.ownerEmail, ownerEmail),
+          ),
+        )
         .where(and(
           eq(candidateProfileVersions.ownerEmail, ownerEmail),
           eq(candidateProfileVersions.candidateId, account.candidate.id),
@@ -196,12 +262,23 @@ export async function POST(
         .limit(1);
       if (version) {
         selectedProfile = {
-          version,
+          version: version.version,
           candidate: account.candidate,
+          fileName: version.fileName,
         };
       }
     }
 
+    if (
+      selectedProfile
+      && selectedProfile.candidate.userId !== userId
+      && !profileMismatchConfirmed
+    ) {
+      return jsonError(
+        "Confirm that this resume belongs to a different account before assigning it.",
+        409,
+      );
+    }
     const profile = selectedProfile
       ? parseProfile(selectedProfile.version.profileJson)
       : null;
@@ -270,6 +347,8 @@ export async function POST(
         availableValuesMetaJson: JSON.stringify(
           prefillStorage.availableMetadata,
         ),
+        assignmentRequestKey: idempotencyKey,
+        assignmentRequestFingerprint: requestFingerprint,
         status: "assigned",
         assignedAt: now,
         updatedAt: now,
@@ -313,6 +392,13 @@ export async function POST(
           assignedAt: now,
           completedAt: null,
           prefillMode,
+          approvedFieldCount: prefillStorage.approvedFieldIds.length,
+          candidateProfileVersionId: selectedProfileVersionId,
+          candidateProfileVersionNumber:
+            selectedProfile?.version.versionNumber ?? null,
+          candidateName: selectedProfile?.candidate.fullName ?? "",
+          candidateFileName: selectedProfile?.fileName ?? "",
+          updatedAt: now,
         },
       },
       { status: 201 },
@@ -327,6 +413,68 @@ export async function POST(
         : "The form could not be assigned.",
       duplicate ? 409 : 500,
     );
+  }
+}
+
+async function assignmentRequestFingerprint(value: {
+  templateId: string;
+  roleId: string;
+  prefillMode: string;
+  candidateProfileVersionId: string | null;
+  allowedFieldIds: string[];
+  profileMismatchConfirmed: boolean;
+}): Promise<string> {
+  const canonical = JSON.stringify({
+    ...value,
+    allowedFieldIds: [...value.allowedFieldIds].sort(),
+  });
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(canonical),
+  );
+  return Array.from(new Uint8Array(digest), (byte) =>
+    byte.toString(16).padStart(2, "0"),
+  ).join("");
+}
+
+function assignmentResponse(options: {
+  assignment: typeof formAssignments.$inferSelect;
+  templateName: string;
+  versionNumber: number;
+}) {
+  const { assignment } = options;
+  return {
+    id: assignment.id,
+    templateId: assignment.templateId,
+    templateName: options.templateName,
+    versionNumber: options.versionNumber,
+    roleId: assignment.roleId,
+    roleName: assignment.roleName,
+    roleColor: assignment.roleColor,
+    status: assignment.status === "assigned" ? "active" : assignment.status,
+    assignedAt: assignment.assignedAt,
+    completedAt: assignment.completedAt,
+    updatedAt: assignment.updatedAt,
+    prefillMode: assignment.prefillMode,
+    approvedFieldCount: Object.keys({
+      ...parseRecord(assignment.initialValuesJson),
+      ...parseRecord(assignment.availableValuesJson),
+    }).length,
+    candidateProfileVersionId: assignment.candidateProfileVersionId,
+    candidateProfileVersionNumber: null,
+    candidateName: "",
+    candidateFileName: "",
+  };
+}
+
+function parseRecord(value: string): Record<string, unknown> {
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    return parsed && !Array.isArray(parsed) && typeof parsed === "object"
+      ? parsed as Record<string, unknown>
+      : {};
+  } catch {
+    return {};
   }
 }
 

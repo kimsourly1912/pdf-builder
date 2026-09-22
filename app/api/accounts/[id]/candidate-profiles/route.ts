@@ -39,6 +39,8 @@ export async function GET(
       MAX_PAGE_SIZE,
     );
     const search = searchParams.get("search")?.trim().slice(0, 120) ?? "";
+    const linkedOnly = searchParams.get("linkedOnly") === "true";
+    const verifiedOnly = searchParams.get("verifiedOnly") === "true";
     const db = getDb();
     const [account] = await db.select({ userId: recipientProfiles.userId })
       .from(recipientProfiles)
@@ -63,6 +65,10 @@ export async function GET(
         like(resumes.fileName, pattern),
         like(resumes.appliedPosition, pattern),
       )!);
+    }
+    if (linkedOnly) conditions.push(eq(candidates.userId, userId));
+    if (verifiedOnly) {
+      conditions.push(eq(candidateProfileVersions.verificationStatus, "verified"));
     }
 
     const baseQuery = db
@@ -101,6 +107,7 @@ export async function GET(
     const [rows, totals] = await Promise.all([
       baseQuery
         .orderBy(
+          desc(sql<number>`case when ${candidates.userId} = ${userId} then 1 else 0 end`),
           desc(sql<number>`case when ${candidateProfileVersions.verificationStatus} = 'verified' then 1 else 0 end`),
           desc(candidateProfileVersions.createdAt),
           desc(candidateProfileVersions.id),
