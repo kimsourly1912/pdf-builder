@@ -8,6 +8,7 @@ import {
   CalendarDays,
   FileCheck2,
   LockKeyhole,
+  Sparkles,
   UploadCloud,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -38,6 +39,10 @@ import type {
   TemplateFillPayload,
 } from "@/features/templates/template.types";
 import { isRecipientFieldType } from "@/features/templates/template-fields";
+import {
+  applyResumeSuggestions,
+  hasRecipientValue,
+} from "@/features/templates/recipient-prefill";
 import { getScaledFieldIconSize } from "@/features/templates/field-layout";
 import {
   DEFAULT_ELEMENT_BORDER_COLOR,
@@ -90,6 +95,7 @@ export function RecipientFill(props: { token: string }) {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [completed, setCompleted] = useState(false);
+  const [resumePrefillDismissed, setResumePrefillDismissed] = useState(false);
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -126,6 +132,7 @@ export function RecipientFill(props: { token: string }) {
           return;
         }
         setPayload(nextPayload);
+        setResumePrefillDismissed(false);
         if (nextPayload.identity) {
           setRecipientName(nextPayload.identity.name);
           setRecipientEmail(nextPayload.identity.email);
@@ -183,6 +190,37 @@ export function RecipientFill(props: { token: string }) {
     setValues((current) => ({ ...current, [id]: value }));
     setError("");
   }, []);
+
+  function fillEmptyResumeFields() {
+    if (!payload?.resumePrefill) return;
+    setValues((current) => applyResumeSuggestions({
+      currentValues: current,
+      suggestions: payload.resumePrefill!.values,
+    }));
+    setError("");
+  }
+
+  function useResumeField(fieldId: string) {
+    if (!payload?.resumePrefill) return;
+    const suggestion = payload.resumePrefill.values[fieldId];
+    const currentValue = values[fieldId];
+    if (
+      hasRecipientValue(currentValue)
+      && !prefillValuesEqual(currentValue, suggestion)
+      && !window.confirm(
+        "This field already has a value. Replace it with the resume value?",
+      )
+    ) {
+      return;
+    }
+    setValues((current) => applyResumeSuggestions({
+      currentValues: current,
+      suggestions: payload.resumePrefill!.values,
+      fieldIds: [fieldId],
+      overwrite: true,
+    }));
+    setError("");
+  }
 
   async function submit() {
     if (!payload || !pdfBytes) return;
@@ -289,6 +327,16 @@ export function RecipientFill(props: { token: string }) {
             )}
           </CardHeader>
           <CardContent className="space-y-5">
+            {payload.resumePrefill && !resumePrefillDismissed && (
+              <ResumePrefillPanel
+                annotations={payload.template.annotations}
+                prefill={payload.resumePrefill}
+                values={values}
+                onFillEmpty={fillEmptyResumeFields}
+                onUseField={useResumeField}
+                onDismiss={() => setResumePrefillDismissed(true)}
+              />
+            )}
             <div className="space-y-3">
               <div className="space-y-1.5">
                 <Label htmlFor="recipient-name">Your name</Label>
@@ -329,6 +377,111 @@ export function RecipientFill(props: { token: string }) {
       </div>
     </main>
   );
+}
+
+function ResumePrefillPanel(props: {
+  annotations: TemplateAnnotation[];
+  prefill: NonNullable<TemplateFillPayload["resumePrefill"]>;
+  values: Record<string, unknown>;
+  onFillEmpty: () => void;
+  onUseField: (fieldId: string) => void;
+  onDismiss: () => void;
+}) {
+  const fields = Object.entries(props.prefill.values).flatMap(
+    ([fieldId, value]) => {
+      const annotation = props.annotations.find((item) => item.id === fieldId);
+      return annotation ? [{ fieldId, value, annotation }] : [];
+    },
+  );
+  const emptyFieldCount = fields.filter(
+    ({ fieldId }) => !hasRecipientValue(props.values[fieldId]),
+  ).length;
+
+  return (
+    <div className="rounded-lg border border-primary/25 bg-primary/5 p-3">
+      <div className="flex items-start gap-2">
+        <span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
+          <Sparkles className="size-4" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-semibold">Resume data available</p>
+          <p className="mt-1 text-[11px] leading-4 text-muted-foreground">
+            Review the approved values below. Your existing entries are never
+            replaced unless you confirm a field.
+          </p>
+        </div>
+      </div>
+      <div className="mt-3 max-h-56 space-y-2 overflow-y-auto pr-1">
+        {fields.map(({ fieldId, value, annotation }) => {
+          const applied = prefillValuesEqual(props.values[fieldId], value);
+          const metadata = props.prefill.metadata[fieldId];
+          return (
+            <div key={fieldId} className="rounded-md border bg-background p-2.5">
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="truncate text-xs font-semibold">
+                    {recipientFieldLabel(annotation)}
+                  </p>
+                  <p className="mt-1 line-clamp-2 whitespace-pre-wrap break-words text-[11px] text-muted-foreground">
+                    {String(value ?? "")}
+                  </p>
+                  {metadata?.confidence !== null && metadata?.confidence !== undefined && (
+                    <p className="mt-1 text-[10px] text-muted-foreground">
+                      {Math.round(metadata.confidence * 100)}% confidence
+                      {metadata.sourcePage ? ` · page ${metadata.sourcePage}` : ""}
+                    </p>
+                  )}
+                </div>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={applied ? "ghost" : "outline"}
+                  disabled={applied}
+                  onClick={() => props.onUseField(fieldId)}
+                  className="h-7 shrink-0 px-2 text-[11px]"
+                >
+                  {applied ? "Applied" : "Use"}
+                </Button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      <div className="mt-3 flex flex-wrap gap-2">
+        <Button
+          type="button"
+          size="sm"
+          disabled={emptyFieldCount === 0}
+          onClick={props.onFillEmpty}
+          className="flex-1"
+        >
+          Fill {emptyFieldCount} empty field{emptyFieldCount === 1 ? "" : "s"}
+        </Button>
+        <Button type="button" size="sm" variant="ghost" onClick={props.onDismiss}>
+          Not now
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function recipientFieldLabel(annotation: TemplateAnnotation): string {
+  return getString(
+    annotation.fieldName,
+    getString(
+      annotation.label,
+      getString(annotation.fieldKey, `${annotation.type} field`),
+    ),
+  );
+}
+
+function prefillValuesEqual(left: unknown, right: unknown): boolean {
+  if (left === right) return true;
+  try {
+    return JSON.stringify(left) === JSON.stringify(right);
+  } catch {
+    return false;
+  }
 }
 
 function FillAnnotation(props: { annotation: TemplateAnnotation; value: unknown; scale: number; onChange: (value: unknown) => void; onError: (message: string) => void }) {

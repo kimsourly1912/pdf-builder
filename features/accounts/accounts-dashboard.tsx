@@ -238,9 +238,11 @@ export function AccountsDashboard(props: { displayName: string }) {
         ),
       );
       setNotice(
-        draft.candidateProfileVersionId
-          ? "Form assigned with a frozen resume-data snapshot."
-          : "Form assigned without resume autofill.",
+        draft.prefillMode === "suggested"
+          ? "Form assigned with approved resume data the recipient can choose to use."
+          : draft.prefillMode === "automatic"
+            ? "Form assigned with approved resume data filled automatically."
+            : "Form assigned without resume data.",
       );
       return true;
     } catch (cause) {

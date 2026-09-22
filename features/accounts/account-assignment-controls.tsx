@@ -5,6 +5,7 @@ import { useState } from "react";
 
 import { FeedbackAlert } from "@/components/patterns/feedback-alert";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -33,6 +34,8 @@ const EMPTY_DRAFT: AssignmentDraft = {
   templateId: "",
   roleId: "",
   candidateProfileVersionId: null,
+  prefillMode: "suggested",
+  allowedFieldIds: [],
 };
 
 export function AccountAssignmentControls(props: {
@@ -44,6 +47,7 @@ export function AccountAssignmentControls(props: {
 }) {
   const [draft, setDraft] = useState<AssignmentDraft>(EMPTY_DRAFT);
   const [preview, setPreview] = useState<AssignmentAutofillPreview | null>(null);
+  const [previewOpen, setPreviewOpen] = useState(false);
   const [previewing, setPreviewing] = useState(false);
   const [previewError, setPreviewError] = useState("");
   const selectedTemplate = props.templates.find(
@@ -53,10 +57,24 @@ export function AccountAssignmentControls(props: {
     selectedTemplate?.currentRoles ?? selectedTemplate?.filterRoles ?? [];
 
   async function assign() {
+    if (
+      draft.prefillMode !== "none"
+      && (
+        !draft.candidateProfileVersionId
+        || !preview
+        || draft.allowedFieldIds.length === 0
+      )
+    ) {
+      setPreviewError(
+        "Preview the resume data and approve at least one field before assigning.",
+      );
+      return;
+    }
     const assigned = await props.onAssign(draft);
     if (assigned) {
       setDraft(EMPTY_DRAFT);
       setPreview(null);
+      setPreviewOpen(false);
       setPreviewError("");
     }
   }
@@ -91,6 +109,13 @@ export function AccountAssignmentControls(props: {
         throw new Error(payload.error || "The autofill preview could not be generated.");
       }
       setPreview(payload);
+      setDraft((current) => ({
+        ...current,
+        allowedFieldIds: payload.fields
+          .filter((field) => Boolean(field.value))
+          .map((field) => field.fieldId),
+      }));
+      setPreviewOpen(true);
     } catch (cause) {
       setPreviewError(
         cause instanceof Error
@@ -106,7 +131,7 @@ export function AccountAssignmentControls(props: {
     <>
       <div className="border-y bg-muted/30 p-4">
         <p className="text-xs font-semibold">Assign a form</p>
-        <div className="mt-2 grid gap-2 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)_minmax(0,.8fr)_auto]">
+        <div className="mt-2 grid gap-2 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)_minmax(0,.8fr)_minmax(0,.9fr)_auto]">
           <Select
             value={draft.templateId || "choose-template"}
             onValueChange={(value) => {
@@ -114,6 +139,7 @@ export function AccountAssignmentControls(props: {
                 ...current,
                 templateId: value === "choose-template" ? "" : value,
                 roleId: "",
+                allowedFieldIds: [],
               }));
               setPreview(null);
               setPreviewError("");
@@ -135,11 +161,12 @@ export function AccountAssignmentControls(props: {
           <CandidateProfileCombobox
             accountId={props.accountId}
             value={draft.candidateProfileVersionId}
-            disabled={props.busy}
+            disabled={props.busy || draft.prefillMode === "none"}
             onValueChange={(candidateProfileVersionId) => {
               setDraft((current) => ({
                 ...current,
                 candidateProfileVersionId,
+                allowedFieldIds: [],
               }));
               setPreview(null);
               setPreviewError("");
@@ -153,6 +180,7 @@ export function AccountAssignmentControls(props: {
               setDraft((current) => ({
                 ...current,
                 roleId: value === "choose-role" ? "" : value,
+                allowedFieldIds: [],
               }));
               setPreview(null);
               setPreviewError("");
@@ -171,6 +199,34 @@ export function AccountAssignmentControls(props: {
             </SelectContent>
           </Select>
 
+          <Select
+            value={draft.prefillMode}
+            onValueChange={(value) => {
+              const prefillMode = value as AssignmentDraft["prefillMode"];
+              setDraft((current) => ({
+                ...current,
+                prefillMode,
+                candidateProfileVersionId:
+                  prefillMode === "none"
+                    ? null
+                    : current.candidateProfileVersionId,
+                allowedFieldIds: [],
+              }));
+              setPreview(null);
+              setPreviewOpen(false);
+              setPreviewError("");
+            }}
+          >
+            <SelectTrigger className="w-full">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="suggested">Recipient chooses</SelectItem>
+              <SelectItem value="automatic">Fill automatically</SelectItem>
+              <SelectItem value="none">No resume data</SelectItem>
+            </SelectContent>
+          </Select>
+
           <div className="flex gap-2">
             <Button
               type="button"
@@ -181,6 +237,7 @@ export function AccountAssignmentControls(props: {
                 || !draft.templateId
                 || !draft.roleId
                 || !draft.candidateProfileVersionId
+                || draft.prefillMode === "none"
               }
               onClick={() => void loadPreview()}
               className="h-9 flex-1 lg:flex-none"
@@ -188,11 +245,22 @@ export function AccountAssignmentControls(props: {
               {previewing
                 ? <LoaderCircle className="size-4 animate-spin" />
                 : <Eye className="size-4" />}
-              Preview
+              Choose fields
             </Button>
             <Button
               type="button"
-              disabled={props.busy || !draft.templateId || !draft.roleId}
+              disabled={
+                props.busy
+                || !draft.templateId
+                || !draft.roleId
+                || (
+                  draft.prefillMode !== "none"
+                  && (
+                    !preview
+                    || draft.allowedFieldIds.length === 0
+                  )
+                )
+              }
               onClick={() => void assign()}
               className="h-9 flex-1 lg:flex-none"
             >
@@ -213,9 +281,13 @@ export function AccountAssignmentControls(props: {
           />
         )}
         <p className="mt-2 text-[11px] text-muted-foreground">
-          {draft.candidateProfileVersionId
-            ? "Preview the exact values before assigning. The selected profile version will be frozen with the assignment."
-            : "Choose resume data to enable automatic filling, or assign without it."}
+          {draft.prefillMode === "none"
+            ? "This assignment will not expose or fill any resume data."
+            : draft.candidateProfileVersionId
+              ? draft.allowedFieldIds.length > 0
+                ? `${draft.allowedFieldIds.length} approved field${draft.allowedFieldIds.length === 1 ? "" : "s"} will be frozen with this assignment.`
+                : "Choose fields to approve the exact resume data available for this assignment."
+              : "Search and choose a resume profile, then approve the fields this user may use."}
         </p>
         {props.templates.length === 0 && (
           <p className="mt-2 text-[11px] text-warning">
@@ -225,18 +297,16 @@ export function AccountAssignmentControls(props: {
       </div>
 
       <Dialog
-        open={Boolean(preview)}
-        onOpenChange={(open) => {
-          if (!open) setPreview(null);
-        }}
+        open={previewOpen}
+        onOpenChange={setPreviewOpen}
       >
         <DialogContent className="flex max-h-[calc(100vh-2rem)] flex-col gap-0 overflow-hidden p-0 sm:max-w-3xl">
           {preview && (
             <>
               <DialogHeader className="border-b px-5 py-4 pr-12">
-                <DialogTitle>Auto-fill preview</DialogTitle>
+                <DialogTitle>Choose resume fields</DialogTitle>
                 <DialogDescription>
-                  {props.accountName} will receive values from{" "}
+                  Approve the exact fields {props.accountName} may use from{" "}
                   <span className="font-medium text-foreground">
                     {preview.profile.candidateName}
                   </span>
@@ -253,6 +323,38 @@ export function AccountAssignmentControls(props: {
                 <PreviewMetric label="Total fields" value={preview.summary.totalFields} />
               </div>
 
+              <div className="flex items-center justify-between gap-3 border-b bg-muted/20 px-4 py-3">
+                <p className="text-xs text-muted-foreground">
+                  {draft.allowedFieldIds.length} of {preview.summary.filledFields} available fields approved
+                </p>
+                <div className="flex gap-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => setDraft((current) => ({
+                      ...current,
+                      allowedFieldIds: [],
+                    }))}
+                  >
+                    Clear
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setDraft((current) => ({
+                      ...current,
+                      allowedFieldIds: preview.fields
+                        .filter((field) => Boolean(field.value))
+                        .map((field) => field.fieldId),
+                    }))}
+                  >
+                    Select all available
+                  </Button>
+                </div>
+              </div>
+
               <div className="min-h-0 flex-1 overflow-y-auto p-4">
                 {preview.fields.length === 0 ? (
                   <p className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
@@ -260,50 +362,97 @@ export function AccountAssignmentControls(props: {
                   </p>
                 ) : (
                   <div className="space-y-2">
-                    {preview.fields.map((field) => (
-                      <div key={field.fieldId} className="rounded-lg border p-3">
-                        <div className="flex flex-wrap items-start justify-between gap-2">
-                          <div className="min-w-0">
-                            <p className="text-sm font-semibold">{field.fieldLabel}</p>
-                            <p className="mt-0.5 font-mono text-[10px] text-muted-foreground">
-                              {candidatePrefillLabel(field.prefillKey)} · {field.prefillKey}
-                            </p>
+                    {preview.fields.map((field) => {
+                      const checked = draft.allowedFieldIds.includes(field.fieldId);
+                      return (
+                        <div
+                          key={field.fieldId}
+                          className={cn(
+                            "rounded-lg border p-3 transition-colors",
+                            checked && "border-primary/50 bg-primary/5",
+                            !field.value && "opacity-65",
+                          )}
+                        >
+                          <div className="flex items-start gap-3">
+                            <Checkbox
+                              aria-label={`Allow ${field.fieldLabel}`}
+                              checked={checked}
+                              disabled={!field.value}
+                              onCheckedChange={(nextChecked) => {
+                                setDraft((current) => ({
+                                  ...current,
+                                  allowedFieldIds: nextChecked
+                                    ? [...new Set([
+                                        ...current.allowedFieldIds,
+                                        field.fieldId,
+                                      ])]
+                                    : current.allowedFieldIds.filter(
+                                        (fieldId) => fieldId !== field.fieldId,
+                                      ),
+                                }));
+                              }}
+                            />
+                            <div className="min-w-0 flex-1">
+                              <div className="flex flex-wrap items-start justify-between gap-2">
+                                <div className="min-w-0">
+                                  <p className="text-sm font-semibold">{field.fieldLabel}</p>
+                                  <p className="mt-0.5 font-mono text-[10px] text-muted-foreground">
+                                    {candidatePrefillLabel(field.prefillKey)} · {field.prefillKey}
+                                  </p>
+                                </div>
+                                <span className={cn(
+                                  "rounded-full border px-2 py-0.5 text-[10px] font-semibold",
+                                  field.status === "filled"
+                                    ? "border-success/30 bg-success/10 text-success"
+                                    : field.status === "needs_review"
+                                      ? "border-warning/30 bg-warning/10 text-warning"
+                                      : "border-border bg-muted text-muted-foreground",
+                                )}>
+                                  {field.status === "needs_review"
+                                    ? "Needs review"
+                                    : field.status === "filled"
+                                      ? "Ready"
+                                      : "No value"}
+                                </span>
+                              </div>
+                              <p className={cn(
+                                "mt-2 max-h-28 overflow-y-auto whitespace-pre-wrap break-words rounded-md bg-muted/40 px-3 py-2 text-xs",
+                                !field.value && "italic text-muted-foreground",
+                              )}>
+                                {field.value || "This field will remain empty."}
+                              </p>
+                              {field.confidence !== null && (
+                                <p className="mt-1.5 text-[10px] text-muted-foreground">
+                                  {Math.round(field.confidence * 100)}% confidence
+                                  {field.sourcePage ? ` · source page ${field.sourcePage}` : ""}
+                                  {field.verificationStatus ? ` · ${field.verificationStatus}` : ""}
+                                </p>
+                              )}
+                            </div>
                           </div>
-                          <span className={cn(
-                            "rounded-full border px-2 py-0.5 text-[10px] font-semibold",
-                            field.status === "filled"
-                              ? "border-success/30 bg-success/10 text-success"
-                              : field.status === "needs_review"
-                                ? "border-warning/30 bg-warning/10 text-warning"
-                                : "border-border bg-muted text-muted-foreground",
-                          )}>
-                            {field.status === "needs_review"
-                              ? "Needs review"
-                              : field.status === "filled"
-                                ? "Ready"
-                                : "No value"}
-                          </span>
                         </div>
-                        <p className={cn(
-                          "mt-2 max-h-28 overflow-y-auto whitespace-pre-wrap break-words rounded-md bg-muted/40 px-3 py-2 text-xs",
-                          !field.value && "italic text-muted-foreground",
-                        )}>
-                          {field.value || "This field will remain empty."}
-                        </p>
-                        {field.confidence !== null && (
-                          <p className="mt-1.5 text-[10px] text-muted-foreground">
-                            {Math.round(field.confidence * 100)}% confidence
-                            {field.sourcePage ? ` · source page ${field.sourcePage}` : ""}
-                            {field.verificationStatus ? ` · ${field.verificationStatus}` : ""}
-                          </p>
-                        )}
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
               </div>
 
-              <DialogFooter className="border-t px-5 py-4" showCloseButton />
+              <DialogFooter className="border-t px-5 py-4">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setPreviewOpen(false)}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="button"
+                  disabled={draft.allowedFieldIds.length === 0}
+                  onClick={() => setPreviewOpen(false)}
+                >
+                  Approve selected fields
+                </Button>
+              </DialogFooter>
             </>
           )}
         </DialogContent>

@@ -33,10 +33,14 @@ export type AssignmentTemplateSummary = {
   filterRoles: Array<{ id: string; name: string; color: string }>;
 };
 
+export type AssignmentPrefillMode = "suggested" | "automatic" | "none";
+
 export type AssignmentDraft = {
   templateId: string;
   roleId: string;
   candidateProfileVersionId: string | null;
+  prefillMode: AssignmentPrefillMode;
+  allowedFieldIds: string[];
 };
 
 export type CandidateProfileOption = {
