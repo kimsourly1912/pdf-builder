@@ -4,10 +4,12 @@ import type { SQL } from "drizzle-orm";
 import { getDb } from "@/db";
 import {
   auditEvents,
+  candidateProfileVersions,
   candidates,
   formAssignments,
   recipientLinks,
   recipientProfiles,
+  resumes,
   templates,
   templateVersions,
   user,
@@ -101,6 +103,14 @@ export async function GET(request: Request) {
           linkStatus: recipientLinks.status,
           assignedAt: formAssignments.assignedAt,
           completedAt: formAssignments.completedAt,
+          updatedAt: formAssignments.updatedAt,
+          prefillMode: formAssignments.prefillMode,
+          initialValuesJson: formAssignments.initialValuesJson,
+          availableValuesJson: formAssignments.availableValuesJson,
+          candidateProfileVersionId: formAssignments.candidateProfileVersionId,
+          candidateProfileVersionNumber: candidateProfileVersions.versionNumber,
+          candidateName: candidates.fullName,
+          candidateFileName: resumes.fileName,
         })
         .from(formAssignments)
         .innerJoin(templates, eq(formAssignments.templateId, templates.id))
@@ -111,6 +121,21 @@ export async function GET(request: Request) {
         .innerJoin(
           recipientLinks,
           eq(formAssignments.recipientLinkId, recipientLinks.id),
+        )
+        .leftJoin(
+          candidateProfileVersions,
+          eq(
+            formAssignments.candidateProfileVersionId,
+            candidateProfileVersions.id,
+          ),
+        )
+        .leftJoin(
+          candidates,
+          eq(candidateProfileVersions.candidateId, candidates.id),
+        )
+        .leftJoin(
+          resumes,
+          eq(candidateProfileVersions.resumeId, resumes.id),
         )
         .where(and(
           eq(templates.ownerEmail, ownerEmail),
@@ -138,6 +163,23 @@ export async function GET(request: Request) {
         completedAt: assignment.completedAt
           ? toUtcIsoString(assignment.completedAt) ?? assignment.completedAt
           : null,
+        updatedAt:
+          toUtcIsoString(assignment.updatedAt) ?? assignment.updatedAt,
+        prefillMode:
+          assignment.prefillMode === "suggested"
+          || assignment.prefillMode === "none"
+            ? assignment.prefillMode
+            : "automatic",
+        approvedFieldCount: Object.keys({
+          ...parseRecord(assignment.initialValuesJson),
+          ...parseRecord(assignment.availableValuesJson),
+        }).length,
+        candidateProfileVersionId:
+          assignment.candidateProfileVersionId ?? null,
+        candidateProfileVersionNumber:
+          assignment.candidateProfileVersionNumber ?? null,
+        candidateName: assignment.candidateName ?? "",
+        candidateFileName: assignment.candidateFileName ?? "",
       });
       assignmentsByUser.set(assignment.userId, list);
     }
@@ -267,5 +309,16 @@ export async function POST(request: Request) {
       ? "An account with this email already exists."
       : "The account could not be created.";
     return jsonError(message, /already|exists/iu.test(message) ? 409 : 500);
+  }
+}
+
+function parseRecord(value: string): Record<string, unknown> {
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    return parsed && !Array.isArray(parsed) && typeof parsed === "object"
+      ? parsed as Record<string, unknown>
+      : {};
+  } catch {
+    return {};
   }
 }

@@ -62,7 +62,7 @@ import {
 import Image from "next/image";
 import khmerFontUrl from "@expo-google-fonts/noto-sans-khmer/400Regular/NotoSansKhmer_400Regular.ttf?url";
 import type { RecipientRole } from "@/features/templates/template.types";
-import { CANDIDATE_PREFILL_KEYS } from "@/features/resumes/resume.types";
+import { CandidatePrefillCombobox } from "@/features/resumes/candidate-prefill-combobox";
 import type { CandidatePrefillKey } from "@/features/resumes/resume.types";
 import type { LabelBinding } from "@/features/templates/label-binding";
 import {
@@ -6380,29 +6380,15 @@ export function PdfEditor(props: { initialTemplateId?: string }) {
                       />
                     </label>
                     <label className="block text-xs font-semibold text-slate-600">
-                      Candidate prefill
-                      <Select
-                        value={selectedAnnotation.prefillKey ?? "no-prefill"}
-                        onValueChange={(value) =>
-                          updateSelected({
-                            prefillKey:
-                              value === "no-prefill"
-                                ? undefined
-                                : value as CandidatePrefillKey,
-                          })
-                        }
-                      >
-                        <SelectTrigger className="mt-1.5 h-9 w-full font-mono text-xs">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="no-prefill">No automatic prefill</SelectItem>
-                          {CANDIDATE_PREFILL_KEYS.map((key) => (
-                            <SelectItem key={key} value={key}>{key}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <span className="mt-1 block text-[10px] font-normal leading-4 text-slate-400">Copied as a snapshot when this form is assigned to a linked candidate account.</span>
+                      Candidate auto-fill
+                      <CandidatePrefillCombobox
+                        value={selectedAnnotation.prefillKey}
+                        onValueChange={(prefillKey) => updateSelected({ prefillKey })}
+                        className="mt-1.5 text-xs"
+                      />
+                      <span className="mt-1 block text-[10px] font-normal leading-4 text-slate-400">
+                        Search extracted resume fields. The selected value is copied as an immutable snapshot when the form is assigned.
+                      </span>
                     </label>
                     <div className="rounded-lg border border-slate-200 bg-white p-3 shadow-sm">
                       <div className="flex items-start justify-between gap-2">

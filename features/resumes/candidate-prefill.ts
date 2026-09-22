@@ -23,6 +23,7 @@ export type CandidatePrefillMetadata = {
   confidence: number;
   sourcePage: number | null;
   source: "candidate_profile" | "candidate_record";
+  verificationStatus: "extracted" | "verified";
 };
 
 export type CandidatePrefillSnapshot = {
@@ -34,8 +35,14 @@ export function buildCandidatePrefillSnapshot(options: {
   candidate: CandidateRow | null;
   annotations: TemplateAnnotation[];
   profileVersion?: CandidateProfileSnapshotSource | null;
+  recipientRoleId?: string;
 }): CandidatePrefillSnapshot {
-  const { candidate, annotations, profileVersion = null } = options;
+  const {
+    candidate,
+    annotations,
+    profileVersion = null,
+    recipientRoleId,
+  } = options;
   if (!candidate) return { values: {}, metadata: {} };
   const candidateValues = candidatePrefillRecord(candidate);
   const profileValues = profileVersion
@@ -46,16 +53,8 @@ export function buildCandidatePrefillSnapshot(options: {
 
   for (const annotation of annotations) {
     if (
-      !isRecipientFieldType(annotation.type)
+      !isCandidatePrefillEligibleAnnotation(annotation, recipientRoleId)
       || !isCandidatePrefillKey(annotation.prefillKey)
-      || [
-        "checkbox",
-        "radio",
-        "checkbox-group",
-        "radio-group",
-        "cambodia-address",
-        "image-placeholder",
-      ].includes(annotation.type)
     ) {
       continue;
     }
@@ -66,6 +65,7 @@ export function buildCandidatePrefillSnapshot(options: {
           source: "candidate_profile" as const,
           profileVersionId: profileVersion?.id ?? null,
           verified: profileVersion?.verificationStatus === "verified",
+          verificationStatus: profileVersion?.verificationStatus ?? "extracted",
         }
       : {
           value: candidateValues[annotation.prefillKey],
@@ -74,6 +74,9 @@ export function buildCandidatePrefillSnapshot(options: {
           source: "candidate_record" as const,
           profileVersionId: null,
           verified: candidate.verificationStatus === "verified",
+          verificationStatus: candidate.verificationStatus === "verified"
+            ? "verified" as const
+            : "extracted" as const,
         };
     if (!chosen.value || (!chosen.verified && chosen.confidence < 0.6)) continue;
     const value = annotation.type === "dropdown"
@@ -88,6 +91,7 @@ export function buildCandidatePrefillSnapshot(options: {
       confidence: chosen.confidence,
       sourcePage: chosen.sourcePage,
       source: chosen.source,
+      verificationStatus: chosen.verificationStatus,
     };
   }
   return { values, metadata };
@@ -98,6 +102,30 @@ export function buildCandidatePrefillValues(
   annotations: TemplateAnnotation[],
 ): Record<string, unknown> {
   return buildCandidatePrefillSnapshot({ candidate, annotations }).values;
+}
+
+export function isCandidatePrefillEligibleAnnotation(
+  annotation: TemplateAnnotation,
+  recipientRoleId?: string,
+): boolean {
+  if (
+    recipientRoleId
+    && annotation.recipientRoleId
+    && annotation.recipientRoleId !== recipientRoleId
+  ) {
+    return false;
+  }
+  return (
+    isRecipientFieldType(annotation.type)
+    && ![
+      "checkbox",
+      "radio",
+      "checkbox-group",
+      "radio-group",
+      "cambodia-address",
+      "image-placeholder",
+    ].includes(annotation.type)
+  );
 }
 
 export function isCandidatePrefillKey(value: unknown): value is CandidatePrefillKey {
@@ -150,8 +178,9 @@ function matchingDropdownOption(
   for (const option of annotation.options) {
     if (!option || typeof option !== "object" || Array.isArray(option)) continue;
     const record = option as Record<string, unknown>;
+    const id = typeof record.id === "string" ? record.id.trim() : "";
     const label = typeof record.label === "string" ? record.label.trim() : "";
-    if (label && normalizedOption(label) === requested) return label;
+    if (id && label && normalizedOption(label) === requested) return id;
   }
   return "";
 }

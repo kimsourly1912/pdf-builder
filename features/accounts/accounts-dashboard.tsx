@@ -52,10 +52,13 @@ import {
   buildTelegramShareUrl,
   generateTemporaryPassword,
 } from "@/features/accounts/account-share";
+import { AccountAssignmentControls } from "@/features/accounts/account-assignment-controls";
 import { assignmentDisplay } from "@/features/accounts/assignment-status";
 import { pageMetaFromPayload } from "@/features/pagination/pagination";
 import type { PageMeta } from "@/features/pagination/pagination";
 import type {
+  AssignmentDraft,
+  AssignmentTemplateSummary,
   RecipientAccountSummary,
   RecipientAccountType,
   RecipientAssignmentSummary,
@@ -65,23 +68,12 @@ import {
   resolvedLocalTimeZone,
 } from "@/features/templates/date-time";
 
-type TemplateSummary = {
-  id: string;
-  name: string;
-  archivedAt: string | null;
-  versionNumber: number;
-  currentRoles: Array<{ id: string; name: string; color: string }>;
-  filterRoles: Array<{ id: string; name: string; color: string }>;
-};
-
 type CreatedCredentials = {
   name: string;
   email: string;
   accountType: RecipientAccountType;
   temporaryPassword: string;
 };
-
-type AssignmentDraft = { templateId: string; roleId: string };
 
 const EMPTY_PAGE_META: PageMeta = {
   page: 1,
@@ -94,7 +86,7 @@ const EMPTY_PAGE_META: PageMeta = {
 
 export function AccountsDashboard(props: { displayName: string }) {
   const [accounts, setAccounts] = useState<RecipientAccountSummary[]>([]);
-  const [templates, setTemplates] = useState<TemplateSummary[]>([]);
+  const [templates, setTemplates] = useState<AssignmentTemplateSummary[]>([]);
   const [pageMeta, setPageMeta] = useState<PageMeta>(EMPTY_PAGE_META);
   const [assignmentCount, setAssignmentCount] = useState(0);
   const [searchDraft, setSearchDraft] = useState("");
@@ -111,9 +103,6 @@ export function AccountsDashboard(props: { displayName: string }) {
   const [password, setPassword] = useState("");
   const [credentials, setCredentials] =
     useState<CreatedCredentials | null>(null);
-  const [assignmentDrafts, setAssignmentDrafts] = useState<
-    Record<string, AssignmentDraft>
-  >({});
   const [timeZone, setTimeZone] = useState("UTC");
 
   const loadData = useCallback(async () => {
@@ -141,7 +130,7 @@ export function AccountsDashboard(props: { displayName: string }) {
         error?: string;
       };
       const templatesPayload = (await templatesResponse.json()) as {
-        items?: TemplateSummary[];
+        items?: AssignmentTemplateSummary[];
         error?: string;
       };
       if (!accountsResponse.ok || !templatesResponse.ok) {
@@ -181,7 +170,10 @@ export function AccountsDashboard(props: { displayName: string }) {
     try {
       const response = await fetch("/api/accounts", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "Idempotency-Key": crypto.randomUUID(),
+        },
         body: JSON.stringify({ name, email, password, accountType }),
       });
       const payload = (await response.json()) as {
@@ -214,11 +206,13 @@ export function AccountsDashboard(props: { displayName: string }) {
     }
   }
 
-  async function assignForm(userId: string) {
-    const draft = assignmentDrafts[userId];
-    if (!draft?.templateId || !draft.roleId) {
+  async function assignForm(
+    userId: string,
+    draft: AssignmentDraft,
+  ): Promise<boolean> {
+    if (!draft.templateId || !draft.roleId) {
       setError("Choose a template and recipient role.");
-      return;
+      return false;
     }
     setAssigningUserId(userId);
     setError("");
@@ -226,7 +220,10 @@ export function AccountsDashboard(props: { displayName: string }) {
     try {
       const response = await fetch(`/api/accounts/${userId}/assignments`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "Idempotency-Key": draft.requestKey ?? crypto.randomUUID(),
+        },
         body: JSON.stringify(draft),
       });
       const payload = (await response.json()) as {
@@ -246,32 +243,78 @@ export function AccountsDashboard(props: { displayName: string }) {
             : account,
         ),
       );
-      setAssignmentDrafts((current) => ({
-        ...current,
-        [userId]: { templateId: "", roleId: "" },
-      }));
-      setNotice("Form assigned. It is now available in the recipient portal.");
+      setNotice(
+        draft.prefillMode === "suggested"
+          ? "Form assigned with approved resume data the recipient can choose to use."
+          : draft.prefillMode === "automatic"
+            ? "Form assigned with approved resume data filled automatically."
+            : "Form assigned without resume data.",
+      );
+      return true;
     } catch (cause) {
       setError(
         cause instanceof Error ? cause.message : "The form could not be assigned.",
       );
+      return false;
     } finally {
       setAssigningUserId(null);
     }
   }
 
-  function updateAssignmentDraft(
+  async function replaceAssignmentResume(
     userId: string,
-    changes: Partial<AssignmentDraft>,
-  ) {
-    setAssignmentDrafts((current) => ({
-      ...current,
-      [userId]: {
-        templateId: current[userId]?.templateId ?? "",
-        roleId: current[userId]?.roleId ?? "",
-        ...changes,
-      },
-    }));
+    assignmentId: string,
+    expectedUpdatedAt: string,
+    draft: AssignmentDraft,
+  ): Promise<boolean> {
+    setAssigningUserId(userId);
+    setError("");
+    setNotice("");
+    try {
+      const response = await fetch(`/api/accounts/${userId}/assignments`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...draft,
+          assignmentId,
+          expectedUpdatedAt,
+        }),
+      });
+      const payload = (await response.json()) as {
+        assignment?: RecipientAssignmentSummary;
+        error?: string;
+      };
+      if (!response.ok || !payload.assignment) {
+        throw new Error(
+          payload.error || "Resume data could not be replaced.",
+        );
+      }
+      setAccounts((current) =>
+        current.map((account) =>
+          account.id === userId
+            ? {
+                ...account,
+                assignments: account.assignments.map((assignment) =>
+                  assignment.id === assignmentId
+                    ? payload.assignment!
+                    : assignment,
+                ),
+              }
+            : account,
+        ),
+      );
+      setNotice("The assignment now uses the new frozen resume snapshot.");
+      return true;
+    } catch (cause) {
+      setError(
+        cause instanceof Error
+          ? cause.message
+          : "Resume data could not be replaced.",
+      );
+      return false;
+    } finally {
+      setAssigningUserId(null);
+    }
   }
 
   async function copyCredentials() {
@@ -505,11 +548,16 @@ export function AccountsDashboard(props: { displayName: string }) {
                     key={account.id}
                     account={account}
                     templates={templates}
-                    draft={assignmentDrafts[account.id] ?? { templateId: "", roleId: "" }}
                     busy={assigningUserId === account.id}
                     timeZone={timeZone}
-                    onDraftChange={(changes) => updateAssignmentDraft(account.id, changes)}
-                    onAssign={() => void assignForm(account.id)}
+                    onAssign={(draft) => assignForm(account.id, draft)}
+                    onReplace={(assignmentId, expectedUpdatedAt, draft) =>
+                      replaceAssignmentResume(
+                        account.id,
+                        assignmentId,
+                        expectedUpdatedAt,
+                        draft,
+                      )}
                   />
                 ))}
                 <ServerPagination
@@ -528,16 +576,18 @@ export function AccountsDashboard(props: { displayName: string }) {
 
 function AccountCard(props: {
   account: RecipientAccountSummary;
-  templates: TemplateSummary[];
-  draft: AssignmentDraft;
+  templates: AssignmentTemplateSummary[];
   busy: boolean;
   timeZone: string;
-  onDraftChange: (changes: Partial<AssignmentDraft>) => void;
-  onAssign: () => void;
+  onAssign: (draft: AssignmentDraft) => Promise<boolean>;
+  onReplace: (
+    assignmentId: string,
+    expectedUpdatedAt: string,
+    draft: AssignmentDraft,
+  ) => Promise<boolean>;
 }) {
-  const selectedTemplate = props.templates.find(
-    (template) => template.id === props.draft.templateId,
-  );
+  const [replacement, setReplacement] =
+    useState<RecipientAssignmentSummary | null>(null);
   return (
     <Card className="gap-0 overflow-hidden py-0 shadow-none">
       <div className="flex flex-wrap items-start justify-between gap-3 p-5">
@@ -559,63 +609,16 @@ function AccountCard(props: {
         </span>
       </div>
 
-      <div className="border-y bg-muted/30 p-4">
-        <p className="text-xs font-semibold">Assign a form</p>
-        <div className="mt-2 grid gap-2 sm:grid-cols-[1fr_1fr_auto]">
-          <Select
-            value={props.draft.templateId || "choose-template"}
-            onValueChange={(value) =>
-              props.onDraftChange({
-                templateId: value === "choose-template" ? "" : value,
-                roleId: "",
-              })
-            }
-          >
-            <SelectTrigger className="w-full">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="choose-template">Choose template</SelectItem>
-              {props.templates.map((template) => (
-                <SelectItem key={template.id} value={template.id}>
-                  {template.name} · v{template.versionNumber}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Select
-            value={props.draft.roleId || "choose-role"}
-            disabled={!selectedTemplate}
-            onValueChange={(value) =>
-              props.onDraftChange({
-                roleId: value === "choose-role" ? "" : value,
-              })
-            }
-          >
-            <SelectTrigger className="w-full">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="choose-role">Choose role</SelectItem>
-              {(selectedTemplate?.currentRoles ?? selectedTemplate?.filterRoles)?.map((role) => (
-                <SelectItem key={role.id} value={role.id}>{role.name}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Button
-            type="button"
-            disabled={props.busy || !props.draft.templateId || !props.draft.roleId}
-            onClick={props.onAssign}
-            className="h-9"
-          >
-            {props.busy ? <LoaderCircle className="size-4 animate-spin" /> : <Plus className="size-4" />}
-            Assign
-          </Button>
-        </div>
-        {props.templates.length === 0 && (
-          <p className="mt-2 text-[11px] text-warning">Create and save a template before assigning forms.</p>
-        )}
-      </div>
+      <AccountAssignmentControls
+        accountId={props.account.id}
+        accountName={props.account.name}
+        templates={props.templates}
+        busy={props.busy}
+        replacement={replacement}
+        onAssign={props.onAssign}
+        onReplace={props.onReplace}
+        onCancelReplacement={() => setReplacement(null)}
+      />
 
       <div className="p-4">
         {props.account.assignments.length === 0 ? (
@@ -627,6 +630,7 @@ function AccountCard(props: {
                 key={assignment.id}
                 assignment={assignment}
                 timeZone={props.timeZone}
+                onReplace={() => setReplacement(assignment)}
               />
             ))}
           </div>
@@ -639,6 +643,7 @@ function AccountCard(props: {
 function AccountAssignmentRow(props: {
   assignment: RecipientAssignmentSummary;
   timeZone: string;
+  onReplace: () => void;
 }) {
   const display = assignmentDisplay(props.assignment.status);
   const statusTone =
@@ -654,8 +659,44 @@ function AccountAssignmentRow(props: {
       <span className="size-2.5 shrink-0 rounded-full" style={{ backgroundColor: props.assignment.roleColor }} />
       <div className="min-w-0 flex-1">
         <p className="truncate text-xs font-semibold">{props.assignment.templateName}</p>
-        <p className="mt-0.5 text-[11px] text-muted-foreground">v{props.assignment.versionNumber} · {props.assignment.roleName} · {formatLocalDateTime(props.assignment.assignedAt, { timeZone: props.timeZone })}</p>
+        <p className="mt-0.5 text-[11px] text-muted-foreground">
+          v{props.assignment.versionNumber} · {props.assignment.roleName} · {formatLocalDateTime(props.assignment.assignedAt, { timeZone: props.timeZone })}
+        </p>
+        <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[10px] text-muted-foreground">
+          <span className="rounded border bg-muted px-1.5 py-0.5">
+            {props.assignment.prefillMode === "suggested"
+              ? "Recipient chooses"
+              : props.assignment.prefillMode === "automatic"
+                ? "Automatic"
+                : "No resume data"}
+          </span>
+          {props.assignment.candidateProfileVersionId && (
+            <span>
+              {props.assignment.candidateFileName
+                || props.assignment.candidateName
+                || "Candidate profile"}
+              {props.assignment.candidateProfileVersionNumber
+                ? ` · profile v${props.assignment.candidateProfileVersionNumber}`
+                : ""}
+            </span>
+          )}
+          <span>
+            {props.assignment.approvedFieldCount} approved field{props.assignment.approvedFieldCount === 1 ? "" : "s"}
+          </span>
+        </div>
       </div>
+      {display.state === "active" && (
+        <Button
+          type="button"
+          size="sm"
+          variant="ghost"
+          onClick={props.onReplace}
+          className="h-7 text-[11px]"
+        >
+          <RefreshCw className="size-3.5" />
+          Replace data
+        </Button>
+      )}
       <StatusBadge
         label={display.label}
         tone={statusTone}

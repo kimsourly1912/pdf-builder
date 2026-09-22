@@ -1,4 +1,5 @@
 import {
+  check,
   index,
   integer,
   sqliteTable,
@@ -231,6 +232,11 @@ export const formAssignments = sqliteTable(
     initialValuesJson: text("initial_values_json").notNull().default("{}"),
     candidateProfileVersionId: text("candidate_profile_version_id"),
     initialValuesMetaJson: text("initial_values_meta_json").notNull().default("{}"),
+    prefillMode: text("prefill_mode").notNull().default("automatic"),
+    availableValuesJson: text("available_values_json").notNull().default("{}"),
+    availableValuesMetaJson: text("available_values_meta_json").notNull().default("{}"),
+    assignmentRequestKey: text("assignment_request_key"),
+    assignmentRequestFingerprint: text("assignment_request_fingerprint"),
     status: text("status").notNull().default("assigned"),
     assignedAt: text("assigned_at").notNull(),
     completedAt: text("completed_at"),
@@ -249,6 +255,13 @@ export const formAssignments = sqliteTable(
       table.assignedAt,
     ),
     index("form_assignments_template_idx").on(table.templateId),
+    uniqueIndex("form_assignments_user_request_key_unique")
+      .on(table.userId, table.assignmentRequestKey)
+      .where(sql`${table.assignmentRequestKey} IS NOT NULL`),
+    check(
+      "form_assignments_prefill_mode_check",
+      sql`${table.prefillMode} IN ('suggested', 'automatic', 'none')`,
+    ),
   ],
 );
 
