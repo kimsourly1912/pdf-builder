@@ -247,7 +247,7 @@ export function AccountsDashboard(props: { displayName: string }) {
         draft.prefillMode === "suggested"
           ? "Form assigned with approved resume data the recipient can choose to use."
           : draft.prefillMode === "automatic"
-            ? "Form assigned with approved resume data filled automatically."
+            ? "Form assigned with mapped fields filled automatically and approved resume values available to choose."
             : "Form assigned without resume data.",
       );
       return true;
@@ -681,7 +681,7 @@ function AccountAssignmentRow(props: {
             </span>
           )}
           <span>
-            {props.assignment.approvedFieldCount} approved field{props.assignment.approvedFieldCount === 1 ? "" : "s"}
+            {props.assignment.approvedFieldCount} approved value{props.assignment.approvedFieldCount === 1 ? "" : "s"}
           </span>
         </div>
       </div>

@@ -1,3 +1,27 @@
+import { isCandidatePrefillEligibleAnnotation } from "@/features/resumes/candidate-prefill";
+import type { TemplateAnnotation } from "@/features/templates/template.types";
+
+export function resumeValueForField(
+  annotation: TemplateAnnotation,
+  value: string,
+  recipientRoleId: string,
+): string | null {
+  if (!isCandidatePrefillEligibleAnnotation(annotation, recipientRoleId)) return null;
+  if (annotation.type === "textarea") return value;
+  if (annotation.type === "input") return /[\r\n]/u.test(value) ? null : value;
+  if (annotation.type === "date") {
+    return /^\d{4}-\d{2}-\d{2}$/u.test(value) ? value : null;
+  }
+  if (annotation.type !== "dropdown" || !Array.isArray(annotation.options)) return null;
+  const normalize = (text: string) => text.normalize("NFKC").toLocaleLowerCase().replace(/[^\p{L}\p{N}]+/gu, "");
+  const match = annotation.options.find((option) => {
+    if (!option || typeof option !== "object" || Array.isArray(option)) return false;
+    const record = option as Record<string, unknown>;
+    return typeof record.label === "string" && normalize(record.label) === normalize(value);
+  }) as Record<string, unknown> | undefined;
+  return typeof match?.id === "string" ? match.id : null;
+}
+
 export function hasRecipientValue(value: unknown): boolean {
   if (Array.isArray(value)) return value.length > 0;
   if (typeof value === "boolean") return value;

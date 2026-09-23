@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
 import {
   Dialog,
   DialogContent,
@@ -54,6 +55,7 @@ function emptyDraft(
     candidateProfileVersionId: null,
     prefillMode: replacement?.prefillMode ?? "suggested",
     allowedFieldIds: [],
+    allowedProfileKeys: [],
   };
 }
 
@@ -96,6 +98,7 @@ function AccountAssignmentControlsStateful(
   const [mismatchOpen, setMismatchOpen] = useState(false);
   const [previewing, setPreviewing] = useState(false);
   const [previewError, setPreviewError] = useState("");
+  const [profileSearch, setProfileSearch] = useState("");
 
   const selectedTemplate = props.templates.find(
     (template) => template.id === draft.templateId,
@@ -108,7 +111,7 @@ function AccountAssignmentControlsStateful(
     setPreview(null);
     setPreviewOpen(false);
     setPreviewError("");
-    setDraft((current) => ({ ...current, allowedFieldIds: [] }));
+    setDraft((current) => ({ ...current, allowedFieldIds: [], allowedProfileKeys: [] }));
   }
 
   async function performSubmit(profileMismatchConfirmed: boolean) {
@@ -141,11 +144,11 @@ function AccountAssignmentControlsStateful(
       && (
         !draft.candidateProfileVersionId
         || !preview
-        || draft.allowedFieldIds.length === 0
+        || draft.allowedFieldIds.length + draft.allowedProfileKeys.length === 0
       )
     ) {
       setPreviewError(
-        "Review the resume data and approve at least one field first.",
+        "Review the resume data and approve at least one value first.",
       );
       return;
     }
@@ -192,10 +195,14 @@ function AccountAssignmentControlsStateful(
         );
       }
       setPreview(payload);
+      setProfileSearch("");
       setSelectedProfile(payload.profile);
       setDraft((current) => ({
         ...current,
         allowedFieldIds: defaultApprovedPrefillFieldIds(payload.fields),
+        allowedProfileKeys: payload.profileFields
+          .filter((field) => field.status === "filled")
+          .map((field) => field.key),
       }));
       setPreviewOpen(true);
     } catch (cause) {
@@ -344,8 +351,8 @@ function AccountAssignmentControlsStateful(
         {selectedProfile && !selectedProfile.linkedToAccount && (
           <div className="mt-3 flex items-start gap-2 rounded-lg border border-warning/30 bg-warning/10 p-3 text-xs text-warning-foreground">
             <ShieldAlert className="mt-0.5 size-4 shrink-0" />
-            This profile is not linked to {props.accountName}. You will need to
-            confirm the mismatch before sharing any values.
+            This resume record is not linked to {props.accountName}. Confirm
+            that you chose the intended person before sharing its values.
           </div>
         )}
 
@@ -353,9 +360,9 @@ function AccountAssignmentControlsStateful(
           <p className="text-[11px] text-muted-foreground">
             {draft.prefillMode === "none"
               ? "No resume values will be exposed or filled."
-              : draft.allowedFieldIds.length > 0
-                ? `${draft.allowedFieldIds.length} approved field${draft.allowedFieldIds.length === 1 ? "" : "s"} will be frozen with this assignment.`
-                : "Choose a resume and review the fields. Low-confidence values are unchecked by default."}
+              : draft.allowedFieldIds.length + draft.allowedProfileKeys.length > 0
+                ? `${draft.allowedFieldIds.length} mapped fields and ${draft.allowedProfileKeys.length} resume values will be available to this account.`
+                : "Choose a resume and review its values. Low-confidence values are unchecked by default."}
           </p>
           <div className="flex gap-2">
             <Button
@@ -384,7 +391,7 @@ function AccountAssignmentControlsStateful(
                 || !draft.roleId
                 || (
                   draft.prefillMode !== "none"
-                  && (!preview || draft.allowedFieldIds.length === 0)
+                  && (!preview || draft.allowedFieldIds.length + draft.allowedProfileKeys.length === 0)
                 )
               }
               onClick={() => void submit()}
@@ -414,7 +421,7 @@ function AccountAssignmentControlsStateful(
           {preview && (
             <>
               <DialogHeader className="border-b px-5 py-4 pr-12">
-                <DialogTitle>Choose resume fields</DialogTitle>
+                <DialogTitle>Choose resume values</DialogTitle>
                 <DialogDescription>
                   Approve the exact fields {props.accountName} may use from{" "}
                   <span className="font-medium text-foreground">
@@ -436,7 +443,7 @@ function AccountAssignmentControlsStateful(
 
               <div className="flex flex-wrap items-center justify-between gap-3 border-b bg-muted/20 px-4 py-3">
                 <p className="text-xs text-muted-foreground">
-                  {draft.allowedFieldIds.length} of {preview.summary.filledFields} available fields approved
+                  {draft.allowedProfileKeys.length} resume values and {draft.allowedFieldIds.length} mapped fields approved
                 </p>
                 <div className="flex gap-2">
                   <Button
@@ -446,6 +453,7 @@ function AccountAssignmentControlsStateful(
                     onClick={() => setDraft((current) => ({
                       ...current,
                       allowedFieldIds: [],
+                      allowedProfileKeys: [],
                     }))}
                   >
                     Clear
@@ -459,6 +467,7 @@ function AccountAssignmentControlsStateful(
                       allowedFieldIds: preview.fields
                         .filter((field) => Boolean(field.value))
                         .map((field) => field.fieldId),
+                      allowedProfileKeys: preview.profileFields.map((field) => field.key),
                     }))}
                   >
                     Select all, including review
@@ -467,9 +476,44 @@ function AccountAssignmentControlsStateful(
               </div>
 
               <div className="min-h-0 flex-1 overflow-y-auto p-4">
+                <p className="mb-2 text-xs font-semibold">Resume values the recipient can choose</p>
+                <Input
+                  className="mb-3"
+                  aria-label="Search resume values"
+                  placeholder="Search resume values"
+                  value={profileSearch}
+                  onChange={(event) => setProfileSearch(event.target.value)}
+                />
+                <div className="mb-5 grid gap-2 sm:grid-cols-2">
+                  {preview.profileFields.filter((field) =>
+                    `${field.label} ${field.key} ${field.value}`
+                      .toLocaleLowerCase().includes(profileSearch.trim().toLocaleLowerCase())
+                  ).map((field) => (
+                    <label key={field.key} className="flex items-start gap-2 rounded-md border p-2.5 text-xs">
+                      <Checkbox
+                        aria-label={`Allow ${field.label}`}
+                        checked={draft.allowedProfileKeys.includes(field.key)}
+                        onCheckedChange={(checked) => setDraft((current) => ({
+                          ...current,
+                          allowedProfileKeys: checked
+                            ? [...new Set([...current.allowedProfileKeys, field.key])]
+                            : current.allowedProfileKeys.filter((key) => key !== field.key),
+                        }))}
+                      />
+                      <span className="min-w-0">
+                        <span className="block font-semibold">{field.label}{field.status === "needs_review" ? " · Review" : ""}</span>
+                        <span className="block max-h-16 overflow-auto whitespace-pre-wrap break-words text-muted-foreground">{field.value}</span>
+                      </span>
+                    </label>
+                  ))}
+                  {preview.profileFields.length === 0 && (
+                    <p className="text-muted-foreground">This profile has no extracted values.</p>
+                  )}
+                </div>
+                <p className="mb-2 text-xs font-semibold">Template fields with preset mappings</p>
                 {preview.fields.length === 0 ? (
                   <p className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
-                    This recipient role has no candidate fields mapped yet.
+                    No fields are mapped. The recipient can still choose the approved resume values above.
                   </p>
                 ) : (
                   <div className="space-y-2">
@@ -567,7 +611,7 @@ function AccountAssignmentControlsStateful(
                 </Button>
                 <Button
                   type="button"
-                  disabled={draft.allowedFieldIds.length === 0}
+                  disabled={draft.allowedFieldIds.length + draft.allowedProfileKeys.length === 0}
                   onClick={() => setPreviewOpen(false)}
                 >
                   Approve selected fields
@@ -584,8 +628,8 @@ function AccountAssignmentControlsStateful(
             <AlertDialogTitle>Share a different candidate’s data?</AlertDialogTitle>
             <AlertDialogDescription>
               {selectedProfile?.candidateName || "This candidate profile"} is
-              not linked to {props.accountName}. Confirm only if you intentionally
-              want this account to receive the selected resume fields.
+              not linked to {props.accountName}. Confirm only if it belongs to
+              the intended person and you want to share the selected values.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

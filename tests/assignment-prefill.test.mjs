@@ -18,6 +18,33 @@ after(async () => vite.close());
 const preview = await vite.ssrLoadModule(
   "/features/accounts/assignment-prefill.ts",
 );
+const profiles = await vite.ssrLoadModule(
+  "/features/resumes/candidate-profile.ts",
+);
+
+test("approved resume values are available even when no template fields are mapped", () => {
+  const profile = profiles.candidateProfileFromSummary({
+    fullName: "Sokha Chan", email: "sokha@example.com", phone: "",
+    address: "Phnom Penh", dateOfBirth: null, gender: "", nationality: "Cambodian",
+    currentTitle: "Developer", professionalSummary: "", skills: [],
+    workExperience: [], education: [], certifications: [], languages: [],
+    links: [], verificationStatus: "verified", id: "candidate-1",
+  });
+  const result = preview.buildAssignmentAutofillPreview({
+    annotations: [], recipientRoleId: "recipient", snapshot: { values: {}, metadata: {} },
+    candidateProfile: profile, profile: { id: "profile-1" },
+  });
+  assert.equal(result.fields.length, 0);
+  assert.ok(result.profileFields.some((field) => field.key === "candidate.full_name"));
+
+  const stored = preview.buildAssignmentPrefillStorage({
+    mode: "suggested", snapshot: { values: {}, metadata: {} },
+    allowedFieldIds: [], profile, allowedProfileKeys: ["candidate.full_name"],
+  });
+  assert.deepEqual(stored.availableValues, { "candidate.full_name": "Sokha Chan" });
+  assert.ok(!("candidate.email" in stored.availableValues));
+  assert.deepEqual(stored.approvedFieldIds, ["candidate.full_name"]);
+});
 
 test("builds a reviewable assignment autofill preview", () => {
   const result = preview.buildAssignmentAutofillPreview({

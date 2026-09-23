@@ -11,6 +11,7 @@ import {
 import { authorizeAssignedRecipient } from "@/features/accounts/account.server";
 import { createAuditEvent } from "@/features/audit/audit.server";
 import { isCandidatePrefillKey } from "@/features/resumes/candidate-prefill";
+import { resumeValueForField } from "@/features/templates/recipient-prefill";
 import { compensateStorageWrites } from "@/features/storage/storage-cleanup.server";
 import { buildSubmissionAnswers } from "@/features/templates/label-binding";
 import {
@@ -108,7 +109,8 @@ export async function GET(
         : undefined,
       resumePrefill:
         assignedAccount
-        && fillContext.assignment?.prefillMode === "suggested"
+        && fillContext.assignment
+        && fillContext.assignment.prefillMode !== "none"
           ? buildRecipientResumePrefill(
               fillContext.assignment.availableValuesJson,
               fillContext.assignment.availableValuesMetaJson,
@@ -205,10 +207,23 @@ export async function POST(
         parseRecord(fillContext.assignment?.availableValuesMetaJson),
       ),
     ]);
+    const approvedProfileValues = Object.entries(
+      parseRecord(fillContext.assignment?.availableValuesJson),
+    ).filter(([key, value]) =>
+      isCandidatePrefillKey(key)
+      && typeof value === "string"
+      && resumeSourceFieldIds.has(key)
+    ) as Array<[string, string]>;
     if (
       resumeAppliedFieldIds.some(
-        (fieldId) =>
-          !assignedFieldIds.has(fieldId) || !resumeSourceFieldIds.has(fieldId),
+        (fieldId) => {
+          if (!assignedFieldIds.has(fieldId)) return true;
+          if (resumeSourceFieldIds.has(fieldId)) return false;
+          const field = assignedFields.find((item) => item.id === fieldId);
+          return !field || !approvedProfileValues.some(([, value]) =>
+            resumeValueForField(field, value, fillContext.link.roleId) === values[fieldId]
+          );
+        },
       )
     ) {
       return jsonError(
@@ -538,12 +553,23 @@ function buildRecipientResumePrefill(
   const metadata: NonNullable<
     TemplateFillPayload["resumePrefill"]
   >["metadata"] = {};
+  const profileValues: NonNullable<TemplateFillPayload["resumePrefill"]>["profileValues"] = {};
 
   for (const fieldId of Object.keys(values)) {
     const item = rawMetadata[fieldId];
     if (!item || Array.isArray(item) || typeof item !== "object") continue;
     const record = item as Record<string, unknown>;
     if (!isCandidatePrefillKey(record.prefillKey)) continue;
+    if (fieldId.startsWith("candidate.")) {
+      if (fieldId !== record.prefillKey || typeof values[fieldId] !== "string") continue;
+      profileValues[fieldId] = {
+        value: values[fieldId] as string,
+        confidence: typeof record.confidence === "number" ? record.confidence : null,
+        sourcePage: typeof record.sourcePage === "number" ? record.sourcePage : null,
+      };
+      delete values[fieldId];
+      continue;
+    }
     metadata[fieldId] = {
       prefillKey: record.prefillKey,
       confidence:
@@ -564,8 +590,8 @@ function buildRecipientResumePrefill(
     };
   }
 
-  return Object.keys(values).length > 0
-    ? { values, metadata }
+  return Object.keys(values).length + Object.keys(profileValues).length > 0
+    ? { values, metadata, profileValues }
     : undefined;
 }
 

@@ -12,13 +12,30 @@ import type {
   CandidatePrefillSnapshot,
 } from "@/features/resumes/candidate-prefill";
 import type { TemplateAnnotation } from "@/features/templates/template.types";
+import { candidatePrefillLabel } from "@/features/resumes/candidate-prefill-options";
+import { candidateProfilePrefillRecord } from "@/features/resumes/candidate-profile";
+import type { CandidateProfile } from "@/features/resumes/candidate-profile";
+import type { CandidatePrefillKey } from "@/features/resumes/resume.types";
 
 export function buildAssignmentAutofillPreview(options: {
   annotations: TemplateAnnotation[];
   recipientRoleId: string;
   snapshot: CandidatePrefillSnapshot;
   profile: CandidateProfileOption;
+  candidateProfile?: CandidateProfile;
 }): AssignmentAutofillPreview {
+  const profileFields = options.candidateProfile
+    ? Object.entries(candidateProfilePrefillRecord(options.candidateProfile))
+      .filter(([key, item]) => isCandidatePrefillKey(key) && Boolean(item.value) && item.confidence >= 0.6)
+      .map(([key, item]) => ({
+        key: key as CandidatePrefillKey,
+        label: candidatePrefillLabel(key as CandidatePrefillKey),
+        value: item.value,
+        confidence: item.confidence,
+        sourcePage: item.sourcePage,
+        status: item.confidence >= 0.8 ? "filled" as const : "needs_review" as const,
+      }))
+    : [];
   const eligibleFields = options.annotations.filter((annotation) =>
     isCandidatePrefillEligibleAnnotation(annotation, options.recipientRoleId),
   );
@@ -52,6 +69,7 @@ export function buildAssignmentAutofillPreview(options: {
   });
   return {
     profile: options.profile,
+    profileFields,
     summary: {
       totalFields: eligibleFields.length,
       mappedFields: mappedFields.length,
@@ -78,7 +96,12 @@ export type AssignmentPrefillStorage = {
   initialValues: Record<string, unknown>;
   initialMetadata: Record<string, CandidatePrefillMetadata>;
   availableValues: Record<string, unknown>;
-  availableMetadata: Record<string, CandidatePrefillMetadata>;
+  availableMetadata: Record<string, CandidatePrefillMetadata | {
+    prefillKey: CandidatePrefillKey;
+    confidence: number;
+    sourcePage: number | null;
+    verificationStatus: "extracted" | "verified";
+  }>;
   approvedFieldIds: string[];
 };
 
@@ -92,6 +115,8 @@ export function buildAssignmentPrefillStorage(options: {
   mode: AssignmentPrefillMode;
   snapshot: CandidatePrefillSnapshot;
   allowedFieldIds: string[];
+  profile?: CandidateProfile | null;
+  allowedProfileKeys?: string[];
 }): AssignmentPrefillStorage {
   const allowed = new Set(options.allowedFieldIds);
   const approvedFieldIds = Object.keys(options.snapshot.values).filter(
@@ -109,23 +134,42 @@ export function buildAssignmentPrefillStorage(options: {
       return item ? [[fieldId, item]] : [];
     }),
   );
+  const profileRecord = options.profile
+    ? candidateProfilePrefillRecord(options.profile)
+    : {};
+  const profileValues = Object.fromEntries(
+    (options.allowedProfileKeys ?? []).flatMap((key) => {
+      const item = profileRecord[key];
+      return isCandidatePrefillKey(key) && item?.value && item.confidence >= 0.6
+        ? [[key, item.value]]
+        : [];
+    }),
+  );
+  const profileMetadata = Object.fromEntries(
+    Object.keys(profileValues).map((key) => [key, {
+      prefillKey: key as CandidatePrefillKey,
+      confidence: profileRecord[key].confidence,
+      sourcePage: profileRecord[key].sourcePage,
+      verificationStatus: "extracted" as const,
+    }]),
+  );
 
   if (options.mode === "automatic") {
     return {
       initialValues: values,
       initialMetadata: metadata,
-      availableValues: {},
-      availableMetadata: {},
-      approvedFieldIds,
+      availableValues: profileValues,
+      availableMetadata: profileMetadata,
+      approvedFieldIds: [...approvedFieldIds, ...Object.keys(profileValues)],
     };
   }
   if (options.mode === "suggested") {
     return {
       initialValues: {},
       initialMetadata: {},
-      availableValues: values,
-      availableMetadata: metadata,
-      approvedFieldIds,
+      availableValues: { ...values, ...profileValues },
+      availableMetadata: { ...metadata, ...profileMetadata },
+      approvedFieldIds: [...approvedFieldIds, ...Object.keys(profileValues)],
     };
   }
   return {

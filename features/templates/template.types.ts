@@ -28,6 +28,7 @@ export type TemplateAnnotation = {
 
 export type RecipientResumePrefill = {
   values: Record<string, unknown>;
+  profileValues: Record<string, { value: string; confidence: number | null; sourcePage: number | null }>;
   metadata: Record<string, {
     prefillKey: import("@/features/resumes/resume.types").CandidatePrefillKey;
     confidence: number | null;

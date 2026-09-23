@@ -20,6 +20,7 @@ import {
 } from "@/features/accounts/assignment-prefill";
 import { normalizeCandidateProfile } from "@/features/resumes/candidate-profile";
 import { buildCandidatePrefillSnapshot } from "@/features/resumes/candidate-prefill";
+import { isCandidatePrefillKey } from "@/features/resumes/candidate-prefill";
 import { MAX_RESUME_PAGES } from "@/features/resumes/resume.types";
 import type { TemplateAnnotation } from "@/features/templates/template.types";
 import {
@@ -80,6 +81,13 @@ export async function POST(
     const allowedFieldIds = allowedFieldIdsProvided
       ? [...new Set(rawAllowedFieldIds as string[])]
       : null;
+    const rawAllowedProfileKeys = body.allowedProfileKeys ?? [];
+    if (!Array.isArray(rawAllowedProfileKeys)
+      || rawAllowedProfileKeys.length > 40
+      || rawAllowedProfileKeys.some((key) => !isCandidatePrefillKey(key))) {
+      return jsonError("Resume value selection is invalid.", 400);
+    }
+    const allowedProfileKeys = [...new Set(rawAllowedProfileKeys as string[])];
     const profileSelectionProvided = Object.prototype.hasOwnProperty.call(
       body,
       "candidateProfileVersionId",
@@ -113,7 +121,7 @@ export async function POST(
     if (
       prefillMode !== "none"
       && allowedFieldIds !== null
-      && allowedFieldIds.length === 0
+      && allowedFieldIds.length + allowedProfileKeys.length === 0
     ) {
       return jsonError("Choose at least one resume-data field.", 400);
     }
@@ -124,6 +132,7 @@ export async function POST(
       prefillMode,
       candidateProfileVersionId: requestedProfileVersionId,
       allowedFieldIds: allowedFieldIds ?? [],
+      allowedProfileKeys,
       profileMismatchConfirmed,
     });
     const db = getDb();
@@ -359,7 +368,14 @@ export async function POST(
       mode: prefillMode,
       snapshot,
       allowedFieldIds: allowedFieldIds ?? Object.keys(snapshot.values),
+      profile,
+      allowedProfileKeys,
     });
+    if (prefillMode !== "none"
+      && allowedFieldIds !== null
+      && prefillStorage.approvedFieldIds.length !== allowedFieldIds.length + allowedProfileKeys.length) {
+      return jsonError("One or more selected resume values are unavailable.", 422);
+    }
     await db.batch([
       db.insert(recipientLinks).values({
         id: linkId,
@@ -480,6 +496,7 @@ export async function PATCH(
         : null;
     const profileMismatchConfirmed = body.profileMismatchConfirmed === true;
     const rawAllowedFieldIds = body.allowedFieldIds;
+    const rawAllowedProfileKeys = body.allowedProfileKeys ?? [];
     if (
       !/^[A-Za-z0-9_-]{1,128}$/u.test(assignmentId)
       || !expectedUpdatedAt
@@ -492,11 +509,15 @@ export async function PATCH(
           typeof fieldId !== "string"
           || !/^[A-Za-z0-9_-]{1,120}$/u.test(fieldId),
       )
+      || !Array.isArray(rawAllowedProfileKeys)
+      || rawAllowedProfileKeys.length > 40
+      || rawAllowedProfileKeys.some((key) => !isCandidatePrefillKey(key))
     ) {
       return jsonError("The resume-data replacement request is invalid.", 400);
     }
     const allowedFieldIds = [...new Set(rawAllowedFieldIds as string[])];
-    if (prefillMode !== "none" && (!profileVersionId || allowedFieldIds.length === 0)) {
+    const allowedProfileKeys = [...new Set(rawAllowedProfileKeys as string[])];
+    if (prefillMode !== "none" && (!profileVersionId || allowedFieldIds.length + allowedProfileKeys.length === 0)) {
       return jsonError(
         "Choose resume data and at least one approved field.",
         400,
@@ -612,10 +633,12 @@ export async function PATCH(
       snapshot,
       allowedFieldIds:
         prefillMode === "none" ? [] : allowedFieldIds,
+      profile,
+      allowedProfileKeys: prefillMode === "none" ? [] : allowedProfileKeys,
     });
     if (
       prefillMode !== "none"
-      && storage.approvedFieldIds.length !== allowedFieldIds.length
+      && storage.approvedFieldIds.length !== allowedFieldIds.length + allowedProfileKeys.length
     ) {
       return jsonError(
         "One or more approved fields are no longer available.",
@@ -738,11 +761,13 @@ async function assignmentRequestFingerprint(value: {
   prefillMode: string;
   candidateProfileVersionId: string | null;
   allowedFieldIds: string[];
+  allowedProfileKeys: string[];
   profileMismatchConfirmed: boolean;
 }): Promise<string> {
   const canonical = JSON.stringify({
     ...value,
     allowedFieldIds: [...value.allowedFieldIds].sort(),
+    allowedProfileKeys: [...value.allowedProfileKeys].sort(),
   });
   const digest = await crypto.subtle.digest(
     "SHA-256",
