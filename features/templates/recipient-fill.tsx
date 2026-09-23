@@ -285,10 +285,10 @@ export function RecipientFill(props: { token: string }) {
 
   function useResumeField(fieldId: string) {
     if (!payload?.resumePrefill) return;
-    useResumeValue(fieldId, String(payload.resumePrefill.values[fieldId] ?? ""));
+    applySelectedResumeValue(fieldId, String(payload.resumePrefill.values[fieldId] ?? ""));
   }
 
-  function useResumeValue(fieldId: string, suggestion: string) {
+  function applySelectedResumeValue(fieldId: string, suggestion: string) {
     if (!payload?.resumePrefill || !suggestion) return;
     const currentValue = values[fieldId];
     if (
@@ -428,7 +428,7 @@ export function RecipientFill(props: { token: string }) {
             canUndo={Boolean(resumeUndo)}
             onFillAvailable={fillAvailableResumeFields}
             onUseField={useResumeField}
-            onUseSource={useResumeValue}
+            onUseSource={applySelectedResumeValue}
             onUndo={undoResumeFill}
             onDismiss={() => setResumePrefillDismissed(true)}
           />
@@ -467,7 +467,7 @@ export function RecipientFill(props: { token: string }) {
                 canUndo={Boolean(resumeUndo)}
                 onFillAvailable={fillAvailableResumeFields}
                 onUseField={useResumeField}
-                onUseSource={useResumeValue}
+                onUseSource={applySelectedResumeValue}
                 onUndo={undoResumeFill}
                 onDismiss={() => setResumePrefillDismissed(true)}
               />
