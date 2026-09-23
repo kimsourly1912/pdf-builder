@@ -19,6 +19,16 @@ const prefill = await vite.ssrLoadModule(
   "/features/templates/recipient-prefill.ts",
 );
 
+test("a shared resume value only fits compatible fields in the recipient role", () => {
+  const base = { id: "name", type: "input", recipientRoleId: "recipient" };
+  assert.equal(prefill.resumeValueForField(base, "Sokha Chan", "recipient"), "Sokha Chan");
+  assert.equal(prefill.resumeValueForField({ ...base, recipientRoleId: "hr" }, "Sokha Chan", "recipient"), null);
+  assert.equal(prefill.resumeValueForField({ ...base, type: "date" }, "Sokha Chan", "recipient"), null);
+  assert.equal(prefill.resumeValueForField({ ...base, type: "dropdown", options: [
+    { id: "kh", label: "Cambodian" },
+  ] }, "Cambodian", "recipient"), "kh");
+});
+
 test("bulk resume fill preserves values already entered by the recipient", () => {
   const result = prefill.applyResumeSuggestions({
     currentValues: {

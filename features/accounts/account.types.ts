@@ -48,6 +48,7 @@ export type AssignmentDraft = {
   candidateProfileVersionId: string | null;
   prefillMode: AssignmentPrefillMode;
   allowedFieldIds: string[];
+  allowedProfileKeys: string[];
   profileMismatchConfirmed?: boolean;
   requestKey?: string;
 };
@@ -81,6 +82,14 @@ export type AssignmentAutofillField = {
 
 export type AssignmentAutofillPreview = {
   profile: CandidateProfileOption;
+  profileFields: Array<{
+    key: import("@/features/resumes/resume.types").CandidatePrefillKey;
+    label: string;
+    value: string;
+    confidence: number;
+    sourcePage: number | null;
+    status: "filled" | "needs_review";
+  }>;
   summary: {
     totalFields: number;
     mappedFields: number;

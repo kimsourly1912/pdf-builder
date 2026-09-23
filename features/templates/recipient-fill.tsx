@@ -38,6 +38,9 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Spinner } from "@/components/ui/spinner";
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
 import { CambodiaAddressField } from "@/features/gazetteer/cambodia-address-field";
 import {
   formatCambodiaAddress,
@@ -53,6 +56,7 @@ import { isRecipientFieldType } from "@/features/templates/template-fields";
 import {
   applyResumeSuggestions,
   hasRecipientValue,
+  resumeValueForField,
 } from "@/features/templates/recipient-prefill";
 import { getScaledFieldIconSize } from "@/features/templates/field-layout";
 import {
@@ -69,6 +73,8 @@ import type {
   GazetteerLevel,
 } from "@/features/gazetteer/gazetteer.types";
 import { cn } from "@/lib/utils";
+import { candidatePrefillLabel } from "@/features/resumes/candidate-prefill-options";
+import type { CandidatePrefillKey } from "@/features/resumes/resume.types";
 
 type PdfViewport = { width: number; height: number };
 type PdfPage = {
@@ -117,9 +123,9 @@ export function RecipientFill(props: { token: string }) {
     new Set(),
   );
   const [resumeUndo, setResumeUndo] = useState<ResumeUndo | null>(null);
-  const [pendingOverwriteFieldId, setPendingOverwriteFieldId] = useState<
-    string | null
-  >(null);
+  const [pendingOverwrite, setPendingOverwrite] = useState<{
+    fieldId: string; value: string;
+  } | null>(null);
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -162,7 +168,7 @@ export function RecipientFill(props: { token: string }) {
           new Set(Object.keys(nextPayload.initialValues ?? {})),
         );
         setResumeUndo(null);
-        setPendingOverwriteFieldId(null);
+        setPendingOverwrite(null);
         if (nextPayload.identity) {
           setRecipientName(nextPayload.identity.name);
           setRecipientEmail(nextPayload.identity.email);
@@ -232,11 +238,13 @@ export function RecipientFill(props: { token: string }) {
     setError("");
   }, []);
 
-  function applyResumeFields(fieldIds: string[], overwrite = false) {
+  function applyResumeFields(fieldIds: string[], overwrite = false, chosenValue?: string) {
     if (!payload?.resumePrefill) return;
     const next = applyResumeSuggestions({
       currentValues: values,
-      suggestions: payload.resumePrefill.values,
+      suggestions: chosenValue === undefined
+        ? payload.resumePrefill.values
+        : { [fieldIds[0]]: chosenValue },
       fieldIds,
       protectedFieldIds: dirtyFieldIds,
       overwrite,
@@ -277,23 +285,27 @@ export function RecipientFill(props: { token: string }) {
 
   function useResumeField(fieldId: string) {
     if (!payload?.resumePrefill) return;
+    useResumeValue(fieldId, String(payload.resumePrefill.values[fieldId] ?? ""));
+  }
+
+  function useResumeValue(fieldId: string, suggestion: string) {
+    if (!payload?.resumePrefill || !suggestion) return;
     const currentValue = values[fieldId];
-    const suggestion = payload.resumePrefill.values[fieldId];
     if (
       dirtyFieldIds.has(fieldId)
       && hasRecipientValue(currentValue)
       && !prefillValuesEqual(currentValue, suggestion)
     ) {
-      setPendingOverwriteFieldId(fieldId);
+      setPendingOverwrite({ fieldId, value: suggestion });
       return;
     }
-    applyResumeFields([fieldId], true);
+    applyResumeFields([fieldId], true, suggestion);
   }
 
   function confirmResumeOverwrite() {
-    if (!pendingOverwriteFieldId) return;
-    applyResumeFields([pendingOverwriteFieldId], true);
-    setPendingOverwriteFieldId(null);
+    if (!pendingOverwrite) return;
+    applyResumeFields([pendingOverwrite.fieldId], true, pendingOverwrite.value);
+    setPendingOverwrite(null);
   }
 
   function undoResumeFill() {
@@ -409,12 +421,14 @@ export function RecipientFill(props: { token: string }) {
           <ResumePrefillPanel
             className="lg:hidden"
             annotations={payload.template.annotations}
+            recipientRoleId={payload.recipient.id}
             prefill={payload.resumePrefill}
             values={values}
             protectedFieldIds={dirtyFieldIds}
             canUndo={Boolean(resumeUndo)}
             onFillAvailable={fillAvailableResumeFields}
             onUseField={useResumeField}
+            onUseSource={useResumeValue}
             onUndo={undoResumeFill}
             onDismiss={() => setResumePrefillDismissed(true)}
           />
@@ -446,12 +460,14 @@ export function RecipientFill(props: { token: string }) {
               <ResumePrefillPanel
                 className="hidden lg:block"
                 annotations={payload.template.annotations}
+                recipientRoleId={payload.recipient.id}
                 prefill={payload.resumePrefill}
                 values={values}
                 protectedFieldIds={dirtyFieldIds}
                 canUndo={Boolean(resumeUndo)}
                 onFillAvailable={fillAvailableResumeFields}
                 onUseField={useResumeField}
+                onUseSource={useResumeValue}
                 onUndo={undoResumeFill}
                 onDismiss={() => setResumePrefillDismissed(true)}
               />
@@ -495,9 +511,9 @@ export function RecipientFill(props: { token: string }) {
         </Card>
       </div>
       <AlertDialog
-        open={Boolean(pendingOverwriteFieldId)}
+        open={Boolean(pendingOverwrite)}
         onOpenChange={(open) => {
-          if (!open) setPendingOverwriteFieldId(null);
+          if (!open) setPendingOverwrite(null);
         }}
       >
         <AlertDialogContent>
@@ -523,15 +539,27 @@ export function RecipientFill(props: { token: string }) {
 function ResumePrefillPanel(props: {
   className?: string;
   annotations: TemplateAnnotation[];
+  recipientRoleId: string;
   prefill: NonNullable<TemplateFillPayload["resumePrefill"]>;
   values: Record<string, unknown>;
   protectedFieldIds: ReadonlySet<string>;
   canUndo: boolean;
   onFillAvailable: () => void;
   onUseField: (fieldId: string) => void;
+  onUseSource: (fieldId: string, value: string) => void;
   onUndo: () => void;
   onDismiss: () => void;
 }) {
+  const [selectedSource, setSelectedSource] = useState("");
+  const [selectedField, setSelectedField] = useState("");
+  const source = props.prefill.profileValues[selectedSource];
+  const destinations = source
+    ? props.annotations.flatMap((annotation) => {
+        const converted = resumeValueForField(annotation, source.value, props.recipientRoleId);
+        return converted === null ? [] : [{ annotation, converted }];
+      })
+    : [];
+  const destination = destinations.find(({ annotation }) => annotation.id === selectedField);
   const fields = Object.entries(props.prefill.values).flatMap(
     ([fieldId, value]) => {
       const annotation = props.annotations.find((item) => item.id === fieldId);
@@ -558,11 +586,58 @@ function ResumePrefillPanel(props: {
         <div className="min-w-0 flex-1">
           <p className="text-sm font-semibold">Resume data available</p>
           <p className="mt-1 text-[11px] leading-4 text-muted-foreground">
-            Review the approved values below. Fields you edit are never
-            replaced unless you confirm the change.
+            Choose an approved resume value and a form field. Your edits are
+            only replaced after you confirm.
           </p>
         </div>
       </div>
+      {Object.keys(props.prefill.profileValues).length > 0 && (
+        <div className="mt-3 space-y-2 rounded-md border bg-background p-3">
+          <p className="text-xs font-semibold">Choose a resume value</p>
+          <Select value={selectedSource} onValueChange={(key) => {
+            setSelectedSource(key);
+            setSelectedField("");
+          }}>
+            <SelectTrigger className="w-full" aria-label="Resume value">
+              <SelectValue placeholder="Select resume data" />
+            </SelectTrigger>
+            <SelectContent>
+              {Object.entries(props.prefill.profileValues).map(([key, entry]) => (
+                <SelectItem key={key} value={key}>
+                  {candidatePrefillLabel(key as CandidatePrefillKey)} · {entry.value.slice(0, 36)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {source && (
+            <>
+              <p className="max-h-20 overflow-auto whitespace-pre-wrap break-words text-xs text-muted-foreground">{source.value}</p>
+              <Select value={selectedField} onValueChange={setSelectedField}>
+                <SelectTrigger className="w-full" aria-label="Form field">
+                  <SelectValue placeholder="Choose where to fill" />
+                </SelectTrigger>
+                <SelectContent>
+                  {destinations.map(({ annotation }) => (
+                    <SelectItem key={annotation.id} value={annotation.id}>
+                      {recipientFieldLabel(annotation)} · page {annotation.page}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {destinations.length === 0 && (
+                <p className="text-xs text-muted-foreground">No compatible form field for this value.</p>
+              )}
+              <Button type="button" size="sm" disabled={!destination}
+                onClick={() => {
+                  if (destination) props.onUseSource(destination.annotation.id, destination.converted);
+                }}>
+                Use in selected field
+              </Button>
+            </>
+          )}
+        </div>
+      )}
+      {fields.length > 0 && <p className="mt-3 text-xs font-semibold">Suggested fields</p>}
       <div className="mt-3 max-h-56 space-y-2 overflow-y-auto pr-1">
         {fields.map(({ fieldId, value, annotation }) => {
           const applied = prefillValuesEqual(props.values[fieldId], value);
@@ -604,7 +679,7 @@ function ResumePrefillPanel(props: {
         })}
       </div>
       <div className="mt-3 flex flex-wrap gap-2">
-        <Button
+        {fields.length > 0 && <Button
           type="button"
           size="sm"
           disabled={availableFieldCount === 0}
@@ -613,7 +688,7 @@ function ResumePrefillPanel(props: {
         >
           Fill {availableFieldCount} available field
           {availableFieldCount === 1 ? "" : "s"}
-        </Button>
+        </Button>}
         {props.canUndo && (
           <Button type="button" size="sm" variant="outline" onClick={props.onUndo}>
             <RotateCcw className="size-3.5" />

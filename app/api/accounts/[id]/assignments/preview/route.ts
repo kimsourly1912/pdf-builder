@@ -141,6 +141,7 @@ export async function GET(
         recipientRoleId: role.id,
         snapshot,
         profile: profileOption,
+        candidateProfile: profile,
       }),
       { headers: { "Cache-Control": "private, no-store" } },
     );
