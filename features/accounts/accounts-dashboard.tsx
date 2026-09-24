@@ -68,6 +68,7 @@ import {
   generateTemporaryPassword,
 } from "@/features/accounts/account-share";
 import { AccountResumeReplacement } from "@/features/accounts/account-resume-replacement";
+import { AccountResumeLink } from "@/features/accounts/account-resume-link";
 import { BatchAssignmentDialog } from "@/features/accounts/batch-assignment-dialog";
 import { assignmentDisplay } from "@/features/accounts/assignment-status";
 import { pageMetaFromPayload } from "@/features/pagination/pagination";
@@ -422,6 +423,7 @@ export function AccountsDashboard(props: { displayName: string }) {
                   <TableHead>Account</TableHead>
                   <TableHead>Type</TableHead>
                   <TableHead>Password</TableHead>
+                  <TableHead>Resume link</TableHead>
                   <TableHead>Forms</TableHead>
                   <TableHead>Created</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
@@ -455,6 +457,11 @@ export function AccountsDashboard(props: { displayName: string }) {
                             ? <StatusBadge label="Change pending" tone="warning" />
                             : <span className="text-muted-foreground">Updated</span>}
                         </TableCell>
+                        <TableCell>
+                          {account.linkedCandidate
+                            ? <StatusBadge label="Linked" tone="success" />
+                            : <span className="text-xs text-muted-foreground">Not linked</span>}
+                        </TableCell>
                         <TableCell>{account.assignments.length}</TableCell>
                         <TableCell className="text-muted-foreground">
                           {formatLocalDateTime(account.createdAt, { timeZone })}
@@ -475,12 +482,17 @@ export function AccountsDashboard(props: { displayName: string }) {
                       </TableRow>
                       {expanded && (
                         <TableRow className="bg-muted/20 hover:bg-muted/20">
-                          <TableCell colSpan={7} className="p-0 whitespace-normal">
+                          <TableCell colSpan={8} className="p-0 whitespace-normal">
                             <div id={"account-details-" + account.id}>
                               <AccountDetails
                                 account={account}
                                 busy={assigningUserId === account.id}
                                 timeZone={timeZone}
+                                onLinked={(linkedCandidate) => {
+                                  setAccounts((current) => current.map((item) => item.id === account.id
+                                    ? { ...item, linkedCandidate } : item));
+                                  setNotice(linkedCandidate ? "Resume data linked to the account." : "Resume data unlinked from the account.");
+                                }}
                                 onReplace={(assignmentId, expectedUpdatedAt, draft) =>
                                   replaceAssignmentResume(account.id, assignmentId, expectedUpdatedAt, draft)}
                               />
@@ -527,7 +539,6 @@ export function AccountsDashboard(props: { displayName: string }) {
             ? { ...account, assignments: [assignment, ...account.assignments] }
             : account));
           setAssignmentCount((count) => count + 1);
-          setSelectedIds((current) => current.filter((id) => id !== accountId));
           setNotice("Selected form assignments were saved.");
         }}
       />
@@ -647,6 +658,7 @@ function AccountDetails(props: {
   account: RecipientAccountSummary;
   busy: boolean;
   timeZone: string;
+  onLinked: (linkedCandidate: RecipientAccountSummary["linkedCandidate"]) => void;
   onReplace: (
     assignmentId: string,
     expectedUpdatedAt: string,
@@ -657,6 +669,7 @@ function AccountDetails(props: {
     useState<RecipientAssignmentSummary | null>(null);
   return (
     <div className="min-w-0">
+      <AccountResumeLink account={props.account} onLinked={props.onLinked} />
       {replacement && (
         <AccountResumeReplacement
           accountId={props.account.id}

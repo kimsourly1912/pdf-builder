@@ -88,6 +88,20 @@ export async function GET(request: Request) {
         .where(eq(templates.ownerEmail, ownerEmail)),
     ]);
     const accountIds = accountRows.map((account) => account.id);
+    const linkedCandidates = accountIds.length > 0
+      ? await db.select({
+        id: candidates.id,
+        userId: candidates.userId,
+        name: candidates.fullName,
+      }).from(candidates).where(and(
+        eq(candidates.ownerEmail, ownerEmail),
+        inArray(candidates.userId, accountIds),
+      ))
+      : [];
+    const linkedByUser = new Map(linkedCandidates.map((candidate) => [
+      candidate.userId,
+      { id: candidate.id, name: candidate.name },
+    ]));
     const assignmentRows = accountIds.length > 0
       ? await db
         .select({
@@ -189,6 +203,7 @@ export async function GET(request: Request) {
             ...account,
             accountType: account.accountType,
             createdAt: toUtcIsoString(account.createdAt) ?? account.createdAt,
+            linkedCandidate: linkedByUser.get(account.id) ?? null,
             assignments: assignmentsByUser.get(account.id) ?? [],
           }]
         : [],
@@ -247,7 +262,7 @@ export async function POST(request: Request) {
     const now = new Date().toISOString();
     const db = getDb();
     const [candidate] = accountType === "candidate"
-      ? await db.select({ id: candidates.id }).from(candidates).where(and(
+      ? await db.select({ id: candidates.id, fullName: candidates.fullName }).from(candidates).where(and(
           eq(candidates.ownerEmail, ownerEmail),
           eq(candidates.normalizedEmail, normalizeEmail(email)),
           isNull(candidates.userId),
@@ -295,6 +310,9 @@ export async function POST(request: Request) {
           mustChangePassword: true,
           createdAt: now,
           assignments: [],
+          linkedCandidate: candidate
+            ? { id: candidate.id, name: candidate.fullName }
+            : null,
         },
       },
       { status: 201 },

@@ -7,6 +7,7 @@ export type RecipientAccountSummary = {
   accountType: RecipientAccountType;
   mustChangePassword: boolean;
   createdAt: string;
+  linkedCandidate: { id: string; name: string } | null;
   assignments: RecipientAssignmentSummary[];
 };
 
