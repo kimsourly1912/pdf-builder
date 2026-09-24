@@ -2,6 +2,8 @@
 
 import {
   Check,
+  ChevronDown,
+  ChevronUp,
   ClipboardCopy,
   KeyRound,
   LoaderCircle,
@@ -10,10 +12,9 @@ import {
   Search,
   Send,
   ShieldCheck,
-  UserPlus,
   UsersRound,
 } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { Fragment, useCallback, useEffect, useState } from "react";
 
 import { AppShell } from "@/components/patterns/app-shell";
 import { FeedbackAlert } from "@/components/patterns/feedback-alert";
@@ -22,10 +23,15 @@ import { PageHeader } from "@/components/patterns/page-header";
 import { ServerPagination } from "@/components/patterns/server-pagination";
 import { StatusBadge } from "@/components/patterns/status-badge";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import {
-  Card,
-  CardContent,
-} from "@/components/ui/card";
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   Empty,
   EmptyDescription,
@@ -47,6 +53,14 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import {
   buildAccountCredentialMessage,
   buildTelegramShareUrl,
@@ -93,6 +107,10 @@ export function AccountsDashboard(props: { displayName: string }) {
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [createError, setCreateError] = useState("");
+  const [createNotice, setCreateNotice] = useState("");
+  const [expandedAccountId, setExpandedAccountId] = useState<string | null>(null);
   const [assigningUserId, setAssigningUserId] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -165,8 +183,8 @@ export function AccountsDashboard(props: { displayName: string }) {
   async function createAccount(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setCreating(true);
-    setError("");
-    setNotice("");
+    setCreateError("");
+    setCreateNotice("");
     try {
       const response = await fetch("/api/accounts", {
         method: "POST",
@@ -194,9 +212,9 @@ export function AccountsDashboard(props: { displayName: string }) {
       setName("");
       setEmail("");
       setPassword(generateTemporaryPassword());
-      setNotice("Account created. Copy or send the temporary credentials now.");
+      setCreateNotice("Account created. Copy or send the temporary credentials now.");
     } catch (cause) {
-      setError(
+      setCreateError(
         cause instanceof Error
           ? cause.message
           : "The account could not be created.",
@@ -243,6 +261,7 @@ export function AccountsDashboard(props: { displayName: string }) {
             : account,
         ),
       );
+      setAssignmentCount((count) => count + 1);
       setNotice(
         draft.prefillMode === "suggested"
           ? "Form assigned with approved resume data the recipient can choose to use."
@@ -323,11 +342,11 @@ export function AccountsDashboard(props: { displayName: string }) {
       await navigator.clipboard.writeText(
         buildCredentialMessage(credentials, window.location.origin),
       );
-      setError("");
-      setNotice("Credentials copied to the clipboard.");
+      setCreateError("");
+      setCreateNotice("Credentials copied to the clipboard.");
     } catch {
-      setNotice("");
-      setError("Clipboard access was blocked. Copy the email and password manually.");
+      setCreateNotice("");
+      setCreateError("Clipboard access was blocked. Copy the email and password manually.");
     }
   }
 
@@ -344,75 +363,239 @@ export function AccountsDashboard(props: { displayName: string }) {
 
   return (
     <AppShell displayName={props.displayName}>
-        <PageHeader
-          title="Accounts"
-          description="Create candidate and employee access, then assign published forms from one workspace."
-          actions={
+      <PageHeader
+        title="Accounts"
+        description="Create candidate and employee access, then assign published forms from one workspace."
+        actions={
+          <div className="flex flex-wrap gap-2">
             <Button type="button" variant="outline" disabled={loading} onClick={() => void loadData()}>
               <RefreshCw className={loading ? "animate-spin" : ""} /> Refresh
             </Button>
-          }
+            <Button type="button" onClick={() => {
+              setCreateError("");
+              setCreateNotice("");
+              setCreateOpen(true);
+            }}>
+              <Plus /> Create account
+            </Button>
+          </div>
+        }
+      />
+      <section className="grid gap-3 sm:grid-cols-2">
+        <MetricCard
+          icon={<UsersRound />}
+          value={pageMeta.totalItems}
+          label="Recipient accounts"
+          tone="primary"
         />
-        <section className="grid gap-3 sm:grid-cols-2">
-          <MetricCard
-            icon={<UsersRound />}
-            value={pageMeta.totalItems}
-            label="Recipient accounts"
-            tone="primary"
-          />
-          <MetricCard
-            icon={<ShieldCheck />}
-            value={assignmentCount}
-            label="Form assignments"
-            tone="success"
-          />
-        </section>
+        <MetricCard
+          icon={<ShieldCheck />}
+          value={assignmentCount}
+          label="Form assignments"
+          tone="success"
+        />
+      </section>
 
-        {error && <FeedbackAlert tone="error" title="Something went wrong" description={error} />}
-        {notice && <FeedbackAlert tone="success" title="Updated successfully" description={notice} />}
+      {error && <FeedbackAlert tone="error" title="Something went wrong" description={error} />}
+      {notice && <FeedbackAlert tone="success" title="Updated successfully" description={notice} />}
 
-        <div className="grid items-start gap-5 xl:grid-cols-[360px_minmax(0,1fr)]">
-          <Card className="gap-0 py-0 shadow-none xl:sticky xl:top-20">
-            <CardContent className="p-5">
-            <div className="flex items-center gap-3">
-              <span className="flex size-9 items-center justify-center rounded-md bg-primary/10 text-primary">
-                <UserPlus className="size-4" />
-              </span>
-              <div>
-                <h1 className="text-base font-semibold">Create account</h1>
-                <p className="text-xs text-muted-foreground">Temporary password required</p>
+      <Card className="min-w-0 gap-0 overflow-hidden py-0 shadow-none">
+        <div className="flex flex-wrap items-center justify-between gap-3 p-5">
+          <div>
+            <h2 className="text-base font-semibold">Recipient accounts</h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Open an account to manage its form assignments.
+            </p>
+          </div>
+          <form
+            className="flex w-full gap-2 sm:w-auto"
+            onSubmit={(event) => {
+              event.preventDefault();
+              setExpandedAccountId(null);
+              setPageMeta((current) => ({ ...current, page: 1 }));
+              setSearch(searchDraft.trim());
+            }}
+          >
+            <InputGroup className="min-w-0 sm:w-64">
+              <InputGroupAddon><Search /></InputGroupAddon>
+              <InputGroupInput
+                value={searchDraft}
+                onChange={(event) => setSearchDraft(event.target.value)}
+                placeholder="Search name or email"
+                aria-label="Search accounts"
+              />
+            </InputGroup>
+            <Button type="submit" variant="outline">Search</Button>
+          </form>
+        </div>
+
+        {loading ? (
+          <div className="space-y-2 border-t p-5" aria-label="Loading accounts">
+            {[0, 1, 2].map((item) => <Skeleton key={item} className="h-14 w-full rounded-md" />)}
+          </div>
+        ) : accounts.length === 0 ? (
+          <Empty className="min-h-64 border-t">
+            <EmptyHeader>
+              <EmptyMedia variant="icon"><UsersRound /></EmptyMedia>
+              <EmptyTitle>{search ? "No matching accounts" : "No accounts yet"}</EmptyTitle>
+              <EmptyDescription>
+                {search ? "Try another name or email." : "Create the first candidate or employee account."}
+              </EmptyDescription>
+            </EmptyHeader>
+          </Empty>
+        ) : (
+          <div className="border-t">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Account</TableHead>
+                  <TableHead>Type</TableHead>
+                  <TableHead>Password</TableHead>
+                  <TableHead>Forms</TableHead>
+                  <TableHead>Created</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {accounts.map((account) => {
+                  const expanded = expandedAccountId === account.id;
+                  return (
+                    <Fragment key={account.id}>
+                      <TableRow>
+                        <TableCell className="min-w-48 whitespace-normal">
+                          <span className="block font-medium">{account.name}</span>
+                          <span className="block break-all text-xs text-muted-foreground">{account.email}</span>
+                        </TableCell>
+                        <TableCell>
+                          <StatusBadge label={account.accountType} tone="info" />
+                        </TableCell>
+                        <TableCell>
+                          {account.mustChangePassword
+                            ? <StatusBadge label="Change pending" tone="warning" />
+                            : <span className="text-muted-foreground">Updated</span>}
+                        </TableCell>
+                        <TableCell>{account.assignments.length}</TableCell>
+                        <TableCell className="text-muted-foreground">
+                          {formatLocalDateTime(account.createdAt, { timeZone })}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            aria-expanded={expanded}
+                            aria-controls={"account-details-" + account.id}
+                            onClick={() => setExpandedAccountId(expanded ? null : account.id)}
+                          >
+                            {expanded ? <ChevronUp /> : <ChevronDown />}
+                            {expanded ? "Hide details" : "View details"}
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                      {expanded && (
+                        <TableRow className="bg-muted/20 hover:bg-muted/20">
+                          <TableCell colSpan={6} className="p-0 whitespace-normal">
+                            <div id={"account-details-" + account.id}>
+                              <AccountDetails
+                                account={account}
+                                templates={templates}
+                                busy={assigningUserId === account.id}
+                                timeZone={timeZone}
+                                onAssign={(draft) => assignForm(account.id, draft)}
+                                onReplace={(assignmentId, expectedUpdatedAt, draft) =>
+                                  replaceAssignmentResume(account.id, assignmentId, expectedUpdatedAt, draft)}
+                              />
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      )}
+                    </Fragment>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </div>
+        )}
+        {!loading && pageMeta.totalItems > 0 && (
+          <div className="border-t p-4">
+            <ServerPagination
+              meta={pageMeta}
+              disabled={loading || assigningUserId !== null}
+              onPageChange={(page) => {
+                setExpandedAccountId(null);
+                setPageMeta((current) => ({ ...current, page }));
+              }}
+              onPageSizeChange={(pageSize) => {
+                setExpandedAccountId(null);
+                setPageMeta((current) => ({ ...current, page: 1, pageSize }));
+              }}
+            />
+          </div>
+        )}
+      </Card>
+
+      <Dialog
+        open={createOpen}
+        onOpenChange={(open) => {
+          if (!open && (creating || credentials)) return;
+          setCreateOpen(open);
+          if (!open) {
+            setCreateError("");
+            setCreateNotice("");
+          }
+        }}
+      >
+        <DialogContent
+          showCloseButton={!creating && !credentials}
+          className="max-h-[calc(100vh-2rem)] overflow-y-auto sm:max-w-md"
+        >
+          <DialogHeader>
+            <DialogTitle>{credentials ? "Account created" : "Create account"}</DialogTitle>
+            <DialogDescription>
+              {credentials
+                ? "Save or share the temporary credentials before closing."
+                : "Create candidate or employee access with a temporary password."}
+            </DialogDescription>
+          </DialogHeader>
+
+          {createError && <FeedbackAlert tone="error" title="Something went wrong" description={createError} />}
+          {createNotice && <FeedbackAlert tone="success" title="Updated successfully" description={createNotice} />}
+
+          {credentials ? (
+            <div className="rounded-lg border border-warning/25 bg-warning/10 p-4">
+              <div className="flex items-start gap-3">
+                <KeyRound className="mt-0.5 size-4 shrink-0 text-warning" />
+                <p className="text-xs leading-5">
+                  This temporary password will not be shown again after you close this dialog.
+                </p>
+              </div>
+              <dl className="mt-3 space-y-2 rounded-md border bg-background p-3 text-xs">
+                <CredentialRow label="Email" value={credentials.email} />
+                <CredentialRow label="Password" value={credentials.temporaryPassword} mono />
+              </dl>
+              <div className="mt-3 flex gap-2">
+                <Button type="button" variant="outline" size="sm" onClick={() => void copyCredentials()}>
+                  <ClipboardCopy className="size-3.5" /> Copy
+                </Button>
+                <Button type="button" size="sm" onClick={openTelegram}>
+                  <Send className="size-3.5" /> Telegram
+                </Button>
               </div>
             </div>
-            <form className="mt-5 space-y-4" onSubmit={createAccount}>
+          ) : (
+            <form id="create-account-form" className="space-y-4" onSubmit={createAccount}>
               <FormField label="Full name">
-                <Input
-                  value={name}
-                  onChange={(event) => setName(event.target.value)}
-                  maxLength={120}
-                  required
-                  autoComplete="off"
-                />
+                <Input value={name} onChange={(event) => setName(event.target.value)}
+                  maxLength={120} required autoComplete="off" />
               </FormField>
               <FormField label="Email">
-                <Input
-                  type="email"
-                  value={email}
-                  onChange={(event) => setEmail(event.target.value)}
-                  maxLength={254}
-                  required
-                  autoComplete="off"
-                />
+                <Input type="email" value={email} onChange={(event) => setEmail(event.target.value)}
+                  maxLength={254} required autoComplete="off" />
               </FormField>
               <FormField label="Account type">
-                <Select
-                  value={accountType}
-                  onValueChange={(value) =>
-                    setAccountType(value as RecipientAccountType)
-                  }
-                >
-                  <SelectTrigger className="w-full">
-                    <SelectValue />
-                  </SelectTrigger>
+                <Select value={accountType} onValueChange={(value) =>
+                  setAccountType(value as RecipientAccountType)}>
+                  <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="candidate">Candidate</SelectItem>
                     <SelectItem value="employee">Employee</SelectItem>
@@ -421,21 +604,11 @@ export function AccountsDashboard(props: { displayName: string }) {
               </FormField>
               <FormField label="Temporary password">
                 <div className="flex gap-2">
-                  <Input
-                    value={password}
-                    onChange={(event) => setPassword(event.target.value)}
-                    minLength={12}
-                    maxLength={128}
-                    required
-                    autoComplete="new-password"
-                  />
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="icon"
+                  <Input value={password} onChange={(event) => setPassword(event.target.value)}
+                    minLength={12} maxLength={128} required autoComplete="new-password" />
+                  <Button type="button" variant="outline" size="icon"
                     aria-label="Generate another password"
-                    onClick={() => setPassword(generateTemporaryPassword())}
-                  >
+                    onClick={() => setPassword(generateTemporaryPassword())}>
                     <RefreshCw />
                   </Button>
                 </div>
@@ -443,138 +616,36 @@ export function AccountsDashboard(props: { displayName: string }) {
                   At least 12 characters with uppercase, lowercase, number, and symbol.
                 </span>
               </FormField>
-              <Button
-                type="submit"
-                disabled={creating || Boolean(credentials)}
-                className="h-10 w-full"
-              >
-                {creating ? (
-                  <LoaderCircle className="size-4 animate-spin" />
-                ) : (
-                  <Plus className="size-4" />
-                )}
-                {creating
-                  ? "Creating…"
-                  : credentials
-                    ? "Save current credentials first"
-                    : "Create account"}
-              </Button>
             </form>
-
-            {credentials && (
-              <div className="mt-5 rounded-lg border border-warning/25 bg-warning/10 p-4">
-                <div className="flex items-start gap-3">
-                  <KeyRound className="mt-0.5 size-4 shrink-0 text-warning" />
-                  <div className="min-w-0">
-                    <p className="text-xs font-semibold">
-                      Save these credentials now
-                    </p>
-                    <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                      The temporary password will not be shown again after you
-                      dismiss this card.
-                    </p>
-                  </div>
-                </div>
-                <dl className="mt-3 space-y-2 rounded-md border bg-background p-3 text-xs">
-                  <CredentialRow label="Email" value={credentials.email} />
-                  <CredentialRow
-                    label="Password"
-                    value={credentials.temporaryPassword}
-                    mono
-                  />
-                </dl>
-                <div className="mt-3 grid grid-cols-2 gap-2">
-                  <Button type="button" variant="outline" size="sm" onClick={() => void copyCredentials()}>
-                    <ClipboardCopy className="size-3.5" /> Copy
-                  </Button>
-                  <Button type="button" size="sm" onClick={openTelegram}>
-                    <Send className="size-3.5" /> Telegram
-                  </Button>
-                </div>
-                <Button type="button" variant="ghost" size="sm" className="mt-2 w-full" onClick={() => setCredentials(null)}>
-                  I saved the credentials
-                </Button>
-              </div>
-            )}
-            </CardContent>
-          </Card>
-
-          <section className="min-w-0">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <h2 className="text-base font-semibold">Recipient accounts</h2>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  Assign published template roles to each person.
-                </p>
-              </div>
-              <form
-                className="flex w-full max-w-md gap-2 sm:w-auto"
-                onSubmit={(event) => {
-                  event.preventDefault();
-                  setPageMeta((current) => ({ ...current, page: 1 }));
-                  setSearch(searchDraft.trim());
-                }}
-              >
-                <InputGroup>
-                  <InputGroupAddon><Search /></InputGroupAddon>
-                  <InputGroupInput
-                    value={searchDraft}
-                    onChange={(event) => setSearchDraft(event.target.value)}
-                    placeholder="Search name or email"
-                    aria-label="Search accounts"
-                  />
-                </InputGroup>
-                <Button type="submit" variant="outline">Search</Button>
-              </form>
-            </div>
-            {loading ? (
-              <div className="mt-5 space-y-3">
-                {[0, 1].map((item) => <Skeleton key={item} className="h-48 w-full rounded-xl" />)}
-              </div>
-            ) : accounts.length === 0 ? (
-              <Card className="mt-5 shadow-none">
-                <Empty className="min-h-72">
-                  <EmptyHeader>
-                    <EmptyMedia variant="icon"><UsersRound /></EmptyMedia>
-                    <EmptyTitle>No accounts yet</EmptyTitle>
-                    <EmptyDescription>Create the first candidate or employee account.</EmptyDescription>
-                  </EmptyHeader>
-                </Empty>
-              </Card>
+          )}
+          <DialogFooter>
+            {credentials ? (
+              <Button type="button" onClick={() => {
+                setCredentials(null);
+                setCreateNotice("");
+                setCreateError("");
+                setCreateOpen(false);
+              }}>
+                I saved the credentials
+              </Button>
             ) : (
-              <div className="mt-5 space-y-4">
-                {accounts.map((account) => (
-                  <AccountCard
-                    key={account.id}
-                    account={account}
-                    templates={templates}
-                    busy={assigningUserId === account.id}
-                    timeZone={timeZone}
-                    onAssign={(draft) => assignForm(account.id, draft)}
-                    onReplace={(assignmentId, expectedUpdatedAt, draft) =>
-                      replaceAssignmentResume(
-                        account.id,
-                        assignmentId,
-                        expectedUpdatedAt,
-                        draft,
-                      )}
-                  />
-                ))}
-                <ServerPagination
-                  meta={pageMeta}
-                  disabled={loading || assigningUserId !== null}
-                  onPageChange={(page) => setPageMeta((current) => ({ ...current, page }))}
-                  onPageSizeChange={(pageSize) => setPageMeta((current) => ({ ...current, page: 1, pageSize }))}
-                />
-              </div>
+              <>
+                <Button type="button" variant="outline" disabled={creating}
+                  onClick={() => setCreateOpen(false)}>Cancel</Button>
+                <Button type="submit" form="create-account-form" disabled={creating}>
+                  {creating ? <LoaderCircle className="size-4 animate-spin" /> : <Plus className="size-4" />}
+                  {creating ? "Creating…" : "Create account"}
+                </Button>
+              </>
             )}
-          </section>
-        </div>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </AppShell>
   );
 }
 
-function AccountCard(props: {
+function AccountDetails(props: {
   account: RecipientAccountSummary;
   templates: AssignmentTemplateSummary[];
   busy: boolean;
@@ -589,26 +660,7 @@ function AccountCard(props: {
   const [replacement, setReplacement] =
     useState<RecipientAssignmentSummary | null>(null);
   return (
-    <Card className="gap-0 overflow-hidden py-0 shadow-none">
-      <div className="flex flex-wrap items-start justify-between gap-3 p-5">
-        <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-2">
-            <h3 className="truncate text-base font-semibold">{props.account.name}</h3>
-            <StatusBadge label={props.account.accountType} tone="info" />
-            {props.account.mustChangePassword && (
-              <StatusBadge label="Password change pending" tone="warning" />
-            )}
-          </div>
-          <p className="mt-1 truncate text-xs text-muted-foreground">{props.account.email}</p>
-          <p className="mt-1 text-[11px] text-muted-foreground">
-            Created {formatLocalDateTime(props.account.createdAt, { timeZone: props.timeZone })}
-          </p>
-        </div>
-        <span className="text-xs font-medium text-muted-foreground">
-          {props.account.assignments.length} assigned
-        </span>
-      </div>
-
+    <div className="min-w-0">
       <AccountAssignmentControls
         accountId={props.account.id}
         accountName={props.account.name}
@@ -619,24 +671,20 @@ function AccountCard(props: {
         onReplace={props.onReplace}
         onCancelReplacement={() => setReplacement(null)}
       />
-
-      <div className="p-4">
+      <div className="space-y-2 p-4">
+        <h3 className="text-xs font-semibold">Assigned forms</h3>
         {props.account.assignments.length === 0 ? (
           <p className="py-3 text-center text-xs text-muted-foreground">No forms assigned.</p>
-        ) : (
-          <div className="space-y-2">
-            {props.account.assignments.map((assignment) => (
-              <AccountAssignmentRow
-                key={assignment.id}
-                assignment={assignment}
-                timeZone={props.timeZone}
-                onReplace={() => setReplacement(assignment)}
-              />
-            ))}
-          </div>
-        )}
+        ) : props.account.assignments.map((assignment) => (
+          <AccountAssignmentRow
+            key={assignment.id}
+            assignment={assignment}
+            timeZone={props.timeZone}
+            onReplace={() => setReplacement(assignment)}
+          />
+        ))}
       </div>
-    </Card>
+    </div>
   );
 }
 
