@@ -320,6 +320,7 @@ export const resumes = sqliteTable(
     receivedDate: text("received_date").notNull(),
     note: text("note").notNull().default(""),
     status: text("status").notNull(),
+    verificationStatus: text("verification_status").notNull().default("unverified"),
     errorMessage: text("error_message"),
     createdAt: text("created_at").notNull(),
     updatedAt: text("updated_at").notNull(),

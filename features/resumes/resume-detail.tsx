@@ -331,8 +331,7 @@ export function ResumeDetailView(props: { resumeId: string }) {
           </Alert>
         )}
 
-        {resume.status === "possible_duplicate" &&
-          resume.duplicateCandidate && (
+        {resume.duplicateCandidate && (
             <Alert
               variant="destructive"
               className="mb-4 grid-cols-[auto_1fr] gap-4 bg-destructive/5"
@@ -386,12 +385,12 @@ export function ResumeDetailView(props: { resumeId: string }) {
                       Correct extracted values, then save to mark them verified.
                     </CardDescription>
                   </div>
-                  {resume.candidate?.verificationStatus === "verified" ? (
+                  {resume.verificationStatus === "verified" ? (
                     <Badge className="bg-success/10 text-success">
                       <CheckCircle2 /> Verified
                     </Badge>
                   ) : (
-                    <Badge variant="secondary">Extracted</Badge>
+                    <Badge variant="secondary">{resume.verificationStatus.replaceAll("_", " ")}</Badge>
                   )}
                 </CardHeader>
                 <CardContent>
@@ -620,9 +619,10 @@ function ResumeMeta(props: { resume: ResumeDetail }) {
       <CardContent>
         <dl className="grid grid-cols-2 gap-3 text-xs">
           <Meta
-            label="Status"
-            value={props.resume.status.replaceAll("_", " ")}
+            label="Extraction"
+            value={props.resume.extractionStatus}
           />
+          <Meta label="Resume verification" value={props.resume.verificationStatus.replaceAll("_", " ")} />
           <Meta label="Pages" value={String(props.resume.pageCount)} />
           <Meta
             label="Source"

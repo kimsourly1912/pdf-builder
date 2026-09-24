@@ -20,7 +20,7 @@ import {
   parseResumeExtraction,
   resumeStatusForExtraction,
 } from "@/features/resumes/resume.server";
-import type { ResumeDetail } from "@/features/resumes/resume.types";
+import { isResumeExtractionStatus, type ResumeDetail } from "@/features/resumes/resume.types";
 import { processStorageCleanupJobs } from "@/features/storage/storage-cleanup.server";
 import { isResponse, jsonError, requireRequestOwner } from "@/features/templates/template.server";
 
@@ -38,6 +38,10 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
     const [extractionRow] = await getDb().select().from(resumeExtractions)
       .where(eq(resumeExtractions.resumeId, id))
       .orderBy(desc(resumeExtractions.versionNumber)).limit(1);
+    const [latestJob] = await getDb().select({ status: resumeProcessingJobs.status })
+      .from(resumeProcessingJobs)
+      .where(eq(resumeProcessingJobs.resumeId, id))
+      .orderBy(desc(resumeProcessingJobs.attemptNumber)).limit(1);
     const duplicate = row.resume.duplicateCandidateId
       ? (await getDb().select().from(candidates).where(and(eq(candidates.id, row.resume.duplicateCandidateId), eq(candidates.ownerEmail, ownerEmail))).limit(1))[0] ?? null
       : null;
@@ -50,7 +54,8 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
       appliedPosition: row.resume.appliedPosition,
       receivedDate: row.resume.receivedDate,
       note: row.resume.note,
-      status: row.resume.status as ResumeDetail["status"],
+      extractionStatus: isResumeExtractionStatus(latestJob?.status) ? latestJob.status : "queued",
+      verificationStatus: row.resume.verificationStatus as ResumeDetail["verificationStatus"],
       candidate: candidateSummary(row.candidate),
       duplicateCandidate: candidateSummary(duplicate),
       extraction: extractionRow ? parseStoredExtraction(extractionRow.fieldsJson) : null,
@@ -152,6 +157,7 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
       }),
       getDb().update(resumes).set({
         status: "ready",
+        verificationStatus: "verified",
         duplicateCandidateId: null,
         errorMessage: null,
         updatedAt: now,
@@ -261,7 +267,7 @@ async function linkCandidate(ownerEmail: string, resumeId: string, candidateIdVa
   await db.batch([
     db.delete(candidateResumeLinks).where(eq(candidateResumeLinks.resumeId, resumeId)),
     db.insert(candidateResumeLinks).values({ id: crypto.randomUUID(), candidateId, resumeId, linkType: "manual", createdByEmail: ownerEmail, createdAt: now }),
-    db.update(resumes).set({ candidateId, duplicateCandidateId: null, status: "ready", errorMessage: null, updatedAt: now }).where(and(eq(resumes.id, resumeId), eq(resumes.ownerEmail, ownerEmail))),
+    db.update(resumes).set({ candidateId, duplicateCandidateId: null, status: "ready", verificationStatus: "unverified", errorMessage: null, updatedAt: now }).where(and(eq(resumes.id, resumeId), eq(resumes.ownerEmail, ownerEmail))),
   ]);
   return Response.json({ candidate: candidateSummary(candidate) });
 }
@@ -332,7 +338,7 @@ async function saveRetry(ownerEmail: string, resume: typeof resumes.$inferSelect
     statements.push(db.insert(candidateResumeLinks).values({ id: crypto.randomUUID(), candidateId, resumeId: resume.id, linkType: "automatic", createdByEmail: ownerEmail, createdAt: now }));
   }
   statements.push(db.insert(resumeProcessingJobs).values({ id: crypto.randomUUID(), resumeId: resume.id, attemptNumber: versionNumber, status: "completed", startedAt: now, completedAt: now, createdAt: now }));
-  statements.push(db.update(resumes).set({ candidateId, duplicateCandidateId: duplicate?.id ?? null, status, errorMessage: null, updatedAt: now }).where(and(eq(resumes.id, resume.id), eq(resumes.ownerEmail, ownerEmail))));
+  statements.push(db.update(resumes).set({ candidateId, duplicateCandidateId: duplicate?.id ?? null, status, verificationStatus: status === "ready" ? "unverified" : "needs_attention", errorMessage: null, updatedAt: now }).where(and(eq(resumes.id, resume.id), eq(resumes.ownerEmail, ownerEmail))));
   await db.batch(statements as [typeof statements[number], ...typeof statements]);
   return Response.json({ resume: { id: resume.id, status } });
 }

@@ -252,6 +252,7 @@ export async function POST(
       candidateId,
       duplicateCandidateId: duplicate?.id ?? null,
       status,
+      verificationStatus: status === "ready" ? "unverified" : "needs_attention",
       errorMessage: null,
       updatedAt: now,
     }).where(and(eq(resumes.id, resume.id), eq(resumes.ownerEmail, ownerEmail))));

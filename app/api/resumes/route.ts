@@ -19,7 +19,7 @@ import {
   safeResumeInput,
   validDateOnly,
 } from "@/features/resumes/resume.server";
-import { MAX_RESUME_BYTES, MAX_RESUME_PAGES, isResumeStatus } from "@/features/resumes/resume.types";
+import { MAX_RESUME_BYTES, MAX_RESUME_PAGES, isResumeExtractionStatus, isResumeVerificationStatus } from "@/features/resumes/resume.types";
 import type {
   ResumeExtractionPayload,
   ResumeExtractionPayloadV1,
@@ -35,7 +35,9 @@ export async function GET(request: Request) {
     const url = new URL(request.url);
     const search = url.searchParams.get("search")?.trim().slice(0, 120) ?? "";
     const source = url.searchParams.get("source")?.trim() ?? "";
-    const statusValue = url.searchParams.get("status")?.trim() ?? "";
+    const extractionStatusValue = url.searchParams.get("extractionStatus")?.trim() ?? "";
+    const verificationStatusValue = url.searchParams.get("verificationStatus")?.trim() ?? "";
+    const possibleDuplicate = url.searchParams.get("possibleDuplicate") === "true";
     const receivedFrom = url.searchParams.get("receivedFrom")?.trim() ?? "";
     const receivedTo = url.searchParams.get("receivedTo")?.trim() ?? "";
     const pageQuery = parsePageQuery(url.searchParams, {
@@ -44,7 +46,10 @@ export async function GET(request: Request) {
     });
     const conditions: SQL[] = [eq(resumes.ownerEmail, ownerEmail)];
     if (source) conditions.push(eq(resumes.source, source));
-    if (statusValue && isResumeStatus(statusValue)) conditions.push(eq(resumes.status, statusValue));
+    const latestJobStatus = sql<string>`coalesce((select job.status from resume_processing_jobs job where job.resume_id = ${resumes.id} order by job.attempt_number desc limit 1), 'queued')`;
+    if (extractionStatusValue && isResumeExtractionStatus(extractionStatusValue)) conditions.push(sql`${latestJobStatus} = ${extractionStatusValue}`);
+    if (verificationStatusValue && isResumeVerificationStatus(verificationStatusValue)) conditions.push(eq(resumes.verificationStatus, verificationStatusValue));
+    if (possibleDuplicate) conditions.push(sql`${resumes.duplicateCandidateId} is not null`);
     if (validDateOnly(receivedFrom)) conditions.push(gte(resumes.receivedDate, receivedFrom));
     if (validDateOnly(receivedTo)) conditions.push(lte(resumes.receivedDate, receivedTo));
     if (search) {
@@ -67,7 +72,7 @@ export async function GET(request: Request) {
     const db = getDb();
     const [rows, totals] = await Promise.all([
       db
-        .select({ resume: resumes, candidate: candidates })
+        .select({ resume: resumes, candidate: candidates, extractionStatus: latestJobStatus })
         .from(resumes)
         .leftJoin(candidates, eq(resumes.candidateId, candidates.id))
         .where(and(...conditions))
@@ -77,9 +82,9 @@ export async function GET(request: Request) {
       db
         .select({
           total: count(),
-          ready: sql<number>`sum(case when ${resumes.status} = 'ready' then 1 else 0 end)`,
-          needsAttention: sql<number>`sum(case when ${resumes.status} in ('needs_attention', 'failed') then 1 else 0 end)`,
-          possibleDuplicates: sql<number>`sum(case when ${resumes.status} = 'possible_duplicate' then 1 else 0 end)`,
+          verified: sql<number>`sum(case when ${resumes.verificationStatus} = 'verified' then 1 else 0 end)`,
+          needsAttention: sql<number>`sum(case when ${resumes.verificationStatus} = 'needs_attention' then 1 else 0 end)`,
+          possibleDuplicates: sql<number>`sum(case when ${resumes.duplicateCandidateId} is not null then 1 else 0 end)`,
         })
         .from(resumes)
         .leftJoin(candidates, eq(resumes.candidateId, candidates.id))
@@ -98,7 +103,8 @@ export async function GET(request: Request) {
       source: row.resume.source as ResumeSummary["source"],
       appliedPosition: row.resume.appliedPosition,
       receivedDate: row.resume.receivedDate,
-      status: row.resume.status as ResumeSummary["status"],
+      extractionStatus: isResumeExtractionStatus(row.extractionStatus) ? row.extractionStatus : "queued",
+      verificationStatus: row.resume.verificationStatus as ResumeSummary["verificationStatus"],
       candidate: candidateSummary(row.candidate),
       duplicateCandidate: candidateSummary(row.resume.duplicateCandidateId ? duplicates.get(row.resume.duplicateCandidateId) ?? null : null),
       createdAt: row.resume.createdAt,
@@ -106,7 +112,7 @@ export async function GET(request: Request) {
     }));
     const stats = {
       total: totals[0]?.total ?? 0,
-      ready: totals[0]?.ready ?? 0,
+      verified: totals[0]?.verified ?? 0,
       needsAttention: totals[0]?.needsAttention ?? 0,
       possibleDuplicates: totals[0]?.possibleDuplicates ?? 0,
     };
@@ -206,6 +212,7 @@ export async function POST(request: Request) {
       contentType: "application/pdf", checksum, pageCount: inspected.pageCount,
       source: input.source, appliedPosition: input.appliedPosition,
       receivedDate: input.receivedDate, note: input.note, status,
+      verificationStatus: status === "ready" ? "unverified" : "needs_attention",
       errorMessage: extractionFailed ? "Text extraction failed. Retry or review the PDF manually." : null,
       createdAt: now, updatedAt: now,
     }));

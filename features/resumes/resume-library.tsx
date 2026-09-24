@@ -86,9 +86,10 @@ import { pageMetaFromPayload } from "@/features/pagination/pagination";
 import type { PageMeta } from "@/features/pagination/pagination";
 import { MAX_RESUME_UPLOAD_COUNT } from "@/features/resumes/resume.types";
 import type {
+  ResumeExtractionStatus,
   ResumeSource,
-  ResumeStatus,
   ResumeSummary,
+  ResumeVerificationStatus,
 } from "@/features/resumes/resume.types";
 import {
   formatLocalDateTime,
@@ -97,7 +98,7 @@ import {
 
 type ResumeStats = {
   total: number;
-  ready: number;
+  verified: number;
   needsAttention: number;
   possibleDuplicates: number;
 };
@@ -110,7 +111,7 @@ type UploadDialogProps = {
 
 const EMPTY_STATS: ResumeStats = {
   total: 0,
-  ready: 0,
+  verified: 0,
   needsAttention: 0,
   possibleDuplicates: 0,
 };
@@ -142,7 +143,9 @@ function ResumeLibrary(props: { displayName: string }) {
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [search, setSearch] = useState("");
-  const [status, setStatus] = useState<ResumeStatus | "">("");
+  const [extractionStatus, setExtractionStatus] = useState<ResumeExtractionStatus | "">("");
+  const [verificationStatus, setVerificationStatus] = useState<ResumeVerificationStatus | "">("");
+  const [possibleDuplicate, setPossibleDuplicate] = useState(false);
   const [source, setSource] = useState<ResumeSource | "">("");
   const [receivedFrom, setReceivedFrom] = useState("");
   const [receivedTo, setReceivedTo] = useState("");
@@ -158,7 +161,9 @@ function ResumeLibrary(props: { displayName: string }) {
     try {
       const query = new URLSearchParams();
       if (search.trim()) query.set("search", search.trim());
-      if (status) query.set("status", status);
+      if (extractionStatus) query.set("extractionStatus", extractionStatus);
+      if (verificationStatus) query.set("verificationStatus", verificationStatus);
+      if (possibleDuplicate) query.set("possibleDuplicate", "true");
       if (source) query.set("source", source);
       if (receivedFrom) query.set("receivedFrom", receivedFrom);
       if (receivedTo) query.set("receivedTo", receivedTo);
@@ -192,7 +197,7 @@ function ResumeLibrary(props: { displayName: string }) {
     } finally {
       setLoading(false);
     }
-  }, [pageMeta.page, pageMeta.pageSize, receivedFrom, receivedTo, search, source, status]);
+  }, [pageMeta.page, pageMeta.pageSize, receivedFrom, receivedTo, search, source, extractionStatus, verificationStatus, possibleDuplicate]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -207,7 +212,7 @@ function ResumeLibrary(props: { displayName: string }) {
     () => items.filter((item) => selected.has(item.id)),
     [items, selected],
   );
-  const activeFilterCount = [status, source, receivedFrom, receivedTo].filter(
+  const activeFilterCount = [extractionStatus, verificationStatus, possibleDuplicate, source, receivedFrom, receivedTo].filter(
     Boolean,
   ).length;
 
@@ -282,7 +287,9 @@ function ResumeLibrary(props: { displayName: string }) {
   }
 
   function clearFilters() {
-    setStatus("");
+    setExtractionStatus("");
+    setVerificationStatus("");
+    setPossibleDuplicate(false);
     setSource("");
     setReceivedFrom("");
     setReceivedTo("");
@@ -313,7 +320,7 @@ function ResumeLibrary(props: { displayName: string }) {
 
       <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <MetricCard label="Total resumes" value={stats.total} icon={<FileText />} tone="primary" />
-        <MetricCard label="Ready" value={stats.ready} icon={<CheckCircle2 />} tone="success" />
+        <MetricCard label="Verified" value={stats.verified} icon={<CheckCircle2 />} tone="success" />
         <MetricCard label="Needs attention" value={stats.needsAttention} icon={<AlertTriangle />} tone="warning" />
         <MetricCard label="Possible duplicates" value={stats.possibleDuplicates} icon={<UsersRound />} />
       </section>
@@ -352,15 +359,15 @@ function ResumeLibrary(props: { displayName: string }) {
               <PopoverContent align="end" className="w-[calc(100vw-2rem)] max-w-sm p-0">
                 <PopoverHeader className="border-b p-4">
                   <PopoverTitle>Filter resumes</PopoverTitle>
-                  <PopoverDescription>Narrow the library by status, source, or received date.</PopoverDescription>
+                  <PopoverDescription>Narrow the library by extraction, verification, source, or received date.</PopoverDescription>
                 </PopoverHeader>
                 <div className="grid gap-4 p-4">
-                  <FormField label="Status">
+                  <FormField label="Extraction status">
                     <Select
-                      value={status || "all-statuses"}
+                      value={extractionStatus || "all-extraction"}
                       onValueChange={(value) =>
                         {
-                          setStatus(value === "all-statuses" ? "" : value as ResumeStatus);
+                          setExtractionStatus(value === "all-extraction" ? "" : value as ResumeExtractionStatus);
                           setPageMeta((current) => ({ ...current, page: 1 }));
                         }
                       }
@@ -369,14 +376,37 @@ function ResumeLibrary(props: { displayName: string }) {
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="all-statuses">All statuses</SelectItem>
-                        <SelectItem value="ready">Ready</SelectItem>
-                        <SelectItem value="needs_attention">Needs attention</SelectItem>
-                        <SelectItem value="possible_duplicate">Possible duplicate</SelectItem>
+                        <SelectItem value="all-extraction">All extraction statuses</SelectItem>
+                        <SelectItem value="queued">Queued</SelectItem>
+                        <SelectItem value="processing">Processing</SelectItem>
+                        <SelectItem value="completed">Completed</SelectItem>
                         <SelectItem value="failed">Failed</SelectItem>
                       </SelectContent>
                     </Select>
                   </FormField>
+                  <FormField label="Resume verification">
+                    <Select
+                      value={verificationStatus || "all-verification"}
+                      onValueChange={(value) => {
+                        setVerificationStatus(value === "all-verification" ? "" : value as ResumeVerificationStatus);
+                        setPageMeta((current) => ({ ...current, page: 1 }));
+                      }}
+                    >
+                      <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all-verification">All verification statuses</SelectItem>
+                        <SelectItem value="unverified">Unverified</SelectItem>
+                        <SelectItem value="needs_attention">Needs attention</SelectItem>
+                        <SelectItem value="verified">Verified</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </FormField>
+                  <label className="flex items-center gap-2 text-xs font-semibold">
+                    <Checkbox checked={possibleDuplicate} onCheckedChange={(value) => {
+                      setPossibleDuplicate(value === true);
+                      setPageMeta((current) => ({ ...current, page: 1 }));
+                    }} /> Possible duplicates only
+                  </label>
                   <FormField label="Source">
                     <Select
                       value={source || "all-sources"}
@@ -464,7 +494,7 @@ function ResumeLibrary(props: { displayName: string }) {
             </Empty>
           ) : (
             <div className="overflow-x-auto">
-              <Table className="min-w-[900px]">
+              <Table className="min-w-[1050px]">
                 <TableHeader className="bg-muted/40">
                   <TableRow className="hover:bg-transparent">
                     <TableHead className="w-12 px-4">
@@ -479,7 +509,8 @@ function ResumeLibrary(props: { displayName: string }) {
                     <TableHead>Applied position</TableHead>
                     <TableHead>Source</TableHead>
                     <TableHead>Received</TableHead>
-                    <TableHead>Status</TableHead>
+                    <TableHead>Extraction</TableHead>
+                    <TableHead>Resume verification</TableHead>
                     <TableHead className="pr-4 text-right">Action</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -494,6 +525,7 @@ function ResumeLibrary(props: { displayName: string }) {
                         <TableCell className="py-2.5">
                           <p className="max-w-48 truncate font-medium">{candidate?.fullName || "Unknown candidate"}</p>
                           <p className="max-w-48 truncate text-xs text-muted-foreground">{item.fileName} · {item.pageCount}p</p>
+                          {item.duplicateCandidate && <span className="text-xs text-destructive">Possible duplicate</span>}
                         </TableCell>
                         <TableCell className="py-2.5">
                           <p className="max-w-52 truncate text-xs">{candidate?.email || "No email"}</p>
@@ -505,7 +537,8 @@ function ResumeLibrary(props: { displayName: string }) {
                           <p className="text-xs">{item.receivedDate}</p>
                           <p className="text-[11px] text-muted-foreground">{formatLocalDateTime(item.createdAt, { timeZone })}</p>
                         </TableCell>
-                        <TableCell className="py-2.5"><ResumeStatusBadge status={item.status} /></TableCell>
+                        <TableCell className="py-2.5"><ExtractionStatusBadge status={item.extractionStatus} /></TableCell>
+                        <TableCell className="py-2.5"><VerificationStatusBadge status={item.verificationStatus} /></TableCell>
                         <TableCell className="py-2.5 pr-4 text-right">
                           <Button asChild variant="outline" size="sm">
                             <Link href={`/resumes/${item.id}`}><FileSearch /> Review</Link>
@@ -673,15 +706,18 @@ function UploadDialog(props: UploadDialogProps) {
   );
 }
 
-function ResumeStatusBadge(props: { status: ResumeStatus }) {
+function ExtractionStatusBadge(props: { status: ResumeExtractionStatus }) {
+  const tone = props.status === "completed" ? "success" : props.status === "failed" ? "danger" : "neutral";
+  return <StatusBadge label={props.status} tone={tone} />;
+}
+
+function VerificationStatusBadge(props: { status: ResumeVerificationStatus }) {
   const tone =
-    props.status === "ready"
+    props.status === "verified"
       ? "success"
       : props.status === "needs_attention"
         ? "warning"
-        : props.status === "possible_duplicate"
-          ? "danger"
-          : "neutral";
+        : "neutral";
   return <StatusBadge label={props.status.replaceAll("_", " ")} tone={tone} />;
 }
 

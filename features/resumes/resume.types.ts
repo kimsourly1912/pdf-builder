@@ -24,6 +24,12 @@ export const RESUME_STATUSES = [
 
 export type ResumeStatus = (typeof RESUME_STATUSES)[number];
 
+export const RESUME_EXTRACTION_STATUSES = ["queued", "processing", "completed", "failed"] as const;
+export type ResumeExtractionStatus = (typeof RESUME_EXTRACTION_STATUSES)[number];
+
+export const RESUME_VERIFICATION_STATUSES = ["unverified", "needs_attention", "verified"] as const;
+export type ResumeVerificationStatus = (typeof RESUME_VERIFICATION_STATUSES)[number];
+
 export type ResumeVerificationState = "extracted" | "verified";
 
 export type ExtractedValue<T> = {
@@ -111,7 +117,8 @@ export type ResumeSummary = {
   source: ResumeSource;
   appliedPosition: string;
   receivedDate: string;
-  status: ResumeStatus;
+  extractionStatus: ResumeExtractionStatus;
+  verificationStatus: ResumeVerificationStatus;
   candidate: ResumeCandidateSummary | null;
   duplicateCandidate: ResumeCandidateSummary | null;
   createdAt: string;
@@ -165,4 +172,12 @@ export function isResumeSource(value: unknown): value is ResumeSource {
 
 export function isResumeStatus(value: unknown): value is ResumeStatus {
   return RESUME_STATUSES.includes(value as ResumeStatus);
+}
+
+export function isResumeExtractionStatus(value: unknown): value is ResumeExtractionStatus {
+  return RESUME_EXTRACTION_STATUSES.includes(value as ResumeExtractionStatus);
+}
+
+export function isResumeVerificationStatus(value: unknown): value is ResumeVerificationStatus {
+  return RESUME_VERIFICATION_STATUSES.includes(value as ResumeVerificationStatus);
 }
