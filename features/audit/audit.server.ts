@@ -6,6 +6,8 @@ const REQUEST_ID_PATTERN = /^[A-Za-z0-9._-]{8,128}$/u;
 
 export type AuditAction =
   | "account.created"
+  | "account.resume_linked"
+  | "account.resume_unlinked"
   | "assignment.created"
   | "assignment.prefill_replaced"
   | "candidate.profile_verified"
