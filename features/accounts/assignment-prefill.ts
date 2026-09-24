@@ -90,6 +90,23 @@ export function defaultApprovedPrefillFieldIds(
     .map((field) => field.fieldId);
 }
 
+export function mappedAutomaticFieldIds(snapshot: CandidatePrefillSnapshot): string[] {
+  return Object.keys(snapshot.values).filter((id) => {
+    const metadata = snapshot.metadata[id];
+    return Boolean(metadata && (
+      metadata.verificationStatus === "verified"
+      || metadata.confidence >= 0.8
+    ));
+  });
+}
+
+export function availableProfileKeys(profile: CandidateProfile): string[] {
+  return Object.entries(candidateProfilePrefillRecord(profile))
+    .filter(([key, item]) =>
+      isCandidatePrefillKey(key) && Boolean(item.value) && item.confidence >= 0.8)
+    .map(([key]) => key);
+}
+
 export type AssignmentPrefillMode = "suggested" | "automatic" | "none";
 
 export type AssignmentPrefillStorage = {

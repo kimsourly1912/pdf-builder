@@ -200,3 +200,35 @@ test("defaults to verified high-confidence fields only", () => {
     ["verified"],
   );
 });
+
+test("batch assignment uses mapped high-confidence values without field selection", () => {
+  const profile = profiles.candidateProfileFromSummary({
+    fullName: "Sokha Chan", email: "sokha@example.com", phone: "",
+    address: "", dateOfBirth: null, gender: "", nationality: "",
+    currentTitle: "", professionalSummary: "", skills: [],
+    workExperience: [], education: [], certifications: [], languages: [],
+    links: [], verificationStatus: "extracted", id: "candidate-1",
+  });
+  profile.contact.primaryEmail.confidence = 0.65;
+  const snapshot = {
+    values: {
+      name: "Sokha Chan",
+      email: "sokha@example.com",
+    },
+    metadata: {
+      name: { confidence: 0.94, verificationStatus: "extracted" },
+      email: { confidence: 0.65, verificationStatus: "extracted" },
+    },
+  };
+  const ids = preview.mappedAutomaticFieldIds(snapshot);
+  const keys = preview.availableProfileKeys(profile);
+  assert.deepEqual(ids, ["name"]);
+  assert.ok(keys.includes("candidate.full_name"));
+  assert.ok(!keys.includes("candidate.email"));
+  const stored = preview.buildAssignmentPrefillStorage({
+    mode: "automatic", snapshot, allowedFieldIds: ids,
+    profile, allowedProfileKeys: keys,
+  });
+  assert.deepEqual(stored.initialValues, { name: "Sokha Chan" });
+  assert.ok(!("candidate.email" in stored.availableValues));
+});

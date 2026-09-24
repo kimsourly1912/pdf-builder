@@ -24,6 +24,7 @@ import { ServerPagination } from "@/components/patterns/server-pagination";
 import { StatusBadge } from "@/components/patterns/status-badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -66,7 +67,8 @@ import {
   buildTelegramShareUrl,
   generateTemporaryPassword,
 } from "@/features/accounts/account-share";
-import { AccountAssignmentControls } from "@/features/accounts/account-assignment-controls";
+import { AccountResumeReplacement } from "@/features/accounts/account-resume-replacement";
+import { BatchAssignmentDialog } from "@/features/accounts/batch-assignment-dialog";
 import { assignmentDisplay } from "@/features/accounts/assignment-status";
 import { pageMetaFromPayload } from "@/features/pagination/pagination";
 import type { PageMeta } from "@/features/pagination/pagination";
@@ -111,6 +113,8 @@ export function AccountsDashboard(props: { displayName: string }) {
   const [createError, setCreateError] = useState("");
   const [createNotice, setCreateNotice] = useState("");
   const [expandedAccountId, setExpandedAccountId] = useState<string | null>(null);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [batchOpen, setBatchOpen] = useState(false);
   const [assigningUserId, setAssigningUserId] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -122,6 +126,7 @@ export function AccountsDashboard(props: { displayName: string }) {
   const [credentials, setCredentials] =
     useState<CreatedCredentials | null>(null);
   const [timeZone, setTimeZone] = useState("UTC");
+  const selectedAccounts = accounts.filter((account) => selectedIds.includes(account.id));
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -224,62 +229,6 @@ export function AccountsDashboard(props: { displayName: string }) {
     }
   }
 
-  async function assignForm(
-    userId: string,
-    draft: AssignmentDraft,
-  ): Promise<boolean> {
-    if (!draft.templateId || !draft.roleId) {
-      setError("Choose a template and recipient role.");
-      return false;
-    }
-    setAssigningUserId(userId);
-    setError("");
-    setNotice("");
-    try {
-      const response = await fetch(`/api/accounts/${userId}/assignments`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Idempotency-Key": draft.requestKey ?? crypto.randomUUID(),
-        },
-        body: JSON.stringify(draft),
-      });
-      const payload = (await response.json()) as {
-        assignment?: RecipientAssignmentSummary;
-        error?: string;
-      };
-      if (!response.ok || !payload.assignment) {
-        throw new Error(payload.error || "The form could not be assigned.");
-      }
-      setAccounts((current) =>
-        current.map((account) =>
-          account.id === userId
-            ? {
-                ...account,
-                assignments: [payload.assignment!, ...account.assignments],
-              }
-            : account,
-        ),
-      );
-      setAssignmentCount((count) => count + 1);
-      setNotice(
-        draft.prefillMode === "suggested"
-          ? "Form assigned with approved resume data the recipient can choose to use."
-          : draft.prefillMode === "automatic"
-            ? "Form assigned with mapped fields filled automatically and approved resume values available to choose."
-            : "Form assigned without resume data.",
-      );
-      return true;
-    } catch (cause) {
-      setError(
-        cause instanceof Error ? cause.message : "The form could not be assigned.",
-      );
-      return false;
-    } finally {
-      setAssigningUserId(null);
-    }
-  }
-
   async function replaceAssignmentResume(
     userId: string,
     assignmentId: string,
@@ -294,7 +243,11 @@ export function AccountsDashboard(props: { displayName: string }) {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          ...draft,
+          templateId: draft.templateId,
+          roleId: draft.roleId,
+          candidateProfileVersionId: draft.candidateProfileVersionId,
+          prefillMode: draft.prefillMode,
+          profileMismatchConfirmed: draft.profileMismatchConfirmed,
           assignmentId,
           expectedUpdatedAt,
         }),
@@ -408,10 +361,11 @@ export function AccountsDashboard(props: { displayName: string }) {
             </p>
           </div>
           <form
-            className="flex w-full gap-2 sm:w-auto"
+            className="flex w-full flex-wrap gap-2 sm:w-auto"
             onSubmit={(event) => {
               event.preventDefault();
               setExpandedAccountId(null);
+              setSelectedIds([]);
               setPageMeta((current) => ({ ...current, page: 1 }));
               setSearch(searchDraft.trim());
             }}
@@ -426,6 +380,13 @@ export function AccountsDashboard(props: { displayName: string }) {
               />
             </InputGroup>
             <Button type="submit" variant="outline">Search</Button>
+            <Button
+              type="button"
+              disabled={selectedAccounts.length === 0 || loading}
+              onClick={() => setBatchOpen(true)}
+            >
+              <Plus /> Assign{selectedAccounts.length > 0 ? ` (${selectedAccounts.length})` : ""}
+            </Button>
           </form>
         </div>
 
@@ -448,6 +409,16 @@ export function AccountsDashboard(props: { displayName: string }) {
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead className="w-10">
+                    <Checkbox
+                      aria-label="Select all accounts on this page"
+                      checked={selectedAccounts.length === accounts.length
+                        ? true
+                        : selectedAccounts.length > 0 ? "indeterminate" : false}
+                      onCheckedChange={(checked) =>
+                        setSelectedIds(checked === true ? accounts.map((account) => account.id) : [])}
+                    />
+                  </TableHead>
                   <TableHead>Account</TableHead>
                   <TableHead>Type</TableHead>
                   <TableHead>Password</TableHead>
@@ -462,6 +433,16 @@ export function AccountsDashboard(props: { displayName: string }) {
                   return (
                     <Fragment key={account.id}>
                       <TableRow>
+                        <TableCell>
+                          <Checkbox
+                            aria-label={`Select ${account.name}`}
+                            checked={selectedIds.includes(account.id)}
+                            onCheckedChange={(checked) => setSelectedIds((current) =>
+                              checked === true
+                                ? [...new Set([...current, account.id])]
+                                : current.filter((id) => id !== account.id))}
+                          />
+                        </TableCell>
                         <TableCell className="min-w-48 whitespace-normal">
                           <span className="block font-medium">{account.name}</span>
                           <span className="block break-all text-xs text-muted-foreground">{account.email}</span>
@@ -494,14 +475,12 @@ export function AccountsDashboard(props: { displayName: string }) {
                       </TableRow>
                       {expanded && (
                         <TableRow className="bg-muted/20 hover:bg-muted/20">
-                          <TableCell colSpan={6} className="p-0 whitespace-normal">
+                          <TableCell colSpan={7} className="p-0 whitespace-normal">
                             <div id={"account-details-" + account.id}>
                               <AccountDetails
                                 account={account}
-                                templates={templates}
                                 busy={assigningUserId === account.id}
                                 timeZone={timeZone}
-                                onAssign={(draft) => assignForm(account.id, draft)}
                                 onReplace={(assignmentId, expectedUpdatedAt, draft) =>
                                   replaceAssignmentResume(account.id, assignmentId, expectedUpdatedAt, draft)}
                               />
@@ -523,16 +502,35 @@ export function AccountsDashboard(props: { displayName: string }) {
               disabled={loading || assigningUserId !== null}
               onPageChange={(page) => {
                 setExpandedAccountId(null);
+                setSelectedIds([]);
                 setPageMeta((current) => ({ ...current, page }));
               }}
               onPageSizeChange={(pageSize) => {
                 setExpandedAccountId(null);
+                setSelectedIds([]);
                 setPageMeta((current) => ({ ...current, page: 1, pageSize }));
               }}
             />
           </div>
         )}
       </Card>
+
+      <BatchAssignmentDialog
+        open={batchOpen}
+        onOpenChange={setBatchOpen}
+        accounts={selectedAccounts}
+        templates={templates}
+        onRemove={(accountId) => setSelectedIds((current) =>
+          current.filter((id) => id !== accountId))}
+        onAssigned={(accountId, assignment) => {
+          setAccounts((current) => current.map((account) => account.id === accountId
+            ? { ...account, assignments: [assignment, ...account.assignments] }
+            : account));
+          setAssignmentCount((count) => count + 1);
+          setSelectedIds((current) => current.filter((id) => id !== accountId));
+          setNotice("Selected form assignments were saved.");
+        }}
+      />
 
       <Dialog
         open={createOpen}
@@ -647,10 +645,8 @@ export function AccountsDashboard(props: { displayName: string }) {
 
 function AccountDetails(props: {
   account: RecipientAccountSummary;
-  templates: AssignmentTemplateSummary[];
   busy: boolean;
   timeZone: string;
-  onAssign: (draft: AssignmentDraft) => Promise<boolean>;
   onReplace: (
     assignmentId: string,
     expectedUpdatedAt: string,
@@ -661,16 +657,16 @@ function AccountDetails(props: {
     useState<RecipientAssignmentSummary | null>(null);
   return (
     <div className="min-w-0">
-      <AccountAssignmentControls
-        accountId={props.account.id}
-        accountName={props.account.name}
-        templates={props.templates}
-        busy={props.busy}
-        replacement={replacement}
-        onAssign={props.onAssign}
-        onReplace={props.onReplace}
-        onCancelReplacement={() => setReplacement(null)}
-      />
+      {replacement && (
+        <AccountResumeReplacement
+          accountId={props.account.id}
+          accountName={props.account.name}
+          assignment={replacement}
+          busy={props.busy}
+          onReplace={props.onReplace}
+          onCancel={() => setReplacement(null)}
+        />
+      )}
       <div className="space-y-2 p-4">
         <h3 className="text-xs font-semibold">Assigned forms</h3>
         {props.account.assignments.length === 0 ? (
@@ -729,7 +725,7 @@ function AccountAssignmentRow(props: {
             </span>
           )}
           <span>
-            {props.assignment.approvedFieldCount} approved value{props.assignment.approvedFieldCount === 1 ? "" : "s"}
+            {props.assignment.approvedFieldCount} mapped or available value{props.assignment.approvedFieldCount === 1 ? "" : "s"}
           </span>
         </div>
       </div>
