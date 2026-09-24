@@ -127,7 +127,7 @@ export async function POST(
     if (
       prefillMode !== "none"
       && allowedFieldIds !== null
-      && allowedFieldIds.length + allowedProfileKeys.length === 0
+      && allowedFieldIds.length + requestedAllowedProfileKeys.length === 0
     ) {
       return jsonError("Choose at least one resume-data field.", 400);
     }
