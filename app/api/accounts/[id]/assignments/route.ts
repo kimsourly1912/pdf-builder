@@ -15,8 +15,10 @@ import {
 } from "@/db/schema";
 import { createAuditEvent } from "@/features/audit/audit.server";
 import {
+  availableProfileKeys,
   buildAssignmentPrefillStorage,
   isAssignmentPrefillMode,
+  mappedAutomaticFieldIds,
 } from "@/features/accounts/assignment-prefill";
 import { normalizeCandidateProfile } from "@/features/resumes/candidate-profile";
 import { buildCandidatePrefillSnapshot } from "@/features/resumes/candidate-prefill";
@@ -81,13 +83,17 @@ export async function POST(
     const allowedFieldIds = allowedFieldIdsProvided
       ? [...new Set(rawAllowedFieldIds as string[])]
       : null;
+    const allowedProfileKeysProvided = Object.prototype.hasOwnProperty.call(
+      body,
+      "allowedProfileKeys",
+    );
     const rawAllowedProfileKeys = body.allowedProfileKeys ?? [];
     if (!Array.isArray(rawAllowedProfileKeys)
       || rawAllowedProfileKeys.length > 40
       || rawAllowedProfileKeys.some((key) => !isCandidatePrefillKey(key))) {
       return jsonError("Resume value selection is invalid.", 400);
     }
-    const allowedProfileKeys = [...new Set(rawAllowedProfileKeys as string[])];
+    const requestedAllowedProfileKeys = [...new Set(rawAllowedProfileKeys as string[])];
     const profileSelectionProvided = Object.prototype.hasOwnProperty.call(
       body,
       "candidateProfileVersionId",
@@ -121,7 +127,7 @@ export async function POST(
     if (
       prefillMode !== "none"
       && allowedFieldIds !== null
-      && allowedFieldIds.length + allowedProfileKeys.length === 0
+      && allowedFieldIds.length + requestedAllowedProfileKeys.length === 0
     ) {
       return jsonError("Choose at least one resume-data field.", 400);
     }
@@ -132,7 +138,7 @@ export async function POST(
       prefillMode,
       candidateProfileVersionId: requestedProfileVersionId,
       allowedFieldIds: allowedFieldIds ?? [],
-      allowedProfileKeys,
+      allowedProfileKeys: requestedAllowedProfileKeys,
       profileMismatchConfirmed,
     });
     const db = getDb();
@@ -341,6 +347,9 @@ export async function POST(
     if (selectedProfile && !profile) {
       return jsonError("The selected candidate profile is invalid.", 422);
     }
+    const allowedProfileKeys = allowedProfileKeysProvided
+      ? requestedAllowedProfileKeys
+      : profile ? availableProfileKeys(profile) : [];
     const snapshotCandidate = prefillMode === "none"
       ? null
       : profileSelectionProvided
@@ -367,7 +376,7 @@ export async function POST(
     const prefillStorage = buildAssignmentPrefillStorage({
       mode: prefillMode,
       snapshot,
-      allowedFieldIds: allowedFieldIds ?? Object.keys(snapshot.values),
+      allowedFieldIds: allowedFieldIds ?? mappedAutomaticFieldIds(snapshot),
       profile,
       allowedProfileKeys,
     });
@@ -495,7 +504,9 @@ export async function PATCH(
         ? body.candidateProfileVersionId.trim()
         : null;
     const profileMismatchConfirmed = body.profileMismatchConfirmed === true;
-    const rawAllowedFieldIds = body.allowedFieldIds;
+    const allowedFieldIdsProvided = Object.prototype.hasOwnProperty.call(body, "allowedFieldIds");
+    const allowedProfileKeysProvided = Object.prototype.hasOwnProperty.call(body, "allowedProfileKeys");
+    const rawAllowedFieldIds = body.allowedFieldIds ?? [];
     const rawAllowedProfileKeys = body.allowedProfileKeys ?? [];
     if (
       !/^[A-Za-z0-9_-]{1,128}$/u.test(assignmentId)
@@ -516,8 +527,10 @@ export async function PATCH(
       return jsonError("The resume-data replacement request is invalid.", 400);
     }
     const allowedFieldIds = [...new Set(rawAllowedFieldIds as string[])];
-    const allowedProfileKeys = [...new Set(rawAllowedProfileKeys as string[])];
-    if (prefillMode !== "none" && (!profileVersionId || allowedFieldIds.length + allowedProfileKeys.length === 0)) {
+    const requestedAllowedProfileKeys = [...new Set(rawAllowedProfileKeys as string[])];
+    if (prefillMode !== "none" && (!profileVersionId
+      || (allowedFieldIdsProvided && allowedProfileKeysProvided
+        && allowedFieldIds.length + requestedAllowedProfileKeys.length === 0))) {
       return jsonError(
         "Choose resume data and at least one approved field.",
         400,
@@ -628,17 +641,24 @@ export async function PATCH(
           }
         : null,
     });
+    const selectedFieldIds = allowedFieldIdsProvided
+      ? allowedFieldIds
+      : mappedAutomaticFieldIds(snapshot);
+    const allowedProfileKeys = allowedProfileKeysProvided
+      ? requestedAllowedProfileKeys
+      : profile ? availableProfileKeys(profile) : [];
     const storage = buildAssignmentPrefillStorage({
       mode: prefillMode,
       snapshot,
       allowedFieldIds:
-        prefillMode === "none" ? [] : allowedFieldIds,
+        prefillMode === "none" ? [] : selectedFieldIds,
       profile,
       allowedProfileKeys: prefillMode === "none" ? [] : allowedProfileKeys,
     });
     if (
       prefillMode !== "none"
-      && storage.approvedFieldIds.length !== allowedFieldIds.length + allowedProfileKeys.length
+      && allowedFieldIdsProvided
+      && storage.approvedFieldIds.length !== selectedFieldIds.length + allowedProfileKeys.length
     ) {
       return jsonError(
         "One or more approved fields are no longer available.",
