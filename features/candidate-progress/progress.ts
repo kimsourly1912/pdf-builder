@@ -90,6 +90,7 @@ export type ProgressRun = {
   createdAt: string;
   updatedAt: string;
   archived: boolean;
+  waitingFor?: string;
 };
 export type ProgressForm = {
   id: string;
@@ -118,6 +119,8 @@ export type CandidateProgress = {
   attention: string[];
   accountCreated: boolean;
   lastActivity: string;
+  stageSince: string | null;
+  issues: { key: string; message: string; action: string; href: string }[];
   activity: {
     id: string;
     action: string;

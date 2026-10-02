@@ -56,7 +56,15 @@ export async function PATCH(request: Request, context: Context) {
         errorMessage: null,
         lockToken: null,
         lockedUntil: null,
-        ...(returning ? { passwordHash: null } : {}),
+        ...(returning
+          ? {
+              passwordHash: null,
+              contextJson: JSON.stringify({
+                ...run.context,
+                reviewStartedAt: new Date().toISOString(),
+              }),
+            }
+          : {}),
         updatedAt: new Date().toISOString(),
       })
       .where(

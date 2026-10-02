@@ -1,4 +1,8 @@
 "use client";
+import {
+  statusColor,
+  runStatusLabel,
+} from "@/features/candidate-progress/presentation";
 import { ArchiveButton } from "@/features/archive/archive-button";
 import { RunTelegramAction } from "@/features/telegram/run-telegram-action";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -44,7 +48,7 @@ import { STEP_LABELS, type WorkflowRun, type RunStatus } from "./workflow";
 const STATUS_LABELS: Record<RunStatus, string> = {
   queued: "Queued",
   running: "Running",
-  waiting_review: "Waiting for review",
+  waiting_review: "Waiting for CV review",
   completed: "Completed",
   rejected: "Rejected",
   failed: "Failed",
@@ -56,23 +60,10 @@ export function RunBadge({
   status: RunStatus;
   waitingFor?: string;
 }) {
-  const color =
-    status === "failed"
-      ? "border-red-200 bg-red-50 text-red-700"
-      : status === "waiting_review"
-        ? "border-amber-200 bg-amber-50 text-amber-700"
-        : status === "completed"
-          ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-          : status === "running"
-            ? "border-blue-200 bg-blue-50 text-blue-700"
-            : "";
+  const label = runStatusLabel(status, waitingFor);
   return (
-    <Badge variant="outline" className={color}>
-      {waitingFor === "telegram"
-        ? "Waiting for Telegram connection"
-        : waitingFor === "telegram_retry"
-          ? "Telegram retry pending"
-          : STATUS_LABELS[status]}
+    <Badge variant="outline" className={statusColor(label)}>
+      {label}
     </Badge>
   );
 }
@@ -445,6 +436,41 @@ export function WorkflowRunsView({ workflowId }: { workflowId?: string }) {
                     </p>
                   )}
                 </div>
+              )}
+              {selected.status === "failed" && (
+                <Alert>
+                  <AlertDescription className="space-y-2">
+                    <p>
+                      {selected.graph.nodes.find(
+                        (n) => n.id === selected.currentNodeId,
+                      )?.kind === "send_telegram"
+                        ? "Check the Telegram contact and delivery result below. If delivery is uncertain, check with the candidate before resending."
+                        : selected.graph.nodes.find(
+                              (n) => n.id === selected.currentNodeId,
+                            )?.kind === "create_account"
+                          ? "Check the reviewed email and any existing account before retrying. Account reuse requires explicit confirmation."
+                          : selected.graph.nodes.find(
+                                (n) => n.id === selected.currentNodeId,
+                              )?.kind === "assign_forms"
+                            ? "Check the published template versions and roles in this workflow. After fixing the requirement, retry the failed step; completed assignments are preserved."
+                            : "Check the error below and the selected CV. Fix the requirement, then retry the failed step; completed steps are preserved."}
+                    </p>
+                    {selected.graph.nodes.find(
+                      (n) => n.id === selected.currentNodeId,
+                    )?.kind === "create_account" && (
+                      <Link className="underline" href="/accounts">
+                        Review accounts
+                      </Link>
+                    )}
+                    {selected.graph.nodes.find(
+                      (n) => n.id === selected.currentNodeId,
+                    )?.kind === "assign_forms" && (
+                      <Link className="underline" href="/templates">
+                        Review published templates
+                      </Link>
+                    )}
+                  </AlertDescription>
+                </Alert>
               )}
               {selected.errorMessage && (
                 <Alert variant="destructive">

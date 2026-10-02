@@ -42,6 +42,9 @@ export async function GET(request: Request, context: Context) {
         ? {
             ...submissionProgress(progress),
             fileName: progress.selectedCv.fileName,
+            stage: progress.stage,
+            stageSince: progress.stageSince,
+            issues: progress.issues,
           }
         : null,
       archived:

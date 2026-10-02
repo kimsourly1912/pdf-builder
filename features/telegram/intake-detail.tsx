@@ -1,4 +1,9 @@
 "use client";
+import type {
+  CandidateStage,
+  CandidateProgress,
+} from "@/features/candidate-progress/progress";
+import { stageAge } from "@/features/candidate-progress/presentation";
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import {
@@ -9,6 +14,10 @@ import {
   Play,
   RefreshCw,
 } from "lucide-react";
+import {
+  statusColor,
+  runStatusLabel,
+} from "@/features/candidate-progress/presentation";
 import { AppShell } from "@/components/patterns/app-shell";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -50,6 +59,9 @@ type IntakeData = {
     next: string;
     href: string;
     fileName: string;
+    stage: CandidateStage;
+    stageSince: string | null;
+    issues: CandidateProgress["issues"];
   } | null;
   id: string;
   resumeId: string;
@@ -174,7 +186,7 @@ export function IntakeDetail({
       });
       setRunOpen(false);
       setNotice(
-        `Workflow ${result.run.status.replaceAll("_", " ")}.${result.run.errorMessage ? ` ${result.run.errorMessage}` : ""}`,
+        `Workflow ${runStatusLabel(result.run.status)}.${result.run.errorMessage ? ` ${result.run.errorMessage}` : ""}`,
       );
       await load();
     } catch (e) {
@@ -296,7 +308,7 @@ export function IntakeDetail({
               </AlertDescription>
             </Alert>
           )}
-          <div className="grid min-w-0 gap-5 lg:grid-cols-[minmax(0,1fr)_380px]">
+          <div className="grid min-w-0 grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1fr)_380px]">
             <Card className="order-last overflow-hidden p-0 lg:order-first">
               <div className="flex flex-wrap items-center gap-2 border-b p-3">
                 <span className="min-w-0 break-all font-medium text-sm">
@@ -316,17 +328,40 @@ export function IntakeDetail({
                 />
               </div>
             </Card>
-            <div className="order-first space-y-5 lg:order-last">
+            <div className="order-first min-w-0 space-y-5 lg:order-last">
               <Card id="preparation" className="scroll-mt-24">
                 <CardHeader>
                   <CardTitle>Next step</CardTitle>
                   <CardDescription>For {data.fileName}</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  <Badge>
+                  <Badge
+                    variant="outline"
+                    className={statusColor(
+                      data.progress?.label ??
+                        (data.reviewReady ? "CV approved" : "Needs review"),
+                    )}
+                  >
                     {data.progress?.label ??
                       (data.reviewReady ? "CV approved" : "Needs review")}
                   </Badge>
+                  {data.progress && (
+                    <p className="text-xs text-muted-foreground">
+                      {stageAge(data.progress.stage, data.progress.stageSince)}
+                    </p>
+                  )}
+                  {data.progress?.issues
+                    .filter((issue) => issue.key !== "contact")
+                    .map((issue) => (
+                      <Alert key={issue.key}>
+                        <AlertDescription className="space-y-2">
+                          <p>{issue.message}</p>
+                          <Link className="underline" href={issue.href}>
+                            {issue.action}
+                          </Link>
+                        </AlertDescription>
+                      </Alert>
+                    ))}
                   <p className="text-sm text-muted-foreground">
                     {data.reviewReady
                       ? `Approved in the Resume Editor${data.reviewedAt ? ` · ${runDate(data.reviewedAt)}` : ""}. Preparation reuses this approval.`
@@ -382,7 +417,10 @@ export function IntakeDetail({
                           className="w-full"
                           aria-label="Intake workflow"
                         >
-                          <SelectValue placeholder="Choose published workflow" />
+                          <SelectValue
+                            className="min-w-0 flex-1 !block truncate text-left"
+                            placeholder="Choose published workflow"
+                          />
                         </SelectTrigger>
                         <SelectContent>
                           {workflows.map((w) => (
@@ -459,7 +497,7 @@ export function IntakeDetail({
                         className="block text-sm underline"
                         href={`/workflows/${run.workflowId}?tab=runs&run=${run.id}`}
                       >
-                        View run · {run.status.replaceAll("_", " ")}
+                        View run · {runStatusLabel(run.status)}
                       </Link>
                     ))}
                 </CardContent>

@@ -1,4 +1,5 @@
 import "server-only";
+import { stageSince } from "./stage-since";
 import { getDatabaseBinding } from "@/db";
 import { fail } from "@/features/workflows/workflow.server";
 import type { WorkflowGraph, RunContext } from "@/features/workflows/workflow";
@@ -80,33 +81,38 @@ async function rows<T>(query: string, owner: string) {
     .results;
 }
 async function load(owner: string, resumeId?: string) {
-  const [cvs, metadata, runs, forms, deliveries, accounts] = await Promise.all([
-    rows<CvRow>(
-      `SELECT c.id,c.full_name name,c.email,c.user_id userId,c.updated_at candidateRevision,r.id resumeId,r.file_name fileName,r.created_at receivedAt,r.updated_at resumeRevision,
+  const [cvs, metadata, runs, forms, deliveries, accounts, moves] =
+    await Promise.all([
+      rows<CvRow>(
+        `SELECT c.id,c.full_name name,c.email,c.user_id userId,c.updated_at candidateRevision,r.id resumeId,r.file_name fileName,r.created_at receivedAt,r.updated_at resumeRevision,
  (SELECT p.id FROM candidate_profile_versions p WHERE p.resume_id=r.id AND p.candidate_id=c.id AND p.owner_email=c.owner_email AND p.created_by_email=c.owner_email AND p.verification_status='verified' AND r.verification_status='verified' AND c.verification_status='verified' AND r.duplicate_candidate_id IS NULL AND p.created_at>=r.updated_at AND p.created_at>=c.updated_at ORDER BY p.version_number DESC LIMIT 1) approvalId,
  (SELECT p.verified_at FROM candidate_profile_versions p WHERE p.resume_id=r.id AND p.candidate_id=c.id AND p.owner_email=c.owner_email AND p.verification_status='verified' ORDER BY p.version_number DESC LIMIT 1) approvedAt,
  i.id intakeId,t.username telegram,CASE WHEN t.confirmed_candidate_id=c.id AND t.confirmed_by=c.owner_email THEN 1 ELSE 0 END confirmed,CASE WHEN ${activeCv} THEN 0 ELSE 1 END archived
  FROM candidates c JOIN resumes r ON r.candidate_id=c.id AND r.owner_email=c.owner_email LEFT JOIN telegram_intakes i ON i.resume_id=r.id AND i.owner_email=c.owner_email LEFT JOIN telegram_connections t ON t.id=i.connection_id AND t.owner_email=c.owner_email WHERE c.owner_email=? ORDER BY r.created_at DESC,r.id DESC`,
-      owner,
-    ),
-    rows<Meta>("SELECT * FROM candidate_progress WHERE owner_email=?", owner),
-    rows<RunRow>(
-      "SELECT w.id,w.workflow_id,w.workflow_name,w.resume_id,w.context_json,w.graph_json,w.status,w.created_at,w.updated_at,w.error_message,EXISTS(SELECT 1 FROM archive_records a WHERE a.entity_type='workflow_run' AND a.entity_id=w.id) archived FROM workflow_runs w WHERE w.owner_email=? ORDER BY w.created_at DESC,w.id DESC",
-      owner,
-    ),
-    rows<FormRow>(
-      "SELECT f.id,f.user_id userId,f.template_id templateId,f.template_version_id versionId,f.role_id roleId,t.name,f.status,COALESCE(f.completed_at,l.completed_at) completedAt,f.candidate_profile_version_id profileId,f.updated_at updatedAt,l.status linkStatus,l.submission_count submissionCount,l.expires_at expiresAt,(SELECT s.id FROM submissions s WHERE s.recipient_link_id=l.id ORDER BY s.submitted_at DESC LIMIT 1) submissionId,(SELECT s.completed_file_key FROM submissions s WHERE s.recipient_link_id=l.id ORDER BY s.submitted_at DESC LIMIT 1) submissionPdf FROM form_assignments f JOIN recipient_profiles p ON p.user_id=f.user_id JOIN templates t ON t.id=f.template_id AND t.owner_email=p.created_by_email JOIN recipient_links l ON l.id=f.recipient_link_id WHERE p.created_by_email=?",
-      owner,
-    ),
-    rows<Delivery>(
-      "SELECT id,run_id,status,updated_at FROM telegram_deliveries WHERE owner_email=?",
-      owner,
-    ),
-    rows<{ id: string; banned: number }>(
-      "SELECT u.id,u.banned FROM user u JOIN recipient_profiles p ON p.user_id=u.id WHERE p.created_by_email=?",
-      owner,
-    ),
-  ]);
+        owner,
+      ),
+      rows<Meta>("SELECT * FROM candidate_progress WHERE owner_email=?", owner),
+      rows<RunRow>(
+        "SELECT w.id,w.workflow_id,w.workflow_name,w.resume_id,w.context_json,w.graph_json,w.status,w.created_at,w.updated_at,w.error_message,EXISTS(SELECT 1 FROM archive_records a WHERE a.entity_type='workflow_run' AND a.entity_id=w.id) archived FROM workflow_runs w WHERE w.owner_email=? ORDER BY w.created_at DESC,w.id DESC",
+        owner,
+      ),
+      rows<FormRow>(
+        "SELECT f.id,f.user_id userId,f.template_id templateId,f.template_version_id versionId,f.role_id roleId,t.name,f.status,COALESCE(f.completed_at,l.completed_at) completedAt,f.candidate_profile_version_id profileId,f.updated_at updatedAt,l.status linkStatus,l.submission_count submissionCount,l.expires_at expiresAt,(SELECT s.id FROM submissions s WHERE s.recipient_link_id=l.id ORDER BY s.submitted_at DESC LIMIT 1) submissionId,(SELECT s.completed_file_key FROM submissions s WHERE s.recipient_link_id=l.id ORDER BY s.submitted_at DESC LIMIT 1) submissionPdf FROM form_assignments f JOIN recipient_profiles p ON p.user_id=f.user_id JOIN templates t ON t.id=f.template_id AND t.owner_email=p.created_by_email JOIN recipient_links l ON l.id=f.recipient_link_id WHERE p.created_by_email=?",
+        owner,
+      ),
+      rows<Delivery>(
+        "SELECT id,run_id,status,updated_at FROM telegram_deliveries WHERE owner_email=?",
+        owner,
+      ),
+      rows<{ id: string; banned: number; email: string }>(
+        "SELECT u.id,u.banned,u.email FROM user u JOIN recipient_profiles p ON p.user_id=u.id WHERE p.created_by_email=?",
+        owner,
+      ),
+      rows<{ candidateId: string; at: string; metadata: string }>(
+        "SELECT target_id candidateId,created_at at,metadata_json metadata FROM audit_events WHERE owner_email=? AND action='candidate.progress_stage_changed' ORDER BY created_at DESC",
+        owner,
+      ),
+    ]);
   const groups = new Map<string, CvRow[]>();
   for (const r of cvs) {
     const list = groups.get(r.id) ?? [];
@@ -205,31 +211,84 @@ async function load(owner: string, resumeId?: string) {
         submissionCount: f.submissionCount,
       })),
     });
-    const attention: string[] = [];
+    const attention: string[] = [],
+      issues: CandidateProgress["issues"] = [];
+    const accountHref = account
+      ? `/accounts?${new URLSearchParams({ search: account.email, account: account.id })}`
+      : "/accounts";
+    const runHref = run
+      ? `/workflows/${run.workflow_id}?tab=runs&run=${run.id}`
+      : "/workflows";
+    const issue = (
+      key: string,
+      action: string,
+      href: string,
+      message: string,
+    ) => {
+      attention.push(message);
+      issues.push({ key, action, href, message });
+    };
     if (active[0].resumeId !== cv.resumeId)
-      attention.push(
+      issue(
+        "new_cv",
+        "Choose latest CV",
+        `/candidates/${id}#selected-cv`,
         "A newer CV is available. Select it to review; current preparation stays linked to this CV.",
       );
     if (cv.approvalId && cv.intakeId && !cv.confirmed && !facts.invitationSent)
-      attention.push(
+      issue(
+        "contact",
+        "Confirm contact",
+        `/intake/${cv.intakeId}#contact`,
         "Confirm this Telegram contact before preparing its invitation.",
       );
     if (account?.banned)
-      attention.push("Account access is disabled. Review Accounts or Archive.");
+      issue(
+        "account",
+        "Review account access",
+        accountHref,
+        "Account access is disabled. Review Accounts or Archive.",
+      );
     if (run?.status === "failed")
-      attention.push(
+      issue(
+        "run_failed",
+        "Open failed step",
+        runHref,
         run.error_message ?? "Preparation failed. Open the run to resolve it.",
       );
     if (run?.status === "rejected")
-      attention.push("CV review was rejected in this preparation.");
+      issue(
+        "rejected",
+        "Review CV",
+        `/resumes/${cv.resumeId}`,
+        "CV review was rejected in this preparation.",
+      );
     if (context.waitingFor === "telegram")
-      attention.push("Telegram contact or delivery needs attention.");
+      issue(
+        "telegram",
+        "Connect Telegram contact",
+        runHref,
+        "Telegram contact or delivery needs attention.",
+      );
     if (context.waitingFor === "telegram_retry")
-      attention.push("Telegram delivery is waiting for a retry.");
+      issue(
+        "telegram_retry",
+        "Review Telegram retry",
+        runHref,
+        "Telegram delivery is waiting for a retry.",
+      );
     if (runDeliveries.some((d) => d.status === "uncertain"))
-      attention.push("Telegram delivery is uncertain. Check before resending.");
+      issue(
+        "uncertain",
+        "Check delivery before resending",
+        runHref,
+        "Telegram delivery is uncertain. Check before resending.",
+      );
     if (run && context.reviewedAt && !current)
-      attention.push(
+      issue(
+        "changed_cv",
+        "Review changed CV",
+        `/resumes/${cv.resumeId}`,
         "CV details changed after this preparation. Previous forms remain preserved.",
       );
     if (
@@ -237,7 +296,10 @@ async function load(owner: string, resumeId?: string) {
         ["queued", "running", "waiting_review"].includes(r.status),
       ).length > 1
     )
-      attention.push(
+      issue(
+        "multiple_runs",
+        "Compare preparations",
+        `/candidates/${id}#selected-run`,
         "Multiple preparations are active. Check the selected run.",
       );
     if (
@@ -249,7 +311,10 @@ async function load(owner: string, resumeId?: string) {
             (f.expiresAt && f.expiresAt <= new Date().toISOString())),
       )
     )
-      attention.push(
+      issue(
+        "forms",
+        "Review form assignments",
+        accountHref,
         "An assigned form is cancelled or expired. Review the assignment.",
       );
     const auto = automaticStage(facts),
@@ -281,6 +346,7 @@ async function load(owner: string, resumeId?: string) {
       createdAt: r.created_at,
       updatedAt: r.updated_at,
       archived: !!r.archived,
+      waitingFor: JSON.parse(r.context_json).waitingFor,
     });
     const dtoCv = (c: CvRow) => ({
       id: c.resumeId,
@@ -361,6 +427,34 @@ async function load(owner: string, resumeId?: string) {
       facts,
       forms: publicForms,
       attention,
+      issues,
+      stageSince: stageSince(manual ? meta!.manual_stage! : auto, {
+        receivedAt: cv.receivedAt,
+        approvedAt: cv.approvedAt,
+        approvalCurrent: !!cv.approvalId,
+        cvChangedAt: cv.resumeRevision,
+        candidateChangedAt: cv.candidateRevision,
+        manualAt: manual
+          ? moves.find(
+              (m) =>
+                m.candidateId === id &&
+                JSON.parse(m.metadata).resumeId === cv.resumeId &&
+                JSON.parse(m.metadata).to === STAGE_LABELS[meta!.manual_stage!],
+            )?.at
+          : undefined,
+        reviewStartedAt: context.reviewStartedAt,
+        preparationCompletedAt:
+          context.preparationCompletedAt ??
+          graph?.nodes
+            .filter((n) => n.kind === "complete")
+            .map((n) => context.steps?.[n.id]?.completedAt)
+            .filter((s): s is string => !!s)
+            .sort()
+            .at(-1),
+        formCompletedAt: relevant
+          .map((f) => f.completedAt)
+          .filter((s): s is string => !!s),
+      }),
       accountCreated: !!account,
       lastActivity: [
         cv.receivedAt,
@@ -381,11 +475,16 @@ async function load(owner: string, resumeId?: string) {
   return entries;
 }
 export async function listProgress(owner: string, query: URLSearchParams) {
+  const sort = query.get("sort") ?? "recent";
   const all = (await load(owner))
     .map((e) => e.item)
     .sort(
       (a, b) =>
-        b.lastActivity.localeCompare(a.lastActivity) ||
+        (sort === "oldest"
+          ? (a.stageSince ?? "9999").localeCompare(b.stageSince ?? "9999")
+          : sort === "newest"
+            ? b.selectedCv.receivedAt.localeCompare(a.selectedCv.receivedAt)
+            : b.lastActivity.localeCompare(a.lastActivity)) ||
         a.id.localeCompare(b.id),
     );
   const search = query.get("search")?.trim().toLowerCase() ?? "",
@@ -401,7 +500,7 @@ export async function listProgress(owner: string, query: URLSearchParams) {
       (!attention || i.attention.length),
   );
   const page = Math.min(
-      100000,
+      Math.max(1, Math.ceil(items.length / 50)),
       Math.max(1, Math.floor(Number(query.get("page")) || 1)),
     ),
     size = 50;

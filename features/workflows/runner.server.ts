@@ -90,6 +90,7 @@ export async function processWorkflowRun(id: string): Promise<void> {
       let outcome: "next" | "yes" | "no" = "next";
       let note: string | undefined;
       if (node.kind === "review_resume") {
+        context.reviewStartedAt ??= new Date().toISOString();
         await checkpoint(row, token, context, nodeId, "waiting_review");
         if (
           context.resumeEditorApproval &&
@@ -100,6 +101,8 @@ export async function processWorkflowRun(id: string): Promise<void> {
         return;
       }
       if (node.kind === "complete" || node.kind === "stop") {
+        if (node.kind === "complete" && !context.rejection)
+          context.preparationCompletedAt ??= new Date().toISOString();
         context.steps[nodeId] = {
           status: "completed",
           attempts,

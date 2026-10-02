@@ -30,7 +30,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { workflowApi, errorText, runDate } from "@/features/workflows/client";
+import { workflowApi, errorText } from "@/features/workflows/client";
 import {
   STAGES,
   STAGE_LABELS,
@@ -38,6 +38,8 @@ import {
   type CandidateProgress,
   type CandidateStage,
 } from "./progress";
+import { stageAge, statusColor, runStatusLabel } from "./presentation";
+import { useUrlFilters } from "./use-url-filters";
 import { candidateNextAction } from "./submission-progress";
 import { MoveDialog, MoveMenu } from "./progress-actions";
 type Data = {
@@ -48,6 +50,23 @@ type Data = {
   stats: Record<CandidateStage, number>;
   needsAttention: number;
 };
+const FILTERS = {
+  search: "",
+  stage: "all",
+  attention: "false",
+  page: "1",
+  sort: "recent",
+};
+const validFilter = (key: keyof typeof FILTERS, value: string) =>
+  key === "stage"
+    ? value === "all" || STAGES.includes(value as CandidateStage)
+    : key === "attention"
+      ? ["true", "false"].includes(value)
+      : key === "sort"
+        ? ["recent", "oldest", "newest"].includes(value)
+        : key === "page"
+          ? /^[1-9]\d{0,5}$/.test(value)
+          : value.length <= 500;
 export function ProgressDashboard({
   displayName,
   preferenceKey,
@@ -57,10 +76,6 @@ export function ProgressDashboard({
 }) {
   const [data, setData] = useState<Data | null>(null),
     [view, setView] = useState<"kanban" | "list">("kanban"),
-    [search, setSearch] = useState(""),
-    [stage, setStage] = useState("all"),
-    [attention, setAttention] = useState(false),
-    [page, setPage] = useState(1),
     [loading, setLoading] = useState(true),
     [error, setError] = useState(""),
     [notice, setNotice] = useState(""),
@@ -70,6 +85,14 @@ export function ProgressDashboard({
       item: CandidateProgress;
       stage: CandidateStage;
     } | null>(null);
+  const {
+    filters,
+    setFilters,
+    ready: filtersReady,
+  } = useUrlFilters(FILTERS, validFilter, `${preferenceKey}:filters`);
+  const { search, stage, sort } = filters,
+    attention = filters.attention === "true",
+    page = Number(filters.page);
   const serial = useRef(0),
     dragRevision = useRef<string | null>(null);
   useEffect(() => {
@@ -83,10 +106,11 @@ export function ProgressDashboard({
   }, [preferenceKey]);
   const load = useCallback(
     async (clearError = true) => {
+      if (!filtersReady) return;
       const n = ++serial.current;
       try {
         const result = await workflowApi<Data>(
-          `/api/candidates?${new URLSearchParams({ search, stage, attention: String(attention), page: String(page) })}`,
+          `/api/candidates?${new URLSearchParams({ search, stage, attention: String(attention), page: String(page), sort })}`,
         );
         if (n === serial.current) {
           setData(result);
@@ -98,7 +122,7 @@ export function ProgressDashboard({
         if (n === serial.current) setLoading(false);
       }
     },
-    [search, stage, attention, page],
+    [search, stage, attention, page, sort, filtersReady],
   );
   const invalidate = useCallback(() => {
     ++serial.current;
@@ -187,6 +211,12 @@ export function ProgressDashboard({
       {item.telegram && (
         <p className="text-xs text-muted-foreground">@{item.telegram}</p>
       )}
+      <Badge
+        variant="outline"
+        className={`mt-2 ${statusColor(STAGE_LABELS[item.stage])}`}
+      >
+        {STAGE_LABELS[item.stage]}
+      </Badge>
       <p className="mt-3 truncate text-xs" title={item.selectedCv.fileName}>
         CV: {item.selectedCv.fileName}
       </p>
@@ -208,11 +238,16 @@ export function ProgressDashboard({
           {item.attention[0]}
         </p>
       )}
-      <div className="mt-3 flex items-center justify-between gap-2">
+      <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
         <span className="text-xs text-muted-foreground">
-          {runDate(item.lastActivity)}
+          {stageAge(item.stage, item.stageSince)}
         </span>
-        <Button asChild variant="ghost" size="sm">
+        <Button
+          asChild
+          variant="ghost"
+          size="sm"
+          className="h-auto max-w-full whitespace-normal text-left"
+        >
           <Link href={candidateNextAction(item).href}>
             {candidateNextAction(item).next}
             <ArrowRight />
@@ -279,17 +314,17 @@ export function ProgressDashboard({
           className="w-full sm:w-72"
           aria-label="Search candidate progress"
           placeholder="Search name, email, Telegram or CV"
+          disabled={!filtersReady}
           value={search}
           onChange={(e) => {
-            setSearch(e.target.value);
-            setPage(1);
+            setFilters({ search: e.target.value, page: "1" });
           }}
         />
         <Select
+          disabled={!filtersReady}
           value={stage}
           onValueChange={(v) => {
-            setStage(v);
-            setPage(1);
+            setFilters({ stage: v, page: "1" });
           }}
         >
           <SelectTrigger
@@ -307,16 +342,37 @@ export function ProgressDashboard({
             ))}
           </SelectContent>
         </Select>
+        <Select
+          disabled={!filtersReady}
+          value={sort}
+          onValueChange={(v) => setFilters({ sort: v, page: "1" })}
+        >
+          <SelectTrigger aria-label="Sort candidate progress" className="w-48">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="recent">Recent activity</SelectItem>
+            <SelectItem value="oldest">Longest waiting first</SelectItem>
+            <SelectItem value="newest">Newest CV first</SelectItem>
+          </SelectContent>
+        </Select>
         <Button
           variant={attention ? "secondary" : "outline"}
+          disabled={!filtersReady}
           aria-pressed={attention}
           onClick={() => {
-            setAttention(!attention);
-            setPage(1);
+            setFilters({ attention: String(!attention), page: "1" });
           }}
         >
           <AlertTriangle />
           Needs attention ({data?.needsAttention ?? 0})
+        </Button>
+        <Button
+          disabled={!filtersReady}
+          variant="ghost"
+          onClick={() => setFilters(FILTERS)}
+        >
+          Clear filters
         </Button>
         <span className="text-sm text-muted-foreground">
           {data?.total ?? 0} candidates
@@ -360,6 +416,12 @@ export function ProgressDashboard({
                     <p className="mb-3 text-xs text-muted-foreground">
                       Showing {data.items.filter((i) => i.stage === s).length}{" "}
                       of {data.stats[s]} on this page
+                      <button
+                        className="block mt-1 underline"
+                        onClick={() => setFilters({ stage: s, page: "1" })}
+                      >
+                        View {STAGE_LABELS[s]} candidates
+                      </button>
                     </p>
                   )}
                 {over === s && drag && (
@@ -418,10 +480,20 @@ export function ProgressDashboard({
                   </TableCell>
                   <TableCell>{i.selectedCv.fileName}</TableCell>
                   <TableCell>
-                    <Badge variant="secondary">{STAGE_LABELS[i.stage]}</Badge>
+                    <Badge
+                      variant="outline"
+                      className={statusColor(STAGE_LABELS[i.stage])}
+                    >
+                      {STAGE_LABELS[i.stage]}
+                    </Badge>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {stageAge(i.stage, i.stageSince)}
+                    </p>
                   </TableCell>
                   <TableCell>
-                    {i.run?.status.replaceAll("_", " ") ?? "Not started"}
+                    {i.run
+                      ? runStatusLabel(i.run.status, i.run.waitingFor)
+                      : "Not started"}
                     {i.facts.invitationSent && (
                       <p className="text-xs">Invitation sent</p>
                     )}
@@ -458,21 +530,25 @@ export function ProgressDashboard({
       )}
       <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
         <p>
-          Page {page} · Up to 50 candidates per page. Column counts cover all
-          candidates.
+          Page {data?.page ?? page} · Up to 50 candidates per page. Column
+          counts cover all candidates.
         </p>
         <div className="flex gap-2">
           <Button
             variant="outline"
-            disabled={page <= 1}
-            onClick={() => setPage(page - 1)}
+            disabled={(data?.page ?? page) <= 1}
+            onClick={() =>
+              setFilters({ page: String((data?.page ?? page) - 1) })
+            }
           >
             Previous
           </Button>
           <Button
             variant="outline"
             disabled={!data || page * data.pageSize >= data.total}
-            onClick={() => setPage(page + 1)}
+            onClick={() =>
+              setFilters({ page: String((data?.page ?? page) + 1) })
+            }
           >
             Next
           </Button>

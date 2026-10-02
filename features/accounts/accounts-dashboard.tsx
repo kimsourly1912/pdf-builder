@@ -103,6 +103,7 @@ const EMPTY_PAGE_META: PageMeta = {
 };
 
 export function AccountsDashboard(props: { displayName: string }) {
+  const [linkReady, setLinkReady] = useState(false);
   const [accounts, setAccounts] = useState<RecipientAccountSummary[]>([]);
   const [templates, setTemplates] = useState<AssignmentTemplateSummary[]>([]);
   const [pageMeta, setPageMeta] = useState<PageMeta>(EMPTY_PAGE_META);
@@ -135,7 +136,19 @@ export function AccountsDashboard(props: { displayName: string }) {
     selectedIds.includes(account.id),
   );
 
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      const query = new URLSearchParams(location.search);
+      setSearch(query.get("search")?.slice(0, 500) ?? "");
+      setSearchDraft(query.get("search")?.slice(0, 500) ?? "");
+      setExpandedAccountId(query.get("account"));
+      setLinkReady(true);
+    }, 0);
+    return () => clearTimeout(timer);
+  }, []);
+
   const loadData = useCallback(async () => {
+    if (!linkReady) return;
     setLoading(true);
     setError("");
     try {
@@ -185,7 +198,7 @@ export function AccountsDashboard(props: { displayName: string }) {
     } finally {
       setLoading(false);
     }
-  }, [pageMeta.page, pageMeta.pageSize, search]);
+  }, [pageMeta.page, pageMeta.pageSize, search, linkReady]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -408,6 +421,7 @@ export function AccountsDashboard(props: { displayName: string }) {
                 <Search />
               </InputGroupAddon>
               <InputGroupInput
+                disabled={!linkReady}
                 value={searchDraft}
                 onChange={(event) => setSearchDraft(event.target.value)}
                 placeholder="Search name or email"

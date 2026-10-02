@@ -26,6 +26,8 @@ import {
   type CandidateProgress,
   type CandidateStage,
 } from "./progress";
+import { stageAge, statusColor, runStatusLabel } from "./presentation";
+import { candidateNextAction } from "./submission-progress";
 import { MoveMenu, MoveDialog } from "./progress-actions";
 export function ProgressDetail({
   displayName,
@@ -143,7 +145,15 @@ export function ProgressDetail({
       {item && (
         <>
           <div className="flex flex-wrap gap-2">
-            <Badge>{STAGE_LABELS[item.stage]}</Badge>
+            <Badge
+              variant="outline"
+              className={statusColor(STAGE_LABELS[item.stage])}
+            >
+              {STAGE_LABELS[item.stage]}
+            </Badge>
+            <span className="self-center text-sm text-muted-foreground">
+              {stageAge(item.stage, item.stageSince)}
+            </span>
             {item.manual && (
               <Badge variant="outline">
                 HR stage · actual progress: {STAGE_LABELS[item.automaticStage]}
@@ -153,15 +163,20 @@ export function ProgressDetail({
               {item.facts.completed}/{item.facts.required} forms submitted
             </Badge>
           </div>
-          {item.attention.map((a) => (
-            <Alert key={a}>
+          {item.issues.map((issue) => (
+            <Alert key={issue.key}>
               <AlertTriangle />
-              <AlertDescription>{a}</AlertDescription>
+              <AlertDescription className="space-y-2 break-words">
+                <p>{issue.message}</p>
+                <Button asChild variant="outline" size="sm">
+                  <Link href={issue.href}>{issue.action}</Link>
+                </Button>
+              </AlertDescription>
             </Alert>
           ))}
-          <div className="grid min-w-0 gap-5 lg:grid-cols-[minmax(0,1fr)_380px]">
-            <div className="space-y-5">
-              <Card>
+          <div className="grid min-w-0 grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1fr)_380px]">
+            <div className="min-w-0 space-y-5">
+              <Card className="min-w-0">
                 <CardHeader>
                   <CardTitle role="heading" aria-level={2}>
                     Current preparation
@@ -188,9 +203,9 @@ export function ProgressDetail({
                       <SelectTrigger
                         id="selected-cv"
                         aria-label="Selected candidate CV"
-                        className="w-full"
+                        className="w-full min-w-0"
                       >
-                        <SelectValue />
+                        <SelectValue className="min-w-0 flex-1 !block truncate text-left" />
                       </SelectTrigger>
                       <SelectContent>
                         {item.cvs.map((c) => (
@@ -231,9 +246,9 @@ export function ProgressDetail({
                         <SelectTrigger
                           id="selected-run"
                           aria-label="Selected candidate preparation"
-                          className="w-full"
+                          className="w-full min-w-0"
                         >
-                          <SelectValue />
+                          <SelectValue className="min-w-0 flex-1 !block truncate text-left" />
                         </SelectTrigger>
                         <SelectContent>
                           {item.runs
@@ -244,7 +259,8 @@ export function ProgressDetail({
                             )
                             .map((r) => (
                               <SelectItem key={r.id} value={r.id}>
-                                {r.name} · {r.status.replaceAll("_", " ")}
+                                {r.name} ·{" "}
+                                {runStatusLabel(r.status, r.waitingFor)}
                               </SelectItem>
                             ))}
                         </SelectContent>
@@ -255,7 +271,9 @@ export function ProgressDetail({
                     {[
                       [
                         "CV review",
-                        item.selectedCv.verified ? "Approved" : "Needs review",
+                        item.selectedCv.verified
+                          ? "CV approved"
+                          : "Needs review",
                       ],
                       [
                         "Login account",
@@ -265,7 +283,9 @@ export function ProgressDetail({
                       ],
                       [
                         "Preparation",
-                        item.run?.status.replaceAll("_", " ") ?? "Not started",
+                        item.run
+                          ? runStatusLabel(item.run.status, item.run.waitingFor)
+                          : "Not started",
                       ],
                       [
                         "Telegram invitation",
@@ -299,10 +319,22 @@ export function ProgressDetail({
                       asChild
                       variant={item.selectedCv.verified ? "default" : "outline"}
                     >
-                      <Link href={preparationUrl}>
+                      <Link
+                        href={
+                          item.run || !item.selectedCv.intakeId
+                            ? preparationUrl
+                            : candidateNextAction(item).href
+                        }
+                      >
                         {item.run
-                          ? "View preparation / resolve issue"
-                          : "Prepare candidate"}
+                          ? ["failed", "waiting_review"].includes(
+                              item.run.status,
+                            )
+                            ? "Resolve preparation issue"
+                            : item.run.status === "completed"
+                              ? "View completed preparation"
+                              : "View progress"
+                          : candidateNextAction(item).next}
                       </Link>
                     </Button>
                     {item.selectedCv.intakeId && (
@@ -315,9 +347,14 @@ export function ProgressDetail({
                   </div>
                 </CardContent>
               </Card>
-              <Card>
+              <Card className="min-w-0">
                 <CardHeader>
-                  <CardTitle role="heading" aria-level={2}>
+                  <CardTitle
+                    id="required-forms"
+                    className="scroll-mt-24"
+                    role="heading"
+                    aria-level={2}
+                  >
                     Required forms
                   </CardTitle>
                 </CardHeader>
@@ -361,7 +398,7 @@ export function ProgressDetail({
                   )}
                 </CardContent>
               </Card>
-              <Card>
+              <Card className="min-w-0">
                 <CardHeader>
                   <CardTitle role="heading" aria-level={2}>
                     Preparation history
@@ -379,7 +416,7 @@ export function ProgressDetail({
                           {r.id === item.run?.id ? " · Current" : ""}
                         </p>
                         <p className="text-xs text-muted-foreground">
-                          {r.status.replaceAll("_", " ")}
+                          {runStatusLabel(r.status, r.waitingFor)}
                           {r.archived ? " · Archived" : ""} ·{" "}
                           {runDate(r.createdAt)}
                         </p>

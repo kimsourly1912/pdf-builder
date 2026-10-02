@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { stageSince } from "../features/candidate-progress/stage-since.ts";
+import { stageAge } from "../features/candidate-progress/presentation.ts";
 import { candidateNextAction } from "../features/candidate-progress/submission-progress.ts";
 import {
   automaticStage,
@@ -15,6 +17,53 @@ const facts = {
   invitationRequired: true,
   invitationSent: true,
 };
+test("stage waiting uses receipt, approval, completion or HR move evidence, never general activity", () => {
+  const evidence = {
+    receivedAt: "2026-09-01T00:00:00Z",
+    approvedAt: "2026-09-02T00:00:00Z",
+    approvalCurrent: true,
+    cvChangedAt: "2026-09-02T00:00:00Z",
+    candidateChangedAt: "2026-09-02T00:00:00Z",
+    preparationCompletedAt: "2026-09-03T00:00:00Z",
+    formCompletedAt: ["2026-09-05T00:00:00Z"],
+  };
+  assert.equal(stageSince("new", evidence), evidence.receivedAt);
+  assert.equal(stageSince("approved", evidence), evidence.approvedAt);
+  assert.equal(
+    stageSince("awaiting_forms", evidence),
+    evidence.preparationCompletedAt,
+  );
+  assert.equal(stageSince("ready", evidence), evidence.formCompletedAt[0]);
+  assert.equal(stageSince("reviewing", evidence), null);
+  assert.equal(
+    stageSince("reviewing", {
+      ...evidence,
+      reviewStartedAt: "2026-09-04T00:00:00Z",
+    }),
+    "2026-09-04T00:00:00Z",
+  );
+  assert.equal(
+    stageSince("reviewing", { ...evidence, manualAt: "2026-09-04T00:00:00Z" }),
+    "2026-09-04T00:00:00Z",
+  );
+  assert.equal(
+    stageSince("new", {
+      ...evidence,
+      approvalCurrent: false,
+      cvChangedAt: "2026-09-06T00:00:00Z",
+    }),
+    "2026-09-06T00:00:00Z",
+  );
+  assert.equal(
+    stageAge(
+      "awaiting_forms",
+      evidence.preparationCompletedAt,
+      Date.parse("2026-09-06T00:00:00Z"),
+    ),
+    "Awaiting forms for 3 days",
+  );
+  assert.match(stageAge("reviewing", null), /start time unknown/);
+});
 test("next action opens the selected CV, contact confirmation or active preparation directly", () => {
   const item = {
     id: "candidate-1",

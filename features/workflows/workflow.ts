@@ -79,6 +79,8 @@ export type StepResult = {
   note?: string;
 };
 export type RunContext = {
+  reviewStartedAt?: string;
+  preparationCompletedAt?: string;
   steps: Record<string, StepResult>;
   resumeEditorApproval?: ResumeEditorApproval;
   activationRequired?: boolean;

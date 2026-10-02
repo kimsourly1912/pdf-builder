@@ -1859,3 +1859,98 @@ test("Archive paginates full groups with bounded database queries and owner isol
     d1.prepare = originalPrepare;
   }
 });
+
+test("progress waiting clocks, sorted pagination and issue actions use owned records", async () => {
+  const owner = runtime.MANAGEMENT_EMAIL;
+  for (let i = 0; i < 60; i++) {
+    const id = `waiting-${i}`,
+      at = new Date(Date.UTC(2026, 0, 1 + i)).toISOString();
+    await d1
+      .prepare(
+        "INSERT INTO candidates(id,owner_email,full_name,created_at,updated_at)VALUES(?,?,?,?,?)",
+      )
+      .bind(id, owner, `TEST waiting ${i}`, at, at)
+      .run();
+    await d1
+      .prepare(
+        "INSERT INTO resumes(id,owner_email,candidate_id,file_key,file_name,file_size,content_type,checksum,page_count,source,received_date,status,created_at,updated_at)VALUES(?,?,?,?,?,1,'application/pdf',?,1,'staff',?,'needs_attention',?,?)",
+      )
+      .bind(
+        `cv-${id}`,
+        owner,
+        id,
+        `test/${id}.pdf`,
+        `${id}.pdf`,
+        id,
+        at,
+        at,
+        at,
+      )
+      .run();
+  }
+  const query = new URLSearchParams({ search: "TEST waiting", sort: "oldest" });
+  const first = await progressService.listProgress(owner, query);
+  assert.equal(first.total, 60);
+  assert.equal(first.items.length, 50);
+  assert.equal(first.items[0].id, "waiting-0");
+  query.set("page", "999");
+  const last = await progressService.listProgress(owner, query);
+  assert.equal(last.page, 2);
+  assert.equal(last.items.length, 10);
+  query.set("page", "1");
+  query.set("sort", "newest");
+  assert.equal(
+    (await progressService.listProgress(owner, query)).items[0].id,
+    "waiting-59",
+  );
+  assert.equal(
+    (await progressService.listProgress("other@example.com", query)).total,
+    0,
+  );
+  query.set("stage", "approved");
+  assert.equal(
+    (await progressService.listProgress(owner, query)).items.length,
+    0,
+  );
+  let item = await progressService.detailProgress(owner, "waiting-0");
+  assert.equal(item.stageSince, "2026-01-01T00:00:00.000Z");
+  await progressService.updateProgress(owner, item.id, {
+    action: "move",
+    stage: "reviewing",
+    expectedRevision: item.revision,
+  });
+  item = await progressService.detailProgress(owner, item.id);
+  const since = item.stageSince;
+  assert(since);
+  await d1
+    .prepare(
+      "UPDATE candidate_progress SET updated_at='2026-12-01T00:00:00.000Z' WHERE candidate_id=?",
+    )
+    .bind(item.id)
+    .run();
+  assert.equal(
+    (await progressService.detailProgress(owner, item.id)).stageSince,
+    since,
+  );
+  const prepared = await progressService.detailProgress(
+    owner,
+    manualIntake.candidate_id,
+  );
+  assert(prepared.run);
+  const run = await workflows.getRun(owner, prepared.run.id);
+  assert(run.context.userId);
+  await d1
+    .prepare("UPDATE user SET banned=1 WHERE id=?")
+    .bind(run.context.userId)
+    .run();
+  const blocked = await progressService.detailProgress(owner, prepared.id);
+  const issue = blocked.issues.find((i) => i.key === "account");
+  assert(issue);
+  const url = new URL(issue.href, "http://localhost:5173");
+  assert.equal(url.pathname, "/accounts");
+  assert.equal(url.searchParams.get("account"), run.context.userId);
+  await d1
+    .prepare("UPDATE user SET banned=0 WHERE id=?")
+    .bind(run.context.userId)
+    .run();
+});

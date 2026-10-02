@@ -24,6 +24,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { statusColor } from "@/features/candidate-progress/presentation";
+import { useUrlFilters } from "@/features/candidate-progress/use-url-filters";
 import { workflowApi, errorText } from "@/features/workflows/client";
 export type IntakeStatus =
   | "not_extracted"
@@ -56,18 +58,33 @@ type IntakeItem = {
   confirmed: boolean;
   possibleDuplicate: boolean;
 };
-export function IntakeDashboard({ displayName }: { displayName: string }) {
+const FILTERS = { search: "", status: "all" };
+const validFilter = (key: keyof typeof FILTERS, value: string) =>
+  key === "search"
+    ? value.length <= 500
+    : ["all", "needs_review", "verified"].includes(value);
+export function IntakeDashboard({
+  displayName,
+  preferenceKey,
+}: {
+  displayName: string;
+  preferenceKey: string;
+}) {
   const [data, setData] = useState<{
       items: IntakeItem[];
       bot: { configured: boolean; username: string | null };
     } | null>(null),
-    [search, setSearch] = useState(""),
-    [status, setStatus] = useState("all"),
     [error, setError] = useState(""),
     [notice, setNotice] = useState(""),
     [loading, setLoading] = useState(true);
+  const {
+    filters: { search, status },
+    setFilters,
+    ready: filtersReady,
+  } = useUrlFilters(FILTERS, validFilter, preferenceKey);
   const load = useCallback(
     async (signal?: AbortSignal) => {
+      if (!filtersReady) return;
       setLoading(true);
       try {
         const result = await workflowApi<NonNullable<typeof data>>(
@@ -84,7 +101,7 @@ export function IntakeDashboard({ displayName }: { displayName: string }) {
         if (!signal?.aborted) setLoading(false);
       }
     },
-    [search, status],
+    [search, status, filtersReady],
   );
   useEffect(() => {
     const controller = new AbortController();
@@ -160,10 +177,15 @@ export function IntakeDashboard({ displayName }: { displayName: string }) {
               aria-label="Search candidate intake"
               placeholder="Search name, email, Telegram, or CV"
               className="min-w-48 flex-1"
+              disabled={!filtersReady}
               value={search}
-              onChange={(e) => setSearch(e.target.value)}
+              onChange={(e) => setFilters({ search: e.target.value })}
             />
-            <Select value={status} onValueChange={setStatus}>
+            <Select
+              disabled={!filtersReady}
+              value={status}
+              onValueChange={(value) => setFilters({ status: value })}
+            >
               <SelectTrigger className="w-48" aria-label="CV review status">
                 <SelectValue />
               </SelectTrigger>
@@ -229,7 +251,10 @@ export function IntakeDashboard({ displayName }: { displayName: string }) {
                     <TableCell>
                       {item.progress ? (
                         <div className="space-y-1">
-                          <Badge variant="secondary">
+                          <Badge
+                            variant="outline"
+                            className={statusColor(item.progress.label)}
+                          >
                             {item.progress.label}
                           </Badge>
                           <Link

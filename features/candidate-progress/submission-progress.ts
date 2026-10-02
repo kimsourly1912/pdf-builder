@@ -1,5 +1,9 @@
 import type { CandidateProgress } from "./progress";
 export function candidateNextAction(item: CandidateProgress) {
+  if (item.facts.verified && item.issues?.length) {
+    const issue = item.issues[0];
+    return { next: issue.action, href: issue.href };
+  }
   if (
     item.facts.verified &&
     item.run &&
