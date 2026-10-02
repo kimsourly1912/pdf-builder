@@ -72,6 +72,7 @@ const pdf = await PDFDocument.create();
 pdf.addPage();
 pdf.setTitle("TEST Telegram CV");
 const pdfBytes = await pdf.save();
+let currentPdfBytes = pdfBytes;
 let aiCalls = 0,
   sendFailure = null;
 const originalFetch = globalThis.fetch;
@@ -81,7 +82,8 @@ globalThis.fetch = async (url, options) => {
     aiCalls++;
     return Response.json({ output_text: JSON.stringify(profile) });
   }
-  if (target.includes("api.telegram.org/file/")) return new Response(pdfBytes);
+  if (target.includes("api.telegram.org/file/"))
+    return new Response(currentPdfBytes);
   if (target.endsWith("/getFile"))
     return Response.json({
       ok: true,
@@ -146,23 +148,21 @@ async function send(update) {
   await intake.processTelegramUpdates();
 }
 async function ownerCookie() {
-  const response = await auth
-    .getAuth()
-    .handler(
-      new Request("http://localhost:5173/api/auth/sign-up/email", {
-        method: "POST",
-        headers: {
-          origin: "http://localhost:5173",
-          "content-type": "application/json",
-          "x-pdf-builder-bootstrap": runtime.AUTH_BOOTSTRAP_TOKEN,
-        },
-        body: JSON.stringify({
-          name: "TEST Owner",
-          email: runtime.MANAGEMENT_EMAIL,
-          password: "TestOwner!9StrongPassword",
-        }),
+  const response = await auth.getAuth().handler(
+    new Request("http://localhost:5173/api/auth/sign-up/email", {
+      method: "POST",
+      headers: {
+        origin: "http://localhost:5173",
+        "content-type": "application/json",
+        "x-pdf-builder-bootstrap": runtime.AUTH_BOOTSTRAP_TOKEN,
+      },
+      body: JSON.stringify({
+        name: "TEST Owner",
+        email: runtime.MANAGEMENT_EMAIL,
+        password: "TestOwner!9StrongPassword",
       }),
-    );
+    }),
+  );
   assert.equal(response.status, 200, await response.text());
   return response.headers
     .getSetCookie()
@@ -628,4 +628,584 @@ test("Telegram rate limits defer delivery, and explicit resends preserve account
   assert.equal(messages.length, before + 2);
   assert.equal(count("form_assignments"), 2);
   assert.equal(count("user"), 2);
+});
+
+const resumeRoute = await vite.ssrLoadModule("/app/api/resumes/[id]/route.ts");
+const intakeDetailRoute = await vite.ssrLoadModule(
+  "/app/api/intake/[id]/route.ts",
+);
+const intakeRunRoute = await vite.ssrLoadModule(
+  "/app/api/intake/[id]/run/route.ts",
+);
+const archiveRoute = await vite.ssrLoadModule(
+  "/app/api/archive/[type]/[id]/route.ts",
+);
+const archiveService = await vite.ssrLoadModule(
+  "/features/archive/archive.server.ts",
+);
+
+let nextUpdate = 100,
+  manualIntake,
+  manualWorkflow;
+const ownerRequest = (path, body, method = "POST") =>
+  new Request("http://localhost:5173" + path, {
+    method,
+    headers: {
+      cookie,
+      origin: "http://localhost:5173",
+      "content-type": "application/json",
+    },
+    ...(body ? { body: JSON.stringify(body) } : {}),
+  });
+async function freshPdf(tag) {
+  const pdf = await PDFDocument.create();
+  pdf.addPage();
+  pdf.setTitle("TEST " + tag + " " + crypto.randomUUID());
+  currentPdfBytes = await pdf.save();
+}
+async function chat(chatId, text, document) {
+  const id = nextUpdate++;
+  await send({
+    update_id: id,
+    message: {
+      message_id: id,
+      chat: { id: chatId, type: "private" },
+      from: { id: chatId, is_bot: false, username: "test_" + chatId },
+      ...(document ? { document } : { text }),
+    },
+  });
+}
+async function submit(chatId, email) {
+  await freshPdf(email);
+  await chat(chatId, "/start");
+  await chat(chatId, "TEST " + chatId);
+  await chat(chatId, email);
+  await chat(chatId, null, {
+    file_id: "test",
+    file_name: "TEST-CV.pdf",
+    file_size: currentPdfBytes.length,
+  });
+  return d1.sqlite
+    .prepare(
+      "SELECT i.* FROM telegram_intakes i JOIN telegram_connections c ON c.id=i.connection_id WHERE c.chat_id=? ORDER BY i.update_id DESC LIMIT 1",
+    )
+    .get(String(chatId));
+}
+async function overview(row) {
+  const response = await intakeDetailRoute.GET(
+    ownerRequest("/api/intake/" + row.id, null, "GET"),
+    { params: Promise.resolve({ id: row.id }) },
+  );
+  assert.equal(response.status, 200, await response.clone().text());
+  return response.json();
+}
+async function verifyCv(row, confirmTelegram = false) {
+  const response = await resumeRoute.GET(
+    ownerRequest("/api/resumes/" + row.resume_id, null, "GET"),
+    { params: Promise.resolve({ id: row.resume_id }) },
+  );
+  const { resume } = await response.json();
+  const save = await resumeRoute.PATCH(
+    ownerRequest(
+      "/api/resumes/" + row.resume_id,
+      {
+        action: "update_candidate",
+        candidate: resume.candidate,
+        confirmTelegram,
+        resumeRevision: resume.updatedAt,
+        candidateRevision: resume.candidateRevision,
+      },
+      "PATCH",
+    ),
+    { params: Promise.resolve({ id: row.resume_id }) },
+  );
+  assert.equal(save.status, 200, await save.clone().text());
+  return overview(row);
+}
+async function workflowWithTrigger(trigger) {
+  const graph = structuredClone(
+    (await workflows.getRun(runtime.MANAGEMENT_EMAIL, runId)).graph,
+  );
+  graph.nodes.find((n) => n.kind === "resume_uploaded").config.trigger =
+    trigger;
+  const w = await workflows.createWorkflow(runtime.MANAGEMENT_EMAIL, trigger);
+  return workflows.saveWorkflow(runtime.MANAGEMENT_EMAIL, w.id, {
+    action: "publish",
+    expectedUpdatedAt: w.updatedAt,
+    name: "TEST " + trigger,
+    graph,
+  });
+}
+const archiveAction = (type, id, body) =>
+  archiveRoute.POST(ownerRequest("/api/archive/" + type + "/" + id, body), {
+    params: Promise.resolve({ type, id }),
+  });
+
+test("manual Resume Editor verification enables intake workflow without an AI request or a second CV review", async () => {
+  const calls = aiCalls;
+  manualIntake = await submit(70001, "manual@example.com");
+  manualWorkflow = await workflowWithTrigger("manual");
+  const before = await overview(manualIntake);
+  assert.equal(before.reviewReady, false);
+  let response = await intakeRunRoute.POST(
+    ownerRequest("/api/intake/" + manualIntake.id + "/run", {
+      workflowId: manualWorkflow.id,
+      confirmTelegram: true,
+    }),
+    { params: Promise.resolve({ id: manualIntake.id }) },
+  );
+  assert.equal(response.status, 422);
+  assert.equal(aiCalls, calls);
+  delete runtime.OPENAI_API_KEY;
+  const verified = await verifyCv(manualIntake);
+  assert.equal(verified.reviewReady, true);
+  assert.equal(
+    d1.sqlite
+      .prepare("SELECT count(*) n FROM resume_extractions WHERE resume_id=?")
+      .get(manualIntake.resume_id).n,
+    0,
+  );
+  const body = {
+    workflowId: manualWorkflow.id,
+    resumeRevision: verified.resumeRevision,
+    candidateRevision: verified.candidateRevision,
+    profileVersionId: verified.profileVersionId,
+    confirmTelegram: true,
+  };
+  response = await intakeRunRoute.POST(
+    ownerRequest("/api/intake/" + manualIntake.id + "/run", {
+      ...body,
+      confirmTelegram: false,
+    }),
+    { params: Promise.resolve({ id: manualIntake.id }) },
+  );
+  assert.equal(response.status, 422);
+  response = await intakeRunRoute.POST(
+    ownerRequest("/api/intake/" + manualIntake.id + "/run", {
+      ...body,
+      resumeRevision: "stale",
+    }),
+    { params: Promise.resolve({ id: manualIntake.id }) },
+  );
+  assert.equal(response.status, 409);
+  const users = count("user"),
+    forms = count("form_assignments"),
+    sent = messages.length;
+  response = await intakeRunRoute.POST(
+    ownerRequest("/api/intake/" + manualIntake.id + "/run", body),
+    { params: Promise.resolve({ id: manualIntake.id }) },
+  );
+  assert.equal(response.status, 200, await response.clone().text());
+  const result = await response.json();
+  assert.equal(result.run.status, "completed", result.run.errorMessage);
+  assert.equal(result.run.context.steps.review.status, "completed");
+  assert.match(result.run.context.reviewNote, /Resume Editor/);
+  assert.equal(count("user"), users + 1);
+  assert.equal(count("form_assignments"), forms + 2);
+  assert.equal(messages.length, sent + 1);
+  assert.equal(aiCalls, calls);
+  const current = await overview(manualIntake);
+  assert.equal(current.reviewReady, true);
+  response = await intakeRunRoute.POST(
+    ownerRequest("/api/intake/" + manualIntake.id + "/run", {
+      ...body,
+      resumeRevision: current.resumeRevision,
+      candidateRevision: current.candidateRevision,
+      profileVersionId: current.profileVersionId,
+      existingAccountId: current.existingAccount.id,
+    }),
+    { params: Promise.resolve({ id: manualIntake.id }) },
+  );
+  assert.equal(response.status, 200);
+  assert.equal(count("user"), users + 1);
+  assert.equal(count("form_assignments"), forms + 2);
+  assert.equal(messages.length, sent + 1);
+  runtime.OPENAI_API_KEY = "integration-openai";
+});
+
+test("completed bot intake rejects unsolicited PDFs and explicitly groups additional/replaced CVs under one contact", async () => {
+  const calls = aiCalls;
+  const original = await submit(70002, "history@example.com");
+  const candidates = count("candidates"),
+    intakes = count("telegram_intakes");
+  await freshPdf("unsolicited");
+  await chat(70002, "anything");
+  await chat(70002, null, { file_id: "test", file_name: "another.pdf" });
+  assert.equal(count("telegram_intakes"), intakes);
+  assert.equal(count("candidates"), candidates);
+  assert.match(messages.at(-1).text, /\/add_cv/);
+  await chat(70002, "/add_cv");
+  await chat(70002, null, { file_id: "test", file_name: "additional.pdf" });
+  assert.equal(count("telegram_intakes"), intakes + 1);
+  assert.equal(count("candidates"), candidates);
+  let list = await intake.intakeList(
+    runtime.MANAGEMENT_EMAIL,
+    new URLSearchParams(),
+  );
+  let contact = list.filter((i) => i.email === "history@example.com");
+  assert.equal(contact.length, 1);
+  assert.equal(contact[0].cvCount, 2);
+  const additional = d1.sqlite
+    .prepare(
+      "SELECT * FROM telegram_intakes WHERE connection_id=? ORDER BY update_id DESC LIMIT 1",
+    )
+    .get(original.connection_id);
+  await chat(70002, "/replace_cv");
+  await freshPdf("replacement");
+  await chat(70002, null, { file_id: "test", file_name: "replacement.pdf" });
+  assert.equal(count("telegram_intakes"), intakes + 2);
+  assert.equal(await archiveService.isArchived("intake", additional.id), true);
+  assert.equal(
+    await archiveService.isArchived("resume", additional.resume_id),
+    true,
+  );
+  assert(
+    storage.has(
+      d1.sqlite
+        .prepare("SELECT file_key FROM resumes WHERE id=?")
+        .get(additional.resume_id).file_key,
+    ),
+  );
+  list = await intake.intakeList(
+    runtime.MANAGEMENT_EMAIL,
+    new URLSearchParams(),
+  );
+  contact = list.filter((i) => i.email === "history@example.com");
+  assert.equal(contact.length, 1);
+  assert.equal(contact[0].cvCount, 2);
+  const latest = d1.sqlite
+    .prepare(
+      "SELECT * FROM telegram_intakes WHERE connection_id=? ORDER BY update_id DESC LIMIT 1",
+    )
+    .get(original.connection_id);
+  assert.equal((await overview(latest)).cvHistory.length, 3);
+  await verifyCv(latest);
+  await chat(70002, "/replace_cv");
+  await freshPdf("blocked replacement");
+  await chat(70002, null, { file_id: "test", file_name: "blocked.pdf" });
+  assert.equal(count("telegram_intakes"), intakes + 2);
+  assert.match(messages.at(-1).text, /reviewed or archived/);
+  assert.equal(aiCalls, calls);
+});
+
+test("workflow starting events route submissions by purpose and Telegram receipt waits for HR verification without AI", async () => {
+  const telegram = await workflowWithTrigger("telegram_submission"),
+    verified = await workflowWithTrigger("resume_verified"),
+    calls = aiCalls,
+    users = count("user");
+  const row = await submit(70003, "trigger@example.com");
+  let runs = d1.sqlite
+    .prepare("SELECT * FROM workflow_runs WHERE resume_id=?")
+    .all(row.resume_id);
+  assert.equal(runs.length, 1);
+  assert.equal(runs[0].workflow_id, telegram.id);
+  await runner.processWorkflowRun(runs[0].id);
+  assert.equal(
+    (await workflows.getRun(runtime.MANAGEMENT_EMAIL, runs[0].id)).status,
+    "waiting_review",
+  );
+  assert.equal(count("user"), users);
+  assert.equal(aiCalls, calls);
+  await verifyCv(row, true);
+  runs = d1.sqlite
+    .prepare("SELECT * FROM workflow_runs WHERE resume_id=?")
+    .all(row.resume_id);
+  assert.equal(runs.length, 2);
+  assert(runs.some((r) => r.workflow_id === verified.id));
+  // Both saved workflows may prepare this CV, but a matching email cannot silently attach a second account.
+  await runner.processWorkflowRun(
+    runs.find((r) => r.workflow_id === telegram.id).id,
+  );
+  assert.equal(count("user"), users + 1);
+  assert.equal(aiCalls, calls);
+  await runner.processWorkflowRun(
+    runs.find((r) => r.workflow_id === verified.id).id,
+  );
+  assert.equal(count("user"), users + 1);
+  assert.equal(aiCalls, calls);
+  assert.equal(
+    (
+      await workflows.getRun(
+        runtime.MANAGEMENT_EMAIL,
+        runs.find((r) => r.workflow_id === verified.id).id,
+      )
+    ).status,
+    "waiting_review",
+  );
+  const staff = await workflows.uploadWorkflowStatements(
+    runtime.MANAGEMENT_EMAIL,
+    row.resume_id,
+    new Date().toISOString(),
+    "staff_upload",
+  );
+  assert(staff.length > 0);
+  const none = await workflows.uploadWorkflowStatements(
+    runtime.MANAGEMENT_EMAIL,
+    row.resume_id,
+    new Date().toISOString(),
+    "manual",
+  );
+  assert.equal(none.length, 1); // The manual workflow only starts when explicitly requested, not from upload events.
+});
+
+test("archive groups CV and intake, preserves files, restores safely, and rejects stale or cross-owner permanent deletion", async () => {
+  const row = await submit(70004, "archive@example.com"),
+    key = d1.sqlite
+      .prepare("SELECT file_key FROM resumes WHERE id=?")
+      .get(row.resume_id).file_key;
+  let response = await archiveAction("intake", row.id, { action: "archive" });
+  assert.equal(response.status, 200, await response.clone().text());
+  assert(storage.has(key));
+  assert.equal(
+    (
+      await intake.intakeList(runtime.MANAGEMENT_EMAIL, new URLSearchParams())
+    ).some((i) => i.id === row.id),
+    false,
+  );
+  let group = await archiveService.archivedGroup(
+    runtime.MANAGEMENT_EMAIL,
+    "intake",
+    row.id,
+  );
+  assert.equal(group.members.length, 2);
+  assert.equal((await overview(row)).archived, true);
+  await assert.rejects(
+    () =>
+      archiveService.deleteArchivedEntity(
+        "another-owner@example.com",
+        "intake",
+        row.id,
+        group.record.archived_at,
+      ),
+    (e) => e.status === 404,
+  );
+  response = await archiveAction("intake", row.id, {
+    action: "restore",
+    expectedArchivedAt: "stale",
+  });
+  assert.equal(response.status, 409);
+  response = await archiveAction("intake", row.id, {
+    action: "restore",
+    expectedArchivedAt: group.record.archived_at,
+  });
+  assert.equal(response.status, 200);
+  assert.equal(await archiveService.isArchived("resume", row.resume_id), false);
+  assert(storage.has(key));
+  response = await archiveAction("resume", row.resume_id, {
+    action: "archive",
+  });
+  assert.equal(response.status, 200);
+  group = await archiveService.archivedGroup(
+    runtime.MANAGEMENT_EMAIL,
+    "resume",
+    row.resume_id,
+  );
+  response = await archiveAction("resume", row.resume_id, {
+    action: "delete",
+    confirm: true,
+    expectedArchivedAt: group.record.archived_at,
+  });
+  assert.equal(response.status, 200, await response.clone().text());
+  assert.equal(
+    d1.sqlite.prepare("SELECT id FROM resumes WHERE id=?").get(row.resume_id),
+    undefined,
+  );
+  assert.equal(
+    d1.sqlite.prepare("SELECT id FROM telegram_intakes WHERE id=?").get(row.id),
+    undefined,
+  );
+  assert.equal(storage.has(key), false);
+});
+
+test("archived account loses access but keeps assignments; linked accounts and templates cannot be permanently deleted", async () => {
+  const userId = d1.sqlite
+      .prepare("SELECT user_id FROM candidates WHERE id=?")
+      .get(manualIntake.candidate_id).user_id,
+    forms = count("form_assignments");
+  let response = await archiveAction("account", userId, { action: "archive" });
+  assert.equal(response.status, 200, await response.clone().text());
+  assert.equal(
+    d1.sqlite.prepare("SELECT banned FROM user WHERE id=?").get(userId).banned,
+    1,
+  );
+  assert.equal(count("form_assignments"), forms);
+  let group = await archiveService.archivedGroup(
+    runtime.MANAGEMENT_EMAIL,
+    "account",
+    userId,
+  );
+  response = await archiveAction("account", userId, {
+    action: "delete",
+    confirm: true,
+    expectedArchivedAt: group.record.archived_at,
+  });
+  assert.equal(response.status, 409);
+  assert.equal(count("form_assignments"), forms);
+  response = await archiveAction("account", userId, {
+    action: "restore",
+    expectedArchivedAt: group.record.archived_at,
+  });
+  assert.equal(response.status, 200);
+  assert.equal(
+    d1.sqlite.prepare("SELECT banned FROM user WHERE id=?").get(userId).banned,
+    0,
+  );
+  const statuses = d1.sqlite
+    .prepare("SELECT status FROM form_assignments WHERE template_id='t1'")
+    .all();
+  response = await archiveAction("template", "t1", { action: "archive" });
+  assert.equal(response.status, 200);
+  assert.deepEqual(
+    d1.sqlite
+      .prepare("SELECT status FROM form_assignments WHERE template_id='t1'")
+      .all(),
+    statuses,
+  );
+  group = await archiveService.archivedGroup(
+    runtime.MANAGEMENT_EMAIL,
+    "template",
+    "t1",
+  );
+  response = await archiveAction("template", "t1", {
+    action: "delete",
+    confirm: true,
+    expectedArchivedAt: group.record.archived_at,
+  });
+  assert.equal(response.status, 409);
+  response = await archiveAction("template", "t1", {
+    action: "restore",
+    expectedArchivedAt: group.record.archived_at,
+  });
+  assert.equal(response.status, 200);
+  response = await archiveAction("workflow", manualWorkflow.id, {
+    action: "archive",
+  });
+  assert.equal(response.status, 200);
+  group = await archiveService.archivedGroup(
+    runtime.MANAGEMENT_EMAIL,
+    "workflow",
+    manualWorkflow.id,
+  );
+  response = await archiveAction("workflow", manualWorkflow.id, {
+    action: "delete",
+    confirm: true,
+    expectedArchivedAt: group.record.archived_at,
+  });
+  assert.equal(response.status, 409);
+  response = await archiveAction("workflow", manualWorkflow.id, {
+    action: "restore",
+    expectedArchivedAt: group.record.archived_at,
+  });
+  assert.equal(response.status, 200);
+  assert.equal(
+    (await workflows.getWorkflow(runtime.MANAGEMENT_EMAIL, manualWorkflow.id))
+      .active,
+    false,
+  );
+});
+
+test("unused analysis files purge only after archiving; processing and protected dependency guards reject deletion", async () => {
+  const id = crypto.randomUUID(),
+    key = "TEST-ai/" + id + ".pdf",
+    now = new Date().toISOString();
+  storage.set(key, new Uint8Array([1, 2, 3]));
+  d1.sqlite
+    .prepare(
+      "INSERT INTO ai_field_detection_runs(id,owner_email,file_key,file_name,file_size,page_count,status,model,prompt_version,created_at,updated_at)VALUES(?,?,?,?,1,1,'processing','test','test',?,?)",
+    )
+    .run(id, runtime.MANAGEMENT_EMAIL, key, "TEST analysis.pdf", now, now);
+  let response = await archiveAction("ai_run", id, { action: "archive" });
+  assert.equal(response.status, 409);
+  assert(storage.has(key));
+  d1.sqlite
+    .prepare("UPDATE ai_field_detection_runs SET status='completed' WHERE id=?")
+    .run(id);
+  response = await archiveAction("ai_run", id, { action: "archive" });
+  assert.equal(response.status, 200);
+  assert(storage.has(key));
+  const group = await archiveService.archivedGroup(
+    runtime.MANAGEMENT_EMAIL,
+    "ai_run",
+    id,
+  );
+  await archiveService.deleteArchivedEntity(
+    runtime.MANAGEMENT_EMAIL,
+    "ai_run",
+    id,
+    group.record.archived_at,
+  );
+  assert.equal(storage.has(key), false);
+  assert.equal(
+    d1.sqlite
+      .prepare("SELECT id FROM ai_field_detection_runs WHERE id=?")
+      .get(id),
+    undefined,
+  );
+  const accountId = (await workflows.getRun(runtime.MANAGEMENT_EMAIL, runId))
+    .context.userId;
+  await archiveService.archiveEntity(
+    runtime.MANAGEMENT_EMAIL,
+    "account",
+    accountId,
+  );
+  const accountGroup = await archiveService.archivedGroup(
+    runtime.MANAGEMENT_EMAIL,
+    "account",
+    accountId,
+  );
+  assert.throws(
+    () =>
+      d1.sqlite
+        .prepare(
+          "INSERT INTO archive_transition_guards(owner_email,entity_type,entity_id,archived_at,action) VALUES(?,'account',?,?,'delete')",
+        )
+        .run(
+          runtime.MANAGEMENT_EMAIL,
+          accountId,
+          accountGroup.record.archived_at,
+        ),
+    /ARCHIVE_DEPENDENCY_PROTECTED/,
+  );
+  await archiveService.restoreEntity(
+    runtime.MANAGEMENT_EMAIL,
+    "account",
+    accountId,
+    accountGroup.record.archived_at,
+  );
+});
+
+test("draft workflows list their chosen starting event and archives block editing", async () => {
+  const w = await workflows.createWorkflow(
+    runtime.MANAGEMENT_EMAIL,
+    "resume_verified",
+  );
+  const listed = (await workflows.listWorkflows(runtime.MANAGEMENT_EMAIL)).find(
+    (r) => r.id === w.id,
+  );
+  assert.equal(listed.trigger, "resume_verified");
+  assert.equal(listed.hasTelegram, false);
+  await archiveService.archiveEntity(
+    runtime.MANAGEMENT_EMAIL,
+    "workflow",
+    w.id,
+  );
+  assert.equal(
+    (await workflows.listWorkflows(runtime.MANAGEMENT_EMAIL)).some(
+      (r) => r.id === w.id,
+    ),
+    false,
+  );
+  assert.equal(
+    (await workflows.getWorkflow(runtime.MANAGEMENT_EMAIL, w.id)).archived,
+    true,
+  );
+  await assert.rejects(
+    workflows.saveWorkflow(runtime.MANAGEMENT_EMAIL, w.id, {
+      action: "save",
+      name: w.name,
+      graph: w.draft,
+      expectedUpdatedAt: w.updatedAt,
+    }),
+    (e) => e.status === 409,
+  );
 });

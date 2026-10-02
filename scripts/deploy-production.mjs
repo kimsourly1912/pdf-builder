@@ -55,29 +55,47 @@ async function main() {
   await ensurePersistentAuthSecret();
   await putWorkerSecret("OPENAI_API_KEY", OPENAI_API_KEY);
   const telegramToken = process.env.TELEGRAM_BOT_TOKEN?.trim();
-  const telegramSecret = process.env.TELEGRAM_WEBHOOK_SECRET?.trim();
+  let telegramSecret = process.env.TELEGRAM_WEBHOOK_SECRET?.trim();
   if (telegramToken && telegramSecret) {
-    if (!/^[A-Za-z0-9_-]{16,256}$/u.test(telegramSecret)) throw new Error("TELEGRAM_WEBHOOK_SECRET must be 16–256 letters, digits, underscores, or hyphens.");
+    if (!/^[A-Za-z0-9_-]{16,256}$/u.test(telegramSecret)) {
+      telegramSecret = randomSecret();
+      console.log(
+        "Generated a secure Telegram webhook secret to replace the invalid configured value.",
+      );
+    }
     try {
-      const response=await fetch(`https://api.telegram.org/bot${telegramToken}/getMe`, { signal: AbortSignal.timeout(25000) });
-      const result=await response.json();
-      if(!response.ok||!result.ok||result.result.username?.toLowerCase() !== "anghr_bot") throw new Error("Bot identity mismatch.");
-    } catch { throw new Error("Telegram bot verification failed. Supply the BotFather token for @anghr_bot."); }
-    await putWorkerSecret("TELEGRAM_BOT_TOKEN",telegramToken);
-    await putWorkerSecret("TELEGRAM_WEBHOOK_SECRET",telegramSecret);
-  } else console.log("Telegram secrets were not supplied by Actions; existing Worker secrets are preserved.");
+      const response = await fetch(
+        `https://api.telegram.org/bot${telegramToken}/getMe`,
+        { signal: AbortSignal.timeout(25000) },
+      );
+      const result = await response.json();
+      if (
+        !response.ok ||
+        !result.ok ||
+        result.result.username?.toLowerCase() !== "anghr_bot"
+      )
+        throw new Error("Bot identity mismatch.");
+    } catch {
+      throw new Error(
+        "Telegram bot verification failed. Supply the BotFather token for @anghr_bot.",
+      );
+    }
+    await putWorkerSecret("TELEGRAM_BOT_TOKEN", telegramToken);
+    await putWorkerSecret("TELEGRAM_WEBHOOK_SECRET", telegramSecret);
+  } else
+    console.log(
+      "Telegram secrets were not supplied by Actions; existing Worker secrets are preserved.",
+    );
   const bootstrapToken = randomSecret();
   await putWorkerSecret("AUTH_BOOTSTRAP_TOKEN", bootstrapToken);
-  run("npx", [
-    "wrangler",
-    "deploy",
-    "--config",
-    BUILT_WRANGLER_CONFIG_PATH,
-  ]);
+  run("npx", ["wrangler", "deploy", "--config", BUILT_WRANGLER_CONFIG_PATH]);
 
   let authenticatedCookie;
   try {
-    authenticatedCookie = await bootstrapAndSignInOwner(hostname, bootstrapToken);
+    authenticatedCookie = await bootstrapAndSignInOwner(
+      hostname,
+      bootstrapToken,
+    );
   } finally {
     await deleteWorkerSecret("AUTH_BOOTSTRAP_TOKEN");
   }
@@ -87,15 +105,37 @@ async function main() {
   if (telegramToken && telegramSecret) {
     let response;
     try {
-      response = await fetch(`https://api.telegram.org/bot${telegramToken}/setWebhook`, {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({url:`https://${hostname}/api/telegram/webhook`,secret_token:telegramSecret,allowed_updates:["message"],drop_pending_updates:false}),signal:AbortSignal.timeout(25000)});
+      response = await fetch(
+        `https://api.telegram.org/bot${telegramToken}/setWebhook`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            url: `https://${hostname}/api/telegram/webhook`,
+            secret_token: telegramSecret,
+            allowed_updates: ["message"],
+            drop_pending_updates: false,
+          }),
+          signal: AbortSignal.timeout(25000),
+        },
+      );
       const result = await response.json();
-      if(!response.ok || !result.ok) throw new Error("Webhook setup was rejected.");
-    } catch { throw new Error("Telegram webhook setup failed. Check the bot token and webhook secret in production secrets."); }
+      if (!response.ok || !result.ok)
+        throw new Error("Webhook setup was rejected.");
+    } catch {
+      throw new Error(
+        "Telegram webhook setup failed. Check the bot token and webhook secret in production secrets.",
+      );
+    }
     console.log("Telegram webhook configured successfully.");
   }
   const productionUrl = `https://${hostname}`;
   if (process.env.GITHUB_ENV) {
-    appendFileSync(process.env.GITHUB_ENV, `PRODUCTION_URL=${productionUrl}\n`, "utf8");
+    appendFileSync(
+      process.env.GITHUB_ENV,
+      `PRODUCTION_URL=${productionUrl}\n`,
+      "utf8",
+    );
   }
   console.log(`Production deployment verified: ${productionUrl}`);
 }
@@ -103,7 +143,9 @@ async function main() {
 async function ensureD1Database() {
   const query = new URLSearchParams({ name: DATABASE_NAME, per_page: "100" });
   const databases = await cloudflareApi(`/d1/database?${query}`);
-  const existing = databases.find((database) => database.name === DATABASE_NAME);
+  const existing = databases.find(
+    (database) => database.name === DATABASE_NAME,
+  );
   if (existing) {
     console.log(`Using existing D1 database: ${DATABASE_NAME}`);
     return existing;
@@ -158,7 +200,9 @@ function ensureAiFieldDetectionQueue() {
     return;
   }
   if (/already exists|is already taken|has already been taken/iu.test(output)) {
-    console.log(`Using existing Cloudflare Queue: ${AI_FIELD_DETECTION_QUEUE_NAME}`);
+    console.log(
+      `Using existing Cloudflare Queue: ${AI_FIELD_DETECTION_QUEUE_NAME}`,
+    );
     return;
   }
   process.stderr.write(output);
@@ -170,7 +214,9 @@ function ensureAiFieldDetectionQueue() {
 async function getWorkersSubdomain() {
   const result = await cloudflareApi("/workers/subdomain");
   if (!result.subdomain) {
-    throw new Error("Cloudflare Workers subdomain is not configured for this account.");
+    throw new Error(
+      "Cloudflare Workers subdomain is not configured for this account.",
+    );
   }
   return result.subdomain;
 }
@@ -179,7 +225,9 @@ async function ensureAuthenticationBypass(hostname) {
   const applications = await cloudflareApi("/access/apps?per_page=100");
   const name = "PDF Builder public authentication";
   const domain = `${hostname}/api/auth*`;
-  const existing = applications.find((application) => application.name === name);
+  const existing = applications.find(
+    (application) => application.name === name,
+  );
   const body = {
     name,
     type: "self_hosted",
@@ -218,12 +266,16 @@ async function removeLegacyAccessApplications() {
   );
   for (const application of targets) {
     await cloudflareApi(`/access/apps/${application.id}`, { method: "DELETE" });
-    console.log(`Removed legacy Cloudflare Access application: ${application.name}`);
+    console.log(
+      `Removed legacy Cloudflare Access application: ${application.name}`,
+    );
   }
 }
 
 async function ensurePersistentAuthSecret() {
-  const secrets = await cloudflareApi(`/workers/scripts/${WORKER_NAME}/secrets`);
+  const secrets = await cloudflareApi(
+    `/workers/scripts/${WORKER_NAME}/secrets`,
+  );
   if (secrets.some((secret) => secret.name === "BETTER_AUTH_SECRET")) {
     console.log("Using existing Better Auth session secret.");
     return;
@@ -252,7 +304,9 @@ async function bootstrapAndSignInOwner(hostname, bootstrapToken) {
     const rotationResponse = await rotateOwnerPassword(origin, bootstrapToken);
     const rotationBody = await rotationResponse.text();
     if (rotationResponse.ok) {
-      console.log("Rotated the Better Auth owner password and revoked old sessions.");
+      console.log(
+        "Rotated the Better Auth owner password and revoked old sessions.",
+      );
     } else if (
       rotationResponse.status === 404 &&
       rotationBody.includes("Owner account not found")
@@ -265,7 +319,9 @@ async function bootstrapAndSignInOwner(hostname, bootstrapToken) {
     }
     signInResponse = await signInOwner(origin);
   } else {
-    console.log("The Better Auth owner account already exists and the configured password is valid.");
+    console.log(
+      "The Better Auth owner account already exists and the configured password is valid.",
+    );
   }
   if (!signInResponse.ok) {
     throw new Error(
@@ -280,7 +336,8 @@ async function bootstrapAndSignInOwner(hostname, bootstrapToken) {
   const session = await sessionResponse.json();
   if (
     !sessionResponse.ok ||
-    session?.user?.email?.trim().toLowerCase() !== MANAGEMENT_EMAIL.toLowerCase()
+    session?.user?.email?.trim().toLowerCase() !==
+      MANAGEMENT_EMAIL.toLowerCase()
   ) {
     throw new Error("Better Auth did not return the expected owner session.");
   }
@@ -342,7 +399,9 @@ function writeProductionDatabaseId(databaseId) {
   );
 
   if (updated === config) {
-    throw new Error("Could not inject the production D1 database ID into wrangler.jsonc.");
+    throw new Error(
+      "Could not inject the production D1 database ID into wrangler.jsonc.",
+    );
   }
   writeFileSync(WRANGLER_CONFIG_PATH, updated, "utf8");
 }
@@ -360,37 +419,77 @@ async function verifyDeployment(hostname, authenticatedCookie) {
     redirect: "manual",
   });
   if (managementResponse.status !== 401) {
-    throw new Error(`Expected unauthenticated management API HTTP 401, received ${managementResponse.status}.`);
+    throw new Error(
+      `Expected unauthenticated management API HTTP 401, received ${managementResponse.status}.`,
+    );
   }
 
-  const authenticatedResponse = await fetch(`https://${hostname}/api/templates`, {
-    headers: { Cookie: authenticatedCookie },
-  });
+  const authenticatedResponse = await fetch(
+    `https://${hostname}/api/templates`,
+    {
+      headers: { Cookie: authenticatedCookie },
+    },
+  );
   if (!authenticatedResponse.ok) {
-    throw new Error(`Authenticated management API failed with HTTP ${authenticatedResponse.status}.`);
+    throw new Error(
+      `Authenticated management API failed with HTTP ${authenticatedResponse.status}.`,
+    );
   }
 
-  for (const path of ["/api/workflows", "/api/workflow-runs", "/api/intake", "/workflows", "/intake"]) {
+  for (const path of [
+    "/api/workflows",
+    "/api/workflow-runs",
+    "/api/intake",
+    "/api/archive",
+    "/api/ai-field-detection/runs",
+    "/workflows",
+    "/intake",
+    "/archive",
+    "/analyses",
+  ]) {
     const response = await fetch(`https://${hostname}${path}`, {
-      headers: { Cookie: authenticatedCookie }, redirect: "manual",
+      headers: { Cookie: authenticatedCookie },
+      redirect: "manual",
     });
     if (response.status !== 200) {
-      throw new Error(`Authenticated workflow smoke check ${path} failed with HTTP ${response.status}.`);
+      throw new Error(
+        `Authenticated workflow smoke check ${path} failed with HTTP ${response.status}.`,
+      );
     }
     if (path.startsWith("/api/")) {
       const body = await response.json();
-      if (!Array.isArray(body.items)) throw new Error(`Workflow API ${path} returned an invalid list.`);
-    } else if (!(await response.text()).includes(path === "/intake" ? "Candidate intake" : "Workflows")) {
-      throw new Error("The deployed Workflows page is missing its expected content.");
+      if (
+        !Array.isArray(
+          path === "/api/ai-field-detection/runs" ? body.runs : body.items,
+        )
+      )
+        throw new Error(`Workflow API ${path} returned an invalid list.`);
+    } else if (
+      !(await response.text()).includes(
+        {
+          "/intake": "Candidate intake",
+          "/archive": "Archive",
+          "/analyses": "AI analysis history",
+        }[path] ?? "Workflows",
+      )
+    ) {
+      throw new Error(
+        "The deployed Workflows page is missing its expected content.",
+      );
     }
     console.log(`Authenticated workflow smoke check passed: ${path}`);
   }
 
-  const fillResponse = await fetch(`https://${hostname}/fill/deployment-check`, {
-    redirect: "manual",
-  });
+  const fillResponse = await fetch(
+    `https://${hostname}/fill/deployment-check`,
+    {
+      redirect: "manual",
+    },
+  );
   if ([301, 302, 303, 307, 308].includes(fillResponse.status)) {
-    throw new Error("The public recipient fill route was unexpectedly redirected.");
+    throw new Error(
+      "The public recipient fill route was unexpectedly redirected.",
+    );
   }
 
   const gazetteerResponse = await fetch(
@@ -407,7 +506,8 @@ async function waitForResponse(url, options, accepted) {
   for (let attempt = 1; attempt <= 12; attempt += 1) {
     lastResponse = await fetch(url, options);
     if (accepted(lastResponse)) return lastResponse;
-    if (attempt < 12) await new Promise((resolve) => setTimeout(resolve, 5_000));
+    if (attempt < 12)
+      await new Promise((resolve) => setTimeout(resolve, 5_000));
   }
 
   throw new Error(
@@ -421,7 +521,8 @@ function responseCookieHeader(response) {
     ? setCookies
     : [response.headers.get("set-cookie")].filter(Boolean);
   const cookie = values.map((value) => value.split(";", 1)[0]).join("; ");
-  if (!cookie) throw new Error("Better Auth sign-in did not issue a session cookie.");
+  if (!cookie)
+    throw new Error("Better Auth sign-in did not issue a session cookie.");
   return cookie;
 }
 
@@ -448,7 +549,9 @@ async function cloudflareApi(path, options = {}) {
     const details = (payload.errors ?? [])
       .map((error) => `${error.code}: ${error.message}`)
       .join("; ");
-    throw new Error(`Cloudflare API request failed (${response.status}): ${details || "Unknown error"}`);
+    throw new Error(
+      `Cloudflare API request failed (${response.status}): ${details || "Unknown error"}`,
+    );
   }
   return payload.result;
 }
@@ -460,7 +563,9 @@ function run(command, args) {
     shell: process.platform === "win32",
   });
   if (result.status !== 0) {
-    throw new Error(`${command} ${args.join(" ")} failed with exit code ${result.status}.`);
+    throw new Error(
+      `${command} ${args.join(" ")} failed with exit code ${result.status}.`,
+    );
   }
 }
 

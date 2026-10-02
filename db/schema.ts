@@ -8,7 +8,12 @@ import {
 } from "drizzle-orm/sqlite-core";
 import { sql } from "drizzle-orm";
 
-export { workflows, workflowRuns, workflowReviewDecisions } from "../features/workflows/schema";
+export { archiveRecords } from "../features/archive/schema";
+export {
+  workflows,
+  workflowRuns,
+  workflowReviewDecisions,
+} from "../features/workflows/schema";
 
 export const user = sqliteTable(
   "user",
@@ -113,10 +118,7 @@ export const templates = sqliteTable(
     updatedAt: text("updated_at").notNull(),
   },
   (table) => [
-    index("templates_owner_updated_idx").on(
-      table.ownerEmail,
-      table.updatedAt,
-    ),
+    index("templates_owner_updated_idx").on(table.ownerEmail, table.updatedAt),
     index("templates_owner_archived_updated_idx").on(
       table.ownerEmail,
       table.archivedAt,
@@ -233,10 +235,14 @@ export const formAssignments = sqliteTable(
     roleColor: text("role_color").notNull(),
     initialValuesJson: text("initial_values_json").notNull().default("{}"),
     candidateProfileVersionId: text("candidate_profile_version_id"),
-    initialValuesMetaJson: text("initial_values_meta_json").notNull().default("{}"),
+    initialValuesMetaJson: text("initial_values_meta_json")
+      .notNull()
+      .default("{}"),
     prefillMode: text("prefill_mode").notNull().default("automatic"),
     availableValuesJson: text("available_values_json").notNull().default("{}"),
-    availableValuesMetaJson: text("available_values_meta_json").notNull().default("{}"),
+    availableValuesMetaJson: text("available_values_meta_json")
+      .notNull()
+      .default("{}"),
     assignmentRequestKey: text("assignment_request_key"),
     assignmentRequestFingerprint: text("assignment_request_fingerprint"),
     status: text("status").notNull().default("assigned"),
@@ -292,15 +298,23 @@ export const candidates = sqliteTable(
     certificationsJson: text("certifications_json").notNull().default("[]"),
     languagesJson: text("languages_json").notNull().default("[]"),
     linksJson: text("links_json").notNull().default("[]"),
-    verificationStatus: text("verification_status").notNull().default("extracted"),
+    verificationStatus: text("verification_status")
+      .notNull()
+      .default("extracted"),
     createdAt: text("created_at").notNull(),
     updatedAt: text("updated_at").notNull(),
   },
   (table) => [
     uniqueIndex("candidates_user_unique").on(table.userId),
     index("candidates_owner_updated_idx").on(table.ownerEmail, table.updatedAt),
-    index("candidates_owner_email_idx").on(table.ownerEmail, table.normalizedEmail),
-    index("candidates_owner_phone_idx").on(table.ownerEmail, table.normalizedPhone),
+    index("candidates_owner_email_idx").on(
+      table.ownerEmail,
+      table.normalizedEmail,
+    ),
+    index("candidates_owner_phone_idx").on(
+      table.ownerEmail,
+      table.normalizedPhone,
+    ),
   ],
 );
 
@@ -309,8 +323,13 @@ export const resumes = sqliteTable(
   {
     id: text("id").primaryKey(),
     ownerEmail: text("owner_email").notNull(),
-    candidateId: text("candidate_id").references(() => candidates.id, { onDelete: "set null" }),
-    duplicateCandidateId: text("duplicate_candidate_id").references(() => candidates.id, { onDelete: "set null" }),
+    candidateId: text("candidate_id").references(() => candidates.id, {
+      onDelete: "set null",
+    }),
+    duplicateCandidateId: text("duplicate_candidate_id").references(
+      () => candidates.id,
+      { onDelete: "set null" },
+    ),
     fileKey: text("file_key").notNull(),
     fileName: text("file_name").notNull(),
     fileSize: integer("file_size").notNull(),
@@ -322,17 +341,34 @@ export const resumes = sqliteTable(
     receivedDate: text("received_date").notNull(),
     note: text("note").notNull().default(""),
     status: text("status").notNull(),
-    verificationStatus: text("verification_status").notNull().default("unverified"),
+    verificationStatus: text("verification_status")
+      .notNull()
+      .default("unverified"),
     errorMessage: text("error_message"),
     createdAt: text("created_at").notNull(),
     updatedAt: text("updated_at").notNull(),
   },
   (table) => [
     uniqueIndex("resumes_file_key_unique").on(table.fileKey),
-    uniqueIndex("resumes_owner_checksum_unique").on(table.ownerEmail, table.checksum),
-    index("resumes_owner_status_updated_idx").on(table.ownerEmail, table.status, table.updatedAt),
-    index("resumes_owner_source_received_idx").on(table.ownerEmail, table.source, table.receivedDate),
-    index("resumes_owner_received_created_idx").on(table.ownerEmail, table.receivedDate, table.createdAt),
+    uniqueIndex("resumes_owner_checksum_unique").on(
+      table.ownerEmail,
+      table.checksum,
+    ),
+    index("resumes_owner_status_updated_idx").on(
+      table.ownerEmail,
+      table.status,
+      table.updatedAt,
+    ),
+    index("resumes_owner_source_received_idx").on(
+      table.ownerEmail,
+      table.source,
+      table.receivedDate,
+    ),
+    index("resumes_owner_received_created_idx").on(
+      table.ownerEmail,
+      table.receivedDate,
+      table.createdAt,
+    ),
     index("resumes_candidate_idx").on(table.candidateId),
   ],
 );
@@ -341,7 +377,9 @@ export const resumeExtractions = sqliteTable(
   "resume_extractions",
   {
     id: text("id").primaryKey(),
-    resumeId: text("resume_id").notNull().references(() => resumes.id, { onDelete: "cascade" }),
+    resumeId: text("resume_id")
+      .notNull()
+      .references(() => resumes.id, { onDelete: "cascade" }),
     versionNumber: integer("version_number").notNull(),
     engine: text("engine").notNull(),
     status: text("status").notNull(),
@@ -352,7 +390,10 @@ export const resumeExtractions = sqliteTable(
     createdAt: text("created_at").notNull(),
   },
   (table) => [
-    uniqueIndex("resume_extractions_version_unique").on(table.resumeId, table.versionNumber),
+    uniqueIndex("resume_extractions_version_unique").on(
+      table.resumeId,
+      table.versionNumber,
+    ),
     index("resume_extractions_resume_idx").on(table.resumeId),
   ],
 );
@@ -400,8 +441,12 @@ export const candidateResumeLinks = sqliteTable(
   "candidate_resume_links",
   {
     id: text("id").primaryKey(),
-    candidateId: text("candidate_id").notNull().references(() => candidates.id, { onDelete: "cascade" }),
-    resumeId: text("resume_id").notNull().references(() => resumes.id, { onDelete: "cascade" }),
+    candidateId: text("candidate_id")
+      .notNull()
+      .references(() => candidates.id, { onDelete: "cascade" }),
+    resumeId: text("resume_id")
+      .notNull()
+      .references(() => resumes.id, { onDelete: "cascade" }),
     linkType: text("link_type").notNull(),
     createdByEmail: text("created_by_email").notNull(),
     createdAt: text("created_at").notNull(),
@@ -416,7 +461,9 @@ export const resumeProcessingJobs = sqliteTable(
   "resume_processing_jobs",
   {
     id: text("id").primaryKey(),
-    resumeId: text("resume_id").notNull().references(() => resumes.id, { onDelete: "cascade" }),
+    resumeId: text("resume_id")
+      .notNull()
+      .references(() => resumes.id, { onDelete: "cascade" }),
     attemptNumber: integer("attempt_number").notNull(),
     status: text("status").notNull(),
     errorCode: text("error_code"),
@@ -425,7 +472,10 @@ export const resumeProcessingJobs = sqliteTable(
     createdAt: text("created_at").notNull(),
   },
   (table) => [
-    uniqueIndex("resume_processing_jobs_attempt_unique").on(table.resumeId, table.attemptNumber),
+    uniqueIndex("resume_processing_jobs_attempt_unique").on(
+      table.resumeId,
+      table.attemptNumber,
+    ),
     index("resume_processing_jobs_resume_idx").on(table.resumeId),
   ],
 );
@@ -552,9 +602,6 @@ export const auditEvents = sqliteTable(
       table.targetId,
       table.createdAt,
     ),
-    index("audit_events_action_created_idx").on(
-      table.action,
-      table.createdAt,
-    ),
+    index("audit_events_action_created_idx").on(table.action, table.createdAt),
   ],
 );

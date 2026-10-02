@@ -16,6 +16,8 @@ export const telegramConnections = sqliteTable(
     fullName: text("full_name").notNull().default(""),
     email: text("email").notNull().default(""),
     stage: text("stage").notNull().default("name"),
+    submissionMode: text("submission_mode").notNull().default("initial"),
+    lastIntakeId: text("last_intake_id"),
     candidateId: text("candidate_id"),
     confirmedCandidateId: text("confirmed_candidate_id"),
     confirmedBy: text("confirmed_by"),

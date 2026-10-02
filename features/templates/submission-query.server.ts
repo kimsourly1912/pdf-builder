@@ -1,3 +1,4 @@
+import { notArchived } from "@/features/archive/archive";
 import "server-only";
 
 import { and, asc, count, desc, eq, gte, like, lt, or } from "drizzle-orm";
@@ -24,12 +25,16 @@ import type { TemplateAnnotation } from "@/features/templates/template.types";
 export async function queryOwnedSubmissions(
   ownerEmail: string,
   filters: SubmissionFilters,
-  pagination: number | { pageSize: number; offset: number; order?: "asc" | "desc" } = 200,
+  pagination:
+    | number
+    | { pageSize: number; offset: number; order?: "asc" | "desc" } = 200,
 ) {
   const conditions = submissionConditions(ownerEmail, filters);
-  const pageSize = typeof pagination === "number" ? pagination : pagination.pageSize;
+  const pageSize =
+    typeof pagination === "number" ? pagination : pagination.pageSize;
   const offset = typeof pagination === "number" ? 0 : pagination.offset;
-  const order = typeof pagination === "number" ? "desc" : pagination.order ?? "desc";
+  const order =
+    typeof pagination === "number" ? "desc" : (pagination.order ?? "desc");
   const direction = order === "asc" ? asc : desc;
   const db = getDb();
   const [rows, totals] = await Promise.all([
@@ -69,7 +74,10 @@ export async function queryOwnedSubmissions(
       .select({ total: count() })
       .from(submissions)
       .innerJoin(templates, eq(submissions.templateId, templates.id))
-      .innerJoin(recipientLinks, eq(submissions.recipientLinkId, recipientLinks.id))
+      .innerJoin(
+        recipientLinks,
+        eq(submissions.recipientLinkId, recipientLinks.id),
+      )
       .where(and(...conditions)),
   ]);
 
@@ -92,15 +100,16 @@ export async function queryOwnedSubmissions(
   };
 }
 
-function submissionConditions(
-  ownerEmail: string,
-  filters: SubmissionFilters,
-) {
-  const conditions: SQL[] = [eq(templates.ownerEmail, ownerEmail)];
+function submissionConditions(ownerEmail: string, filters: SubmissionFilters) {
+  const conditions: SQL[] = [
+    eq(templates.ownerEmail, ownerEmail),
+    notArchived("submission", submissions.id),
+  ];
   if (filters.templateId) {
     conditions.push(eq(submissions.templateId, filters.templateId));
   }
-  if (filters.roleId) conditions.push(eq(recipientLinks.roleId, filters.roleId));
+  if (filters.roleId)
+    conditions.push(eq(recipientLinks.roleId, filters.roleId));
   if (filters.from) conditions.push(gte(submissions.submittedAt, filters.from));
   if (filters.to) conditions.push(lt(submissions.submittedAt, filters.to));
   if (filters.search) {
@@ -119,7 +128,7 @@ function submissionConditions(
 function parseAnnotations(value: string) {
   try {
     const parsed = JSON.parse(value) as unknown;
-    return Array.isArray(parsed) ? parsed as TemplateAnnotation[] : [];
+    return Array.isArray(parsed) ? (parsed as TemplateAnnotation[]) : [];
   } catch {
     return [];
   }

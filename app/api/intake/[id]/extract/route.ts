@@ -1,3 +1,4 @@
+import { isArchived } from "@/features/archive/archive.server";
 import { and, eq, isNull, lt, or } from "drizzle-orm";
 import { getDb } from "@/db";
 import { telegramIntakes } from "@/features/telegram/schema";
@@ -26,6 +27,11 @@ export async function POST(request: Request, context: Context) {
       )
       .limit(1);
     if (!intake) fail("Candidate intake not found.", 404);
+    if (
+      (await isArchived("intake", id)) ||
+      (await isArchived("resume", intake.resumeId))
+    )
+      fail("Restore this CV from Archive before requesting extraction.", 409);
     if (intake.extractionStatus === "extracted" && body.reextract !== true)
       return { reused: true };
     const [claimed] = await getDb()
