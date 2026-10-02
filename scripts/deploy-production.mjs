@@ -55,9 +55,12 @@ async function main() {
   await ensurePersistentAuthSecret();
   await putWorkerSecret("OPENAI_API_KEY", OPENAI_API_KEY);
   const telegramToken = process.env.TELEGRAM_BOT_TOKEN?.trim();
-  const telegramSecret = process.env.TELEGRAM_WEBHOOK_SECRET?.trim();
+  let telegramSecret = process.env.TELEGRAM_WEBHOOK_SECRET?.trim();
   if (telegramToken && telegramSecret) {
-    if (!/^[A-Za-z0-9_-]{16,256}$/u.test(telegramSecret)) throw new Error("TELEGRAM_WEBHOOK_SECRET must be 16–256 letters, digits, underscores, or hyphens.");
+    if (!/^[A-Za-z0-9_-]{16,256}$/u.test(telegramSecret)) {
+      telegramSecret = randomSecret();
+      console.log("Generated a secure Telegram webhook secret to replace the invalid configured value.");
+    }
     try {
       const response=await fetch(`https://api.telegram.org/bot${telegramToken}/getMe`, { signal: AbortSignal.timeout(25000) });
       const result=await response.json();

@@ -21,6 +21,8 @@ The intake list searches and filters the most recent 200 submissions. The Resume
 
 The existing `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL`, and `MANAGEMENT_EMAIL` settings are required for activation, public links, and owner-scoped intake. Paid extraction also requires the existing OpenAI configuration.
 
+If the supplied webhook secret has an invalid length or contains unsupported characters, deployment generates a fresh random replacement and uses that same value in the Worker and Telegram webhook registration. The generated value is never logged. This does not modify the GitHub secret; future deployments will generate another replacement until the GitHub value is corrected.
+
 When both Telegram deployment secrets are present, deployment verifies the bot username, installs the Worker secrets, and registers `/api/telegram/webhook` with Telegram's secret header and message-only updates. Pending Telegram updates are preserved. If either deployment secret is absent, registration is skipped and existing Worker secrets are preserved. A successful application deployment alone does not demonstrate a working live Telegram connection.
 
 The webhook accepts only authenticated private messages. Requests are durably queued in D1 before acknowledgement, deduplicated by update ID, and processed in chat order with leases. Worker background processing handles new requests promptly; the production scheduled handler also drains the inbox and resumes workflows. PDFs use the existing 15 MB / 20-page checks. Uploaded email is self-reported, not email verification.
