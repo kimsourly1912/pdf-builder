@@ -13,6 +13,7 @@ import {
   responseWithRequestId,
 } from "../features/reliability/request-id";
 import { processStorageCleanupJobs } from "../features/storage/storage-cleanup.server";
+import { processPendingWorkflowRuns } from "../features/workflows/runner.server";
 
 type QueueMessage = {
   body: unknown;
@@ -97,6 +98,7 @@ const worker = {
     }
   },
   async scheduled(): Promise<void> {
+    await processPendingWorkflowRuns();
     const result = await processStorageCleanupJobs({ limit: 100 });
     if (result.failed > 0) {
       console.warn("Storage cleanup remains pending", {

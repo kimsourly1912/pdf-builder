@@ -8,6 +8,8 @@ import {
 } from "drizzle-orm/sqlite-core";
 import { sql } from "drizzle-orm";
 
+export { workflows, workflowRuns, workflowReviewDecisions } from "../features/workflows/schema";
+
 export const user = sqliteTable(
   "user",
   {

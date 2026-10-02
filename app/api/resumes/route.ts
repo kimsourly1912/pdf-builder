@@ -269,7 +269,10 @@ export async function POST(request: Request) {
       },
       createdAt: now,
     })));
-    await db.batch(statements as [typeof statements[number], ...typeof statements]);
+    // Persist trigger runs atomically with the uploaded resume.
+    const { uploadWorkflowStatements } = await import("@/features/workflows/workflow.server");
+    const workflowStatements = await uploadWorkflowStatements(ownerEmail, resumeId, now);
+    await db.batch([...statements, ...workflowStatements] as [typeof statements[number] | typeof workflowStatements[number], ...(typeof statements[number] | typeof workflowStatements[number])[]]);
     return Response.json({ resume: { id: resumeId, status } }, { status: 201 });
   } catch (error) {
     if (fileKey) {

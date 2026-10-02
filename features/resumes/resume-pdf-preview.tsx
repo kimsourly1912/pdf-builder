@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 export function ResumePdfPreview(props: {
   resumeId: string;
   fileName: string;
+  contained?: boolean;
 }) {
   const { resumeId, fileName } = props;
   const pagesRef = useRef<HTMLDivElement>(null);
@@ -106,7 +107,7 @@ export function ResumePdfPreview(props: {
   }, [attempt, previewUrl]);
 
   return (
-    <div className="flex min-h-[32rem] flex-col bg-muted/40 xl:h-[calc(100vh-6rem)] xl:min-h-[650px]">
+    <div className={props.contained ? "flex h-full min-h-0 flex-col bg-muted/40" : "flex min-h-[32rem] flex-col bg-muted/40 xl:h-[calc(100vh-6rem)] xl:min-h-[650px]"}>
       <div className="flex items-center justify-between gap-3 border-b bg-card px-4 py-3">
         <div className="flex min-w-0 items-center gap-2">
           <FileText className="size-4 shrink-0 text-muted-foreground" />

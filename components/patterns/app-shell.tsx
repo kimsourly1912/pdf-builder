@@ -6,6 +6,7 @@ import {
   Files,
   FileText,
   UsersRound,
+  Workflow,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -40,6 +41,7 @@ const navigationItems = [
   { href: "/templates", label: "Templates", icon: Files },
   { href: "/resumes", label: "Resumes", icon: FileText },
   { href: "/accounts", label: "Accounts", icon: UsersRound },
+  { href: "/workflows", label: "Workflows", icon: Workflow },
   { href: "/activity", label: "Activity", icon: Activity },
 ];
 

@@ -63,6 +63,19 @@ const EMPTY_PAGE_META: PageMeta = {
 };
 
 const ACTION_LABELS: Record<string, string> = {
+  "workflow.created": "Workflow created",
+  "workflow.saved": "Workflow draft saved",
+  "workflow.published": "Workflow published",
+  "workflow.paused": "Workflow paused",
+  "workflow.review_saved": "CV review changes saved",
+  "workflow.review_approved": "CV approved for workflow",
+  "workflow.review_rejected": "CV rejected in workflow",
+  "workflow.account_created": "Candidate account created by workflow",
+  "workflow.resume_linked": "Resume linked by workflow",
+  "workflow.form_assigned": "Form assigned by workflow",
+  "workflow.failed": "Workflow step failed",
+  "workflow.retried": "Workflow step retried",
+  "workflow.returned_to_review": "Workflow returned to CV review",
   "account.created": "Account created",
   "assignment.created": "Form assigned",
   "link.regenerated": "Fill link regenerated",
