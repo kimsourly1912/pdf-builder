@@ -349,6 +349,22 @@ async function verifyDeployment(hostname, authenticatedCookie) {
     throw new Error(`Authenticated management API failed with HTTP ${authenticatedResponse.status}.`);
   }
 
+  for (const path of ["/api/workflows", "/api/workflow-runs", "/workflows"]) {
+    const response = await fetch(`https://${hostname}${path}`, {
+      headers: { Cookie: authenticatedCookie }, redirect: "manual",
+    });
+    if (response.status !== 200) {
+      throw new Error(`Authenticated workflow smoke check ${path} failed with HTTP ${response.status}.`);
+    }
+    if (path.startsWith("/api/")) {
+      const body = await response.json();
+      if (!Array.isArray(body.items)) throw new Error(`Workflow API ${path} returned an invalid list.`);
+    } else if (!(await response.text()).includes("Workflows")) {
+      throw new Error("The deployed Workflows page is missing its expected content.");
+    }
+    console.log(`Authenticated workflow smoke check passed: ${path}`);
+  }
+
   const fillResponse = await fetch(`https://${hostname}/fill/deployment-check`, {
     redirect: "manual",
   });

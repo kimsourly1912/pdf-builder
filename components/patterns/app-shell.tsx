@@ -34,6 +34,7 @@ import {
 type AppShellProps = {
   children: ReactNode;
   displayName: string;
+  fullWidth?: boolean;
 };
 
 const navigationItems = [
@@ -137,7 +138,7 @@ function AppShell(props: AppShellProps) {
           <SignOutButton />
         </header>
         <div className="flex flex-1 flex-col">
-          <div className="mx-auto flex w-full max-w-[90rem] flex-1 flex-col gap-6 p-4 sm:p-6 lg:p-8">
+          <div className={`mx-auto flex w-full min-w-0 flex-1 flex-col gap-6 p-4 sm:p-6 lg:p-8 ${props.fullWidth ? "max-w-none" : "max-w-[90rem]"}`}>
             {props.children}
           </div>
         </div>

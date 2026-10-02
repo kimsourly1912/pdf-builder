@@ -35,6 +35,27 @@ async function readCssTree(directory) {
   return contents.join("\n");
 }
 
+test("keeps AI field results inside a scrollable dialog body", async () => {
+  const source = await readFile(
+    path.join(
+      root,
+      "features/ai-field-detection/ai-field-detection-dialog.tsx",
+    ),
+    "utf8",
+  );
+
+  assert.match(source, /grid-rows-\[auto_minmax\(0,1fr\)_auto\]/);
+  assert.match(
+    source,
+    /overflow-x-hidden overflow-y-auto overscroll-contain/,
+  );
+  assert.match(source, /\[scrollbar-gutter:stable\]/);
+  assert.match(
+    source,
+    /<DialogFooter className="border-t bg-background px-5 py-4">/,
+  );
+});
+
 test("emits the catalog's animation and scrolling utilities", async () => {
   const css = await readCssTree(path.join(root, "dist"));
 

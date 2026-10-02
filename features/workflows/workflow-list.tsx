@@ -26,7 +26,7 @@ export function WorkflowList(props: { displayName: string }) {
     try { const data = await workflowApi<{ workflow: WorkflowSummary }>("/api/workflows", { method: "POST" }); window.location.assign(`/workflows/${data.workflow.id}`); }
     catch (e) { setError(errorText(e)); setBusy(false); }
   }
-  return <AppShell displayName={props.displayName}>
+  return <AppShell displayName={props.displayName} fullWidth>
     <PageHeader title="Workflows" description="Automate candidate preparation after your team uploads a resume." actions={<Button disabled={busy} onClick={() => void create()}>{busy ? <LoaderCircle className="animate-spin" /> : <Plus />} New workflow</Button>} />
     {error && <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>}
     <Tabs defaultValue="workflows"><TabsList><TabsTrigger value="workflows">Workflows</TabsTrigger><TabsTrigger value="runs">All runs</TabsTrigger></TabsList>

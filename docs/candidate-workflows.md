@@ -77,10 +77,15 @@ npm test
 ```
 
 Migration `0019_candidate_workflows.sql` adds the workflow tables and review
-revision guard. The production deployment script already applies D1 migrations
+revision guard. Migration `0020_workflow_execution_guards.sql` protects account,
+resume-link, and assignment batches against expired or replaced worker leases.
+Unexpected database errors use a safe staff-facing message; account progress is
+recorded only after its transaction succeeds. The production deployment script applies D1 migrations
 before publishing the Worker. Pushing a validated commit to
 `codex/pdf-studio-self-host` triggers the existing production deployment workflow.
 
 The tests cover graph safety, draft normalization, conditions, migration
 compatibility, duplicate runs, stale-review rollback, ownership/lease checks,
-and retaining history after resume removal.
+error redaction, and retaining history after resume removal. Deployment verification
+also checks the authenticated Workflows page and workflow list/run APIs without
+creating or changing production candidates.
