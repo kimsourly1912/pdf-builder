@@ -186,6 +186,7 @@ export function ResumeDetailView(props: { resumeId: string }) {
 
   async function retryExtraction() {
     if (!resume) return;
+    if (resume.intakeId) { window.location.assign(`/intake/${resume.intakeId}`); return; }
 
     setBusy(true);
     setError("");
@@ -294,7 +295,7 @@ export function ResumeDetailView(props: { resumeId: string }) {
               onClick={() => void retryExtraction()}
             >
               <RefreshCw className={busy ? "animate-spin" : ""} />
-              Retry
+              {resume.intakeId ? "Review intake / extract" : "Retry"}
             </Button>
             <Button
               variant="outline"

@@ -1,3 +1,4 @@
+import { processTelegramUpdates } from "../features/telegram/intake.server";
 import handler from "vinext/server/app-router-entry";
 
 import {
@@ -41,6 +42,9 @@ const worker = {
         environment,
         context,
       );
+      if (path === "/api/telegram/webhook" && response.ok && context) {
+        context.waitUntil(processTelegramUpdates().catch(() => console.error("Telegram inbox processing unavailable")));
+      }
       const durationMs = requestDurationMs(startedAt);
       console.info("Request completed", {
         requestId,
@@ -98,6 +102,7 @@ const worker = {
     }
   },
   async scheduled(): Promise<void> {
+    await processTelegramUpdates();
     await processPendingWorkflowRuns();
     const result = await processStorageCleanupJobs({ limit: 100 });
     if (result.failed > 0) {

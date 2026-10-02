@@ -1,9 +1,10 @@
+import { telegramConnections, telegramIntakes } from "@/features/telegram/schema";
 import "server-only";
 import { hashPassword } from "better-auth/crypto";
 import { and, desc, eq } from "drizzle-orm";
 import { getDb } from "@/db";
 import { candidateProfileVersions, candidates, recipientProfiles, resumeExtractions, resumes, user } from "@/db/schema";
-import { isStrongAccountPassword } from "@/features/accounts/account-share";
+import { generateTemporaryPassword, isStrongAccountPassword } from "@/features/accounts/account-share";
 import { candidateProfileFromSummary } from "@/features/resumes/candidate-profile";
 import { normalizeEmail, normalizePhone } from "@/features/resumes/resume-extraction";
 import { candidateSummary, parseCandidateUpdate } from "@/features/resumes/resume.server";
@@ -18,7 +19,9 @@ export async function getReviewData(ownerEmail: string, runId: string) {
   const [candidate] = resume.candidateId ? await getDb().select().from(candidates).where(and(eq(candidates.id, resume.candidateId), eq(candidates.ownerEmail, ownerEmail))).limit(1) : [];
   const [extraction] = await getDb().select().from(resumeExtractions).where(eq(resumeExtractions.resumeId, resume.id)).orderBy(desc(resumeExtractions.versionNumber)).limit(1);
   const [existingAccount] = candidate?.normalizedEmail ? await getDb().select({ id: user.id, name: user.name, email: user.email }).from(user).innerJoin(recipientProfiles, eq(user.id, recipientProfiles.userId)).where(and(eq(user.email, candidate.normalizedEmail), eq(recipientProfiles.createdByEmail, ownerEmail), eq(recipientProfiles.accountType, "candidate"), eq(user.banned, false))).limit(1) : [];
-  return { run, candidate: candidateSummary(candidate ?? null), resumeRevision: resume.updatedAt, candidateRevision: candidate?.updatedAt ?? null, possibleDuplicate: !!resume.duplicateCandidateId, existingAccount: existingAccount ?? null, extraction: extraction ? JSON.parse(extraction.fieldsJson) as unknown : null };
+  const connections = await getDb().select({id:telegramConnections.id,fullName:telegramConnections.fullName,email:telegramConnections.email,username:telegramConnections.username}).from(telegramConnections).where(eq(telegramConnections.ownerEmail,ownerEmail)).limit(200);
+  const [intake] = await getDb().select({connectionId:telegramIntakes.connectionId}).from(telegramIntakes).where(and(eq(telegramIntakes.resumeId,run.resumeId),eq(telegramIntakes.ownerEmail,ownerEmail))).limit(1);
+  return { telegramConnections:connections,suggestedConnectionId:intake?.connectionId??null,run, candidate: candidateSummary(candidate ?? null), resumeRevision: resume.updatedAt, candidateRevision: candidate?.updatedAt ?? null, possibleDuplicate: !!resume.duplicateCandidateId, existingAccount: existingAccount ?? null, extraction: extraction ? JSON.parse(extraction.fieldsJson) as unknown : null };
 }
 
 export async function reviewRun(ownerEmail: string, runId: string, body: Record<string, unknown>) {
@@ -63,6 +66,15 @@ export async function reviewRun(ownerEmail: string, runId: string, body: Record<
     const nextCandidate = { ...candidate, ...storedChanges };
     const guard = () => getDb().insert(workflowReviewDecisions).values({ id: crypto.randomUUID(), runId: row.id, ownerEmail, candidateId: candidate.id, runLockToken: token, resumeRevision: resume.updatedAt, candidateRevision: candidate.updatedAt, action: approving ? "approve" : "save", createdAt: now });
     let passwordHash: string | null = null;
+    const sendsTelegram = graph.nodes.some(n=>n.kind === "send_telegram");
+    let telegramConnection: typeof telegramConnections.$inferSelect | undefined;
+    if(approving && sendsTelegram && typeof body.telegramConnectionId === "string" && body.telegramConnectionId) {
+      if(body.confirmTelegram !== true) fail("Confirm that the Telegram contact belongs to this candidate.",422);
+      [telegramConnection] = await getDb().select().from(telegramConnections).where(and(eq(telegramConnections.id,body.telegramConnectionId),eq(telegramConnections.ownerEmail,ownerEmail))).limit(1);
+      if(!telegramConnection) fail("Telegram connection unavailable.",409);
+      context.telegramConnectionId=telegramConnection.id;context.telegramChatId=telegramConnection.chatId;
+    } else if(approving) { delete context.telegramConnectionId;delete context.telegramChatId; }
+
     if (approving) {
       const [emailAccount] = await getDb().select().from(user).where(eq(user.email, nextCandidate.normalizedEmail)).limit(1);
       if (emailAccount) {
@@ -70,10 +82,11 @@ export async function reviewRun(ownerEmail: string, runId: string, body: Record<
         const [linked] = await getDb().select({ id: candidates.id }).from(candidates).where(eq(candidates.userId, emailAccount.id)).limit(1);
         if (!recipient || emailAccount.banned || (linked && linked.id !== candidate.id)) fail("This email is unavailable for the candidate. Resolve its account or resume link in Accounts.", 409);
         if (body.existingAccountId !== emailAccount.id) fail("An account with this email exists. Select and confirm it before approval.", 409);
-        context.userId = emailAccount.id;
+        context.userId = emailAccount.id;context.activationRequired=false;
       } else {
         if (candidate.userId) fail("The linked account uses a different email. Resolve it in Accounts before approval.", 409);
-        const password = typeof body.temporaryPassword === "string" ? body.temporaryPassword : "";
+        const password = sendsTelegram ? generateTemporaryPassword(32) : typeof body.temporaryPassword === "string" ? body.temporaryPassword : "";
+        context.activationRequired=sendsTelegram;
         if (!isStrongAccountPassword(password)) fail("Set a 12–128 character temporary password with uppercase, lowercase, number, and symbol.", 422);
         passwordHash = await hashPassword(password); delete context.userId;
       }
@@ -84,6 +97,7 @@ export async function reviewRun(ownerEmail: string, runId: string, body: Record<
       context.steps[node.id] = { status: "completed", attempts: context.steps[node.id]?.attempts ?? 1, completedAt: now, note: "Approved by reviewer" };
       await getDb().batch([
         guard(),
+        ...(telegramConnection ? [getDb().update(telegramConnections).set({candidateId:candidate.id,confirmedCandidateId:candidate.id,confirmedBy:ownerEmail,confirmedAt:now,updatedAt:now}).where(and(eq(telegramConnections.id,telegramConnection.id),eq(telegramConnections.ownerEmail,ownerEmail)))] : []),
         getDb().update(candidates).set(storedChanges).where(and(eq(candidates.id, candidate.id), eq(candidates.ownerEmail, ownerEmail))),
         getDb().insert(candidateProfileVersions).values({ id: context.profileVersionId, ownerEmail, candidateId: candidate.id, resumeId: resume.id, extractionId: extraction?.id ?? null, versionNumber: (latest?.version ?? 0) + 1, schemaVersion: 2, profileJson: JSON.stringify(candidateProfileFromSummary(context.approvedCandidate!)), verificationStatus: "verified", source: "workflow_hr_review", createdByEmail: ownerEmail, createdAt: now, verifiedAt: now }),
         getDb().update(resumes).set({ status: "ready", verificationStatus: "verified", updatedAt: now }).where(and(eq(resumes.id, resume.id), eq(resumes.ownerEmail, ownerEmail))),

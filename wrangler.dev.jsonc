@@ -5,6 +5,7 @@
   "compatibility_date": "2026-08-01",
   "compatibility_flags": ["nodejs_compat"],
   "vars": {
+    "TELEGRAM_BOT_USERNAME": "anghr_bot",
     "ENVIRONMENT": "development",
     "BETTER_AUTH_URL": "http://localhost:5173",
     "MANAGEMENT_EMAIL": "owner@localhost"

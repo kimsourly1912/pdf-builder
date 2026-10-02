@@ -57,6 +57,7 @@ export async function extractResumeWithOpenAi(options: {
   const model = getResumeExtractionModel();
   const response = await fetch("https://api.openai.com/v1/responses", {
     method: "POST",
+    signal: AbortSignal.timeout(180000),
     headers: {
       Authorization: `Bearer ${apiKey}`,
       "Content-Type": "application/json",
