@@ -45,6 +45,12 @@ import {
 } from "@/features/workflows/workflow";
 import type { ResumeCandidateSummary } from "@/features/resumes/resume.types";
 type IntakeData = {
+  progress: {
+    label: string;
+    next: string;
+    href: string;
+    fileName: string;
+  } | null;
   id: string;
   resumeId: string;
   fileName: string;
@@ -58,6 +64,7 @@ type IntakeData = {
   reviewedAt: string | null;
   resumeRevision: string;
   candidateRevision: string;
+  contactRevision: string;
   profileVersionId: string | null;
   existingAccount: { id: string; name: string; email: string } | null;
   cvHistory: {
@@ -65,12 +72,14 @@ type IntakeData = {
     fileName: string;
     verificationStatus: string;
     archived: number;
+    previouslyApproved: number;
     createdAt: string;
   }[];
   runs: {
     id: string;
     workflowId: string;
     status: string;
+    hasPreparation: number;
     errorMessage: string | null;
   }[];
 };
@@ -85,9 +94,11 @@ export function IntakeDetail({
     [error, setError] = useState(""),
     [notice, setNotice] = useState(""),
     [busy, setBusy] = useState(false),
+    [contactOpen, setContactOpen] = useState(false),
     [runOpen, setRunOpen] = useState(false),
     [confirmed, setConfirmed] = useState(false),
     [reuse, setReuse] = useState(false),
+    [automatic, setAutomatic] = useState(false),
     [workflowId, setWorkflowId] = useState(""),
     [workflows, setWorkflows] = useState<
       {
@@ -96,6 +107,7 @@ export function IntakeDetail({
         version: number;
         trigger: WorkflowTrigger;
         hasTelegram?: boolean;
+        active: boolean;
       }[]
     >([]);
   const load = useCallback(
@@ -119,8 +131,17 @@ export function IntakeDetail({
       signal: controller.signal,
     })
       .then((r) => {
-        if (!controller.signal.aborted)
-          setWorkflows(r.items.filter((w) => w.version > 0 && w.hasTelegram));
+        if (!controller.signal.aborted) {
+          setAutomatic(
+            r.items.some(
+              (w) =>
+                w.active && w.version > 0 && w.trigger === "resume_verified",
+            ),
+          );
+          setWorkflows(
+            r.items.filter((w) => w.active && w.version > 0 && w.hasTelegram),
+          );
+        }
       })
       .catch((e) => {
         if (!controller.signal.aborted) setError(errorText(e));
@@ -162,9 +183,60 @@ export function IntakeDetail({
       setBusy(false);
     }
   }
-  const existingRun = data?.runs.find((r) => r.workflowId === workflowId),
-    finished =
-      existingRun && ["completed", "rejected"].includes(existingRun.status);
+  async function confirmContact() {
+    if (!data) return;
+    setBusy(true);
+    setError("");
+    try {
+      await workflowApi(`/api/intake/${intakeId}`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          action: "confirm_contact",
+          confirm: true,
+          contactRevision: data.contactRevision,
+          resumeRevision: data.resumeRevision,
+          candidateRevision: data.candidateRevision,
+        }),
+      });
+      setContactOpen(false);
+      setNotice(
+        "Telegram contact confirmed. No invitation or workflow was started.",
+      );
+      await load();
+    } catch (e) {
+      setError(errorText(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+  const preparationRuns = data?.runs.filter(
+    (r) =>
+      r.hasPreparation ||
+      !["completed", "rejected", "cancelled"].includes(r.status),
+  );
+  const existingRun =
+    preparationRuns?.find(
+      (r) => !["completed", "rejected", "cancelled"].includes(r.status),
+    ) ??
+    preparationRuns?.find((r) => r.workflowId === workflowId) ??
+    preparationRuns?.[0];
+  const runLabel =
+    existingRun?.status === "completed"
+      ? "View completed preparation"
+      : existingRun &&
+          ["failed", "waiting_review", "rejected", "cancelled"].includes(
+            existingRun.status,
+          )
+        ? "Resolve issue"
+        : "View progress";
+  const nextAction =
+    data?.progress && data.progress.label === "CV approved" && !existingRun
+      ? !data.confirmed
+        ? { next: "Confirm contact", href: "#contact" }
+        : !workflows.length
+          ? { next: "Configure workflow", href: "/workflows" }
+          : { next: "Prepare candidate", href: "#preparation" }
+      : data?.progress;
   return (
     <AppShell displayName={displayName} fullWidth>
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -233,7 +305,16 @@ export function IntakeDetail({
             </Alert>
           )}
           <div className="grid min-w-0 gap-5 lg:grid-cols-[minmax(0,1fr)_380px]">
-            <Card className="overflow-hidden p-0">
+            <Card className="order-last overflow-hidden p-0 lg:order-first">
+              <div className="flex flex-wrap items-center gap-2 border-b p-3">
+                <span className="min-w-0 break-all font-medium text-sm">
+                  {data.fileName}
+                </span>
+                <Badge variant="outline">Currently viewing</Badge>
+                {data.cvHistory[0]?.id === intakeId && (
+                  <Badge variant="outline">Latest submission</Badge>
+                )}
+              </div>
               <div className="h-[650px] lg:h-[calc(100svh-15rem)] lg:min-h-[560px]">
                 <ResumePdfPreview
                   resumeId={data.resumeId}
@@ -243,8 +324,8 @@ export function IntakeDetail({
                 />
               </div>
             </Card>
-            <div className="space-y-5">
-              <Card>
+            <div className="order-first space-y-5 lg:order-last">
+              <Card id="contact" className="scroll-mt-24">
                 <CardHeader>
                   <CardTitle>Submitted details</CardTitle>
                   <CardDescription>
@@ -285,6 +366,24 @@ export function IntakeDetail({
                   </dl>
                 </CardContent>
               </Card>
+              {data.progress && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Candidate progress</CardTitle>
+                    <CardDescription>
+                      For {data.progress.fileName}
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    <Badge>{data.progress.label}</Badge>
+                    <Button asChild className="w-full" variant="outline">
+                      <Link href={nextAction?.href ?? data.progress.href}>
+                        {nextAction?.next ?? data.progress.next}
+                      </Link>
+                    </Button>
+                  </CardContent>
+                </Card>
+              )}
               <Card>
                 <CardHeader>
                   <CardTitle>HR review</CardTitle>
@@ -292,7 +391,7 @@ export function IntakeDetail({
                 <CardContent className="space-y-4">
                   <Badge variant={data.reviewReady ? "default" : "secondary"}>
                     {data.reviewReady
-                      ? "Verified · ready to run"
+                      ? "CV approved"
                       : "Needs Resume Editor review"}
                   </Badge>
                   <p className="text-sm text-muted-foreground">
@@ -331,37 +430,66 @@ export function IntakeDetail({
                   )}
                 </CardContent>
               </Card>
-              <Card>
+              <Card id="preparation" className="scroll-mt-24">
                 <CardHeader>
-                  <CardTitle>Run workflow</CardTitle>
+                  <CardTitle>Preparation</CardTitle>
                   <CardDescription>
                     Use the verified CV to prepare the account, link the resume,
                     assign forms, and send the Telegram invitation.
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  <Select value={workflowId} onValueChange={setWorkflowId}>
-                    <SelectTrigger
-                      className="w-full"
-                      aria-label="Intake workflow"
-                    >
-                      <SelectValue placeholder="Choose published workflow" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {workflows.map((w) => (
-                        <SelectItem key={w.id} value={w.id}>
-                          {w.name} ·{" "}
-                          {TRIGGER_LABELS[w.trigger ?? "staff_upload"]}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  {finished ? (
+                  <p className="text-sm text-muted-foreground">
+                    {automatic
+                      ? "Approving a CV starts your published CV-approval workflow automatically. Use View progress for an existing preparation."
+                      : "No automatic CV-approval workflow is published. After approval, choose a published preparation workflow to start manually."}
+                  </p>
+                  {!data.confirmed && !data.archived && (
+                    <Alert>
+                      <AlertDescription>
+                        <p>
+                          Telegram contact confirmation is required before an
+                          invitation.
+                        </p>
+                        <Button
+                          className="mt-2"
+                          size="sm"
+                          variant="outline"
+                          disabled={busy}
+                          onClick={() => {
+                            setConfirmed(false);
+                            setContactOpen(true);
+                          }}
+                        >
+                          Confirm contact
+                        </Button>
+                      </AlertDescription>
+                    </Alert>
+                  )}
+                  {!existingRun && (
+                    <Select value={workflowId} onValueChange={setWorkflowId}>
+                      <SelectTrigger
+                        className="w-full"
+                        aria-label="Intake workflow"
+                      >
+                        <SelectValue placeholder="Choose published workflow" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {workflows.map((w) => (
+                          <SelectItem key={w.id} value={w.id}>
+                            {w.name} ·{" "}
+                            {TRIGGER_LABELS[w.trigger ?? "staff_upload"]}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                  {existingRun ? (
                     <Button asChild className="w-full" variant="outline">
                       <Link
-                        href={`/workflows/${workflowId}?tab=runs&run=${existingRun.id}`}
+                        href={`/workflows/${existingRun.workflowId}?tab=runs&run=${existingRun.id}`}
                       >
-                        View {existingRun.status} run
+                        {runLabel}
                       </Link>
                     </Button>
                   ) : (
@@ -371,6 +499,7 @@ export function IntakeDetail({
                         busy ||
                         data.archived ||
                         !data.reviewReady ||
+                        !data.confirmed ||
                         !workflowId
                       }
                       onClick={() => {
@@ -393,24 +522,27 @@ export function IntakeDetail({
                       workflow. AI usage is not required.
                     </p>
                   )}
-                  {!workflows.length && (
+                  {!existingRun && !workflows.length && (
                     <p className="text-xs text-muted-foreground">
-                      Publish a workflow containing a Send Telegram invitation
+                      No suitable preparation workflow is published. Configure
+                      and publish one containing a Send Telegram invitation
                       step.{" "}
                       <Link href="/workflows" className="underline">
-                        Open Workflows
+                        Configure workflow
                       </Link>
                     </p>
                   )}
-                  {data.runs.map((run) => (
-                    <Link
-                      key={run.id}
-                      className="block text-sm underline"
-                      href={`/workflows/${run.workflowId}?tab=runs&run=${run.id}`}
-                    >
-                      View run · {run.status.replaceAll("_", " ")}
-                    </Link>
-                  ))}
+                  {data.runs
+                    .filter((run) => run.id !== existingRun?.id)
+                    .map((run) => (
+                      <Link
+                        key={run.id}
+                        className="block text-sm underline"
+                        href={`/workflows/${run.workflowId}?tab=runs&run=${run.id}`}
+                      >
+                        View run · {run.status.replaceAll("_", " ")}
+                      </Link>
+                    ))}
                 </CardContent>
               </Card>
             </div>
@@ -425,7 +557,7 @@ export function IntakeDetail({
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-3">
-                {data.cvHistory.map((cv) => (
+                {data.cvHistory.map((cv, index) => (
                   <div
                     key={cv.id}
                     className="flex flex-wrap items-center justify-between gap-2 border-b pb-3 last:border-0"
@@ -436,7 +568,16 @@ export function IntakeDetail({
                     >
                       {cv.fileName}
                     </Link>
-                    <div className="flex gap-2">
+                    <div className="flex flex-wrap gap-2">
+                      {index === 0 && (
+                        <Badge variant="outline">Latest submission</Badge>
+                      )}
+                      {cv.id === intakeId && (
+                        <Badge variant="outline">Currently viewing</Badge>
+                      )}
+                      {!!cv.previouslyApproved && (
+                        <Badge variant="outline">Previously approved</Badge>
+                      )}
                       <Badge variant="secondary">
                         {cv.archived
                           ? "Archived"
@@ -456,6 +597,53 @@ export function IntakeDetail({
         </>
       )}
       <Dialog
+        open={contactOpen}
+        onOpenChange={(v) => {
+          if (!busy) setContactOpen(v);
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Confirm Telegram contact</DialogTitle>
+            <DialogDescription>
+              Confirm that{" "}
+              {data?.contact.username
+                ? `@${data.contact.username}`
+                : "this connected Telegram user"}{" "}
+              belongs to {data?.candidate.fullName || data?.contact.fullName}.
+              This does not send account access.
+            </DialogDescription>
+          </DialogHeader>
+          <label className="flex gap-2 text-sm">
+            <Checkbox
+              checked={confirmed}
+              onCheckedChange={(v) => setConfirmed(v === true)}
+            />
+            I checked this contact belongs to the candidate.
+          </label>
+          {error && (
+            <p role="alert" className="text-destructive">
+              {error}
+            </p>
+          )}
+          <DialogFooter>
+            <Button
+              variant="outline"
+              disabled={busy}
+              onClick={() => setContactOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              disabled={busy || !confirmed}
+              onClick={() => void confirmContact()}
+            >
+              Confirm contact
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <Dialog
         open={runOpen}
         onOpenChange={(v) => {
           if (!busy) setRunOpen(v);
@@ -471,6 +659,7 @@ export function IntakeDetail({
             </DialogDescription>
           </DialogHeader>
           <p className="text-sm">
+            <strong className="block">Selected CV: {data?.fileName}</strong>
             {data?.candidate.fullName} · {data?.candidate.email}
             <span className="block text-muted-foreground">
               {data?.contact.username

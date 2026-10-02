@@ -172,7 +172,11 @@ export async function PATCH(
       return linkCandidate(ownerEmail, resume.id, body.candidateId);
     if (body.action === "retry_extraction")
       return saveRetry(ownerEmail, resume, body.extraction);
-    if (body.action !== "update_candidate")
+    if (
+      !["update_candidate", "approve_cv", "save_changes"].includes(
+        String(body.action),
+      )
+    )
       return jsonError("Choose a valid resume action.", 400);
     if (!resume.candidateId)
       return jsonError(
@@ -213,7 +217,8 @@ export async function PATCH(
         ),
       )
       .limit(1);
-    if (intake && (!update.fullName.trim() || !update.email))
+    const approving = body.action === "approve_cv";
+    if (approving && (!update.fullName.trim() || !update.email))
       return jsonError(
         "Enter the candidate's full name and email before verifying.",
         422,
@@ -254,7 +259,7 @@ export async function PATCH(
         certificationsJson: JSON.stringify(update.certifications),
         languagesJson: JSON.stringify(update.languages),
         linksJson: JSON.stringify(update.links),
-        verificationStatus: "verified",
+        verificationStatus: approving ? "verified" : "unverified",
         updatedAt: now,
       })
       .where(
@@ -263,6 +268,49 @@ export async function PATCH(
           eq(candidates.ownerEmail, ownerEmail),
         ),
       );
+    if (!approving) {
+      const binding = getDatabaseBinding();
+      const queries = [
+        candidateUpdate,
+        getDb()
+          .update(resumes)
+          .set({
+            verificationStatus: "unverified",
+            status: resume.duplicateCandidateId
+              ? "possible_duplicate"
+              : "needs_attention",
+            updatedAt: now,
+          })
+          .where(and(eq(resumes.id, id), eq(resumes.ownerEmail, ownerEmail))),
+        getDb()
+          .insert(auditEvents)
+          .values(
+            createAuditEvent({
+              request,
+              ownerEmail,
+              actorType: "owner",
+              actorId: ownerEmail,
+              action: "candidate.changes_saved",
+              targetType: "candidate",
+              targetId: candidate.id,
+              metadata: { resumeId: id },
+              createdAt: now,
+            }),
+          ),
+      ];
+      await binding.batch([
+        binding
+          .prepare(
+            "INSERT INTO resume_edit_guards(resume_id,owner_email,resume_revision,candidate_revision) VALUES(?,?,?,?)",
+          )
+          .bind(id, ownerEmail, resume.updatedAt, candidate.updatedAt),
+        ...queries.map((q) => {
+          const p = q.toSQL();
+          return binding.prepare(p.sql).bind(...p.params);
+        }),
+      ]);
+      return Response.json({ saved: true, approved: false });
+    }
     const [latestExtraction] = await getDb()
       .select()
       .from(resumeExtractions)
@@ -438,9 +486,13 @@ export async function PATCH(
     return Response.json({ candidate: verifiedCandidate });
   } catch (error) {
     if (isResponse(error)) return error;
+    if (error instanceof Error && /RESUME_EDIT_CHANGED/.test(error.message))
+      return jsonError(
+        "This CV changed while saving. Reload before trying again.",
+        409,
+      );
     console.error("Failed to update resume", error);
-    const duplicate =
-      error instanceof Error && /unique|constraint/iu.test(error.message);
+    const duplicate = error instanceof Error && /unique/iu.test(error.message);
     return jsonError(
       duplicate
         ? "That candidate account is already linked to another profile."

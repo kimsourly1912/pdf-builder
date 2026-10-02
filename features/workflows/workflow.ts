@@ -341,9 +341,6 @@ export function graphIssues(graph: WorkflowGraph): string[] {
   for (const kind of [
     "extract_resume",
     "review_resume",
-    "create_account",
-    "link_resume",
-    "assign_forms",
     "complete",
   ] as StepKind[]) {
     if (!graph.nodes.some((n) => n.kind === kind))
@@ -413,7 +410,9 @@ export function graphIssues(graph: WorkflowGraph): string[] {
     if (rejected && n.kind !== "stop")
       issues.add("Rejected reviews must connect directly to Stop.");
     if (n.kind === "review_resume" && !state.has("extract_resume"))
-      issues.add("Extract the resume before manual review.");
+      issues.add(
+        "Prepare saved resume data before manual review. AI extraction is optional.",
+      );
     if (
       [
         "create_account",

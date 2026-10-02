@@ -2,7 +2,7 @@ import "server-only";
 import { getDatabaseBinding } from "@/db";
 import { fail } from "@/features/workflows/workflow.server";
 import { processStorageCleanupJobs } from "@/features/storage/storage-cleanup.server";
-import { type ArchiveType, isArchiveType } from "./archive";
+import { ARCHIVE_TYPES, type ArchiveType, isArchiveType } from "./archive";
 
 type Row = {
   id: string;
@@ -228,9 +228,35 @@ export async function archiveEntity(
   type: ArchiveType,
   id: string,
 ) {
+  const source = await ownedArchiveEntity(owner, type, id);
+  const cvId =
+    type === "resume"
+      ? id
+      : type === "intake"
+        ? String(source?.resume_id ?? "")
+        : null;
+  const activeRun = cvId
+    ? await getDatabaseBinding()
+        .prepare(
+          "SELECT id FROM workflow_runs WHERE resume_id=? AND owner_email=? AND status IN ('queued','running','waiting_review') LIMIT 1",
+        )
+        .bind(cvId, owner)
+        .first()
+    : null;
   const statements = await archiveStatements(owner, type, id);
   if (statements.length) await getDatabaseBinding().batch(statements);
-  return { archived: true };
+  const record = await getDatabaseBinding()
+    .prepare(
+      "SELECT archived_at FROM archive_records WHERE owner_email=? AND entity_type=? AND entity_id=?",
+    )
+    .bind(owner, type, id)
+    .first<{ archived_at: string }>();
+  return {
+    archived: true,
+    archivedAt: record?.archived_at ?? null,
+    undoable:
+      ["template", "submission"].includes(type) || (!!cvId && !activeRun),
+  };
 }
 export async function archivedGroup(
   owner: string,
@@ -255,7 +281,10 @@ export async function archivedGroup(
 }
 export async function archiveList(owner: string, query: URLSearchParams) {
   const db = getDatabaseBinding(),
-    page = Math.max(1, Math.min(100000, Number(query.get("page")) || 1)),
+    page = Math.max(
+      1,
+      Math.min(100000, Math.floor(Number(query.get("page")) || 1)),
+    ),
     type = query.get("type"),
     search = `%${(query.get("search") ?? "").slice(0, 120).replace(/[\\%_]/gu, "\\$&")}%`;
   const filter =
@@ -264,16 +293,54 @@ export async function archiveList(owner: string, query: URLSearchParams) {
     args = [owner, search, ...(type && isArchiveType(type) ? [type] : [])];
   const result = await db
     .prepare(
-      `SELECT ar.*,(SELECT count(*) FROM archive_records grouped WHERE grouped.group_id=ar.group_id AND grouped.owner_email=ar.owner_email) related_count FROM archive_records ar WHERE ${filter} ORDER BY archived_at DESC,id DESC LIMIT 50 OFFSET ?`,
+      `SELECT ar.* FROM archive_records ar WHERE ar.owner_email=? AND ar.id=(SELECT g.id FROM archive_records g WHERE g.owner_email=ar.owner_email AND g.group_id=ar.group_id ORDER BY CASE WHEN g.entity_type='intake' THEN 0 ELSE 1 END,g.id LIMIT 1) AND ar.group_id IN (SELECT group_id FROM archive_records WHERE ${filter}) ORDER BY archived_at DESC,id DESC LIMIT 50 OFFSET ?`,
     )
-    .bind(...args, (page - 1) * 50)
+    .bind(owner, ...args, (page - 1) * 50)
     .all<ArchivedRecord>();
   const total = await db
-    .prepare(`SELECT count(*) total FROM archive_records WHERE ${filter}`)
+    .prepare(
+      `SELECT count(DISTINCT group_id) total FROM archive_records WHERE ${filter}`,
+    )
     .bind(...args)
     .first<{ total: number }>();
+  const pageRecords = result.results ?? [],
+    groupIds = pageRecords.map((r) => r.group_id);
+  const cases = ARCHIVE_TYPES.map((type) => {
+    const rule = deletionRule(type);
+    return rule.query
+      ? `WHEN ar.entity_type='${type}' AND EXISTS(${rule.query.replaceAll("?", "ar.entity_id")}) THEN '${rule.reason.replaceAll("'", "''")}'`
+      : "";
+  }).join(" ");
+  const members = groupIds.length
+    ? ((
+        await db
+          .prepare(
+            `SELECT ar.*,CASE ${cases} ELSE NULL END protection_reason FROM archive_records ar WHERE ar.owner_email=? AND ar.group_id IN (${groupIds.map(() => "?").join(",")}) ORDER BY ar.entity_type`,
+          )
+          .bind(owner, ...groupIds)
+          .all<ArchivedRecord & { protection_reason: string | null }>()
+      ).results ?? [])
+    : [];
+  const items = pageRecords.map((record) => {
+    const group = members.filter((m) => m.group_id === record.group_id),
+      reasons = group.flatMap((m) =>
+        m.protection_reason ? [m.protection_reason] : [],
+      );
+    return {
+      ...record,
+      related_count: group.length,
+      members: group.map((m) => ({
+        id: m.id,
+        entity_type: m.entity_type,
+        entity_id: m.entity_id,
+        label: m.label,
+      })),
+      canDelete: reasons.length === 0,
+      protectionReasons: reasons,
+    };
+  });
   return {
-    items: result.results ?? [],
+    items,
     total: total?.total ?? 0,
     page,
     pageSize: 50,
@@ -348,17 +415,16 @@ export async function restoreEntity(
   }
   return { restored: true };
 }
-export async function deletionBlocker(
-  owner: string,
-  type: ArchiveType,
-  id: string,
-): Promise<string | null> {
-  const db = getDatabaseBinding();
+function deletionRule(type: ArchiveType) {
   let query: string | null = null,
     reason =
       "Linked records must be preserved. Resolve their links before permanent deletion.";
   if (type === "submission")
-    return "Completed submissions are protected evidence. They can be archived and restored, but cannot be permanently deleted.";
+    return {
+      query: "SELECT 1",
+      reason:
+        "Completed submissions are protected evidence. They can be archived and restored, but cannot be permanently deleted.",
+    };
   if (type === "template") {
     query =
       "SELECT id FROM form_assignments WHERE template_id=? UNION ALL SELECT id FROM submissions WHERE template_id=? LIMIT 1";
@@ -392,6 +458,15 @@ export async function deletionBlocker(
       "SELECT id FROM ai_field_detection_runs WHERE id=? AND status='processing'";
     reason = "An AI analysis is still processing.";
   }
+  return { query, reason };
+}
+export async function deletionBlocker(
+  owner: string,
+  type: ArchiveType,
+  id: string,
+): Promise<string | null> {
+  const db = getDatabaseBinding(),
+    { query, reason } = deletionRule(type);
   if (!query) return null;
   const n = (query.match(/\?/gu) ?? []).length;
   return (await db

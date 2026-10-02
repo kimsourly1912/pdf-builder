@@ -11,6 +11,7 @@ export type AuditAction =
   | "assignment.created"
   | "assignment.prefill_replaced"
   | "candidate.profile_verified"
+  | "candidate.changes_saved"
   | "link.regenerated"
   | "link.revoked"
   | "resume.ai_analyzed"

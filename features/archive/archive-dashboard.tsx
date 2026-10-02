@@ -1,4 +1,5 @@
 "use client";
+import { Badge } from "@/components/ui/badge";
 import { useCallback, useEffect, useState } from "react";
 import { Archive, ArchiveRestore, Trash2, RefreshCw } from "lucide-react";
 import { AppShell } from "@/components/patterns/app-shell";
@@ -33,6 +34,14 @@ type Item = {
   archived_at: string;
   archived_by: string;
   related_count: number;
+  members: {
+    id: string;
+    entity_type: ArchiveType;
+    entity_id: string;
+    label: string;
+  }[];
+  canDelete: boolean;
+  protectionReasons: string[];
 };
 export function ArchiveDashboard({ displayName }: { displayName: string }) {
   const [data, setData] = useState<{ items: Item[]; total: number }>({
@@ -206,12 +215,43 @@ export function ArchiveDashboard({ displayName }: { displayName: string }) {
                   <p className="font-medium">{item.label}</p>
                   {item.related_count > 1 && (
                     <p className="text-xs text-muted-foreground">
-                      {item.related_count} linked records restored or deleted
-                      together
+                      {item.related_count} linked records · restored together
                     </p>
                   )}
+                  {item.related_count > 1 && (
+                    <details className="mt-2 text-xs">
+                      <summary className="cursor-pointer">
+                        Show linked records
+                      </summary>
+                      <ul className="mt-2 space-y-1">
+                        {item.members.map((m) => (
+                          <li key={m.id}>
+                            {ARCHIVE_LABELS[m.entity_type]}: {m.label}
+                          </li>
+                        ))}
+                      </ul>
+                    </details>
+                  )}
+                  <div className="mt-2">
+                    <Badge variant={item.canDelete ? "outline" : "secondary"}>
+                      {item.canDelete ? "Can delete" : "Protected history"}
+                    </Badge>
+                    {item.protectionReasons.map((reason) => (
+                      <p
+                        key={reason}
+                        className="mt-1 text-xs text-muted-foreground"
+                      >
+                        {reason}
+                      </p>
+                    ))}
+                  </div>
                 </TableCell>
-                <TableCell>{ARCHIVE_LABELS[item.entity_type]}</TableCell>
+                <TableCell>
+                  {item.members.some((m) => m.entity_type === "intake") &&
+                  item.members.some((m) => m.entity_type === "resume")
+                    ? "Intake + CV"
+                    : ARCHIVE_LABELS[item.entity_type]}
+                </TableCell>
                 <TableCell>{runDate(item.archived_at)}</TableCell>
                 <TableCell>{item.archived_by}</TableCell>
                 <TableCell>
@@ -246,7 +286,8 @@ export function ArchiveDashboard({ displayName }: { displayName: string }) {
                     <Button
                       size="sm"
                       variant="outline"
-                      disabled={busy}
+                      disabled={busy || !item.canDelete}
+                      title={item.protectionReasons.join(" ")}
                       onClick={() => void preview(item)}
                     >
                       <Trash2 />
@@ -272,7 +313,7 @@ export function ArchiveDashboard({ displayName }: { displayName: string }) {
       </div>
       <div className="flex items-center justify-between gap-3">
         <span className="text-sm text-muted-foreground">
-          {data.total} archived records · Page {page}
+          {data.total} archived groups · Page {page}
         </span>
         <div className="flex gap-2">
           <Button

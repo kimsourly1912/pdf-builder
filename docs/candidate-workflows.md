@@ -87,3 +87,5 @@ compatibility, duplicate runs, stale-review rollback, ownership/lease checks,
 error redaction, and retaining history after resume removal. Deployment verification
 also checks the authenticated Workflows page and workflow list/run APIs without
 creating or changing production candidates.
+
+Workflow creation offers purpose presets for preparing after CV approval, receiving a Telegram CV for HR review, and starting preparation manually. The Telegram review preset ends after the approved review and creates no account or form assignments. Preparation presets include the guarded account, CV link, form and Telegram steps; HR chooses forms before publishing. Saving CV edits does not approve or start a workflow. Explicit Approve CV does and warns that published approval workflows may start.

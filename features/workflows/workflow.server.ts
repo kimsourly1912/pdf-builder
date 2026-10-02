@@ -1,3 +1,4 @@
+import { presetGraph, WORKFLOW_PRESETS, type WorkflowPreset } from "./presets";
 import { isArchived } from "@/features/archive/archive.server";
 import { notArchived } from "@/features/archive/archive";
 import "server-only";
@@ -103,12 +104,13 @@ export async function getWorkflow(ownerEmail: string, id: string) {
 export async function createWorkflow(
   ownerEmail: string,
   trigger: WorkflowTrigger = "staff_upload",
+  preset?: WorkflowPreset,
 ) {
   if ((await listWorkflows(ownerEmail)).length >= 50)
     fail("You can create up to 50 workflows.");
   const id = crypto.randomUUID();
   const now = new Date().toISOString();
-  const graph = defaultGraph();
+  const graph = preset ? presetGraph(preset) : defaultGraph();
   graph.nodes.find((n) => n.kind === "resume_uploaded")!.config.trigger =
     trigger;
   await getDb().batch([
@@ -117,7 +119,7 @@ export async function createWorkflow(
       .values({
         id,
         ownerEmail,
-        name: "Candidate preparation",
+        name: preset ? WORKFLOW_PRESETS[preset].name : "Candidate preparation",
         draftJson: JSON.stringify(graph),
         createdAt: now,
         updatedAt: now,

@@ -1,4 +1,5 @@
 "use client";
+import { WORKFLOW_PRESETS, type WorkflowPreset } from "./presets";
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { Plus, Workflow, LoaderCircle } from "lucide-react";
@@ -41,6 +42,7 @@ import {
 
 export function WorkflowList(props: { displayName: string }) {
   const [createOpen, setCreateOpen] = useState(false),
+    [preset, setPreset] = useState<WorkflowPreset | "custom">("approval"),
     [trigger, setTrigger] = useState<WorkflowTrigger>("resume_verified");
   const [items, setItems] = useState<WorkflowSummary[]>([]);
   const [loading, setLoading] = useState(true);
@@ -69,7 +71,10 @@ export function WorkflowList(props: { displayName: string }) {
     try {
       const data = await workflowApi<{ workflow: WorkflowSummary }>(
         "/api/workflows",
-        { method: "POST", body: JSON.stringify({ trigger }) },
+        {
+          method: "POST",
+          body: JSON.stringify(preset === "custom" ? { trigger } : { preset }),
+        },
       );
       window.location.assign(`/workflows/${data.workflow.id}`);
     } catch (e) {
@@ -177,24 +182,54 @@ export function WorkflowList(props: { displayName: string }) {
               extraction remains optional.
             </DialogDescription>
           </DialogHeader>
-          <Select
-            value={trigger}
-            onValueChange={(v) => setTrigger(v as WorkflowTrigger)}
+          <div
+            className="space-y-2"
+            role="group"
+            aria-label="Workflow purpose presets"
           >
-            <SelectTrigger
-              className="w-full"
-              aria-label="Workflow starting event"
+            {Object.entries(WORKFLOW_PRESETS).map(([key, p]) => (
+              <Button
+                key={key}
+                variant={preset === key ? "default" : "outline"}
+                className="h-auto w-full justify-start whitespace-normal py-3 text-left"
+                aria-pressed={preset === key}
+                onClick={() => setPreset(key as WorkflowPreset)}
+              >
+                {p.name}
+              </Button>
+            ))}
+            <Button
+              variant={preset === "custom" ? "default" : "outline"}
+              onClick={() => setPreset("custom")}
             >
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {Object.entries(TRIGGER_LABELS).map(([value, label]) => (
-                <SelectItem key={value} value={value}>
-                  {label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+              Custom starting event
+            </Button>
+          </div>
+          {preset !== "custom" && (
+            <p className="text-sm text-muted-foreground">
+              {WORKFLOW_PRESETS[preset].description}
+            </p>
+          )}
+          {preset === "custom" && (
+            <Select
+              value={trigger}
+              onValueChange={(v) => setTrigger(v as WorkflowTrigger)}
+            >
+              <SelectTrigger
+                className="w-full"
+                aria-label="Workflow starting event"
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {Object.entries(TRIGGER_LABELS).map(([value, label]) => (
+                  <SelectItem key={value} value={value}>
+                    {label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
           <DialogFooter>
             <Button variant="outline" onClick={() => setCreateOpen(false)}>
               Cancel

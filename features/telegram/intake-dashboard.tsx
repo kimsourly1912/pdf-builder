@@ -37,6 +37,12 @@ export const INTAKE_LABELS: Record<IntakeStatus, string> = {
   failed: "Failed",
 };
 type IntakeItem = {
+  progress: {
+    label: string;
+    next: string;
+    href: string;
+    fileName: string;
+  } | null;
   id: string;
   fullName: string;
   email: string;
@@ -164,7 +170,7 @@ export function IntakeDashboard({ displayName }: { displayName: string }) {
               <SelectContent>
                 <SelectItem value="all">All review statuses</SelectItem>
                 <SelectItem value="needs_review">Needs review</SelectItem>
-                <SelectItem value="verified">Verified</SelectItem>
+                <SelectItem value="verified">CV approved</SelectItem>
               </SelectContent>
             </Select>
             <Button
@@ -185,7 +191,7 @@ export function IntakeDashboard({ displayName }: { displayName: string }) {
                     "Candidate",
                     "Telegram",
                     "CV",
-                    "CV review",
+                    "Candidate progress",
                     "Login account",
                     "Action",
                   ].map((h) => (
@@ -221,17 +227,36 @@ export function IntakeDashboard({ displayName }: { displayName: string }) {
                       </p>
                     </TableCell>
                     <TableCell>
-                      <Badge
-                        variant={
-                          item.reviewStatus === "verified"
-                            ? "default"
-                            : "secondary"
-                        }
-                      >
-                        {item.reviewStatus === "verified"
-                          ? "Verified"
-                          : "Needs Resume Editor review"}
-                      </Badge>
+                      {item.progress ? (
+                        <div className="space-y-1">
+                          <Badge variant="secondary">
+                            {item.progress.label}
+                          </Badge>
+                          <Link
+                            className="block text-sm underline"
+                            href={item.progress.href}
+                          >
+                            {item.progress.next}
+                          </Link>
+                          {item.progress.fileName !== item.fileName && (
+                            <p className="text-xs text-muted-foreground">
+                              Progress for {item.progress.fileName}
+                            </p>
+                          )}
+                        </div>
+                      ) : (
+                        <Badge
+                          variant={
+                            item.reviewStatus === "verified"
+                              ? "default"
+                              : "secondary"
+                          }
+                        >
+                          {item.reviewStatus === "verified"
+                            ? "CV approved"
+                            : "Needs Resume Editor review"}
+                        </Badge>
+                      )}
                     </TableCell>
                     <TableCell>
                       {item.accountCreated ? "Created / linked" : "Not created"}

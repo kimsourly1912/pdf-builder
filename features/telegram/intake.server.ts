@@ -1,8 +1,13 @@
+import { progressOverview } from "@/features/candidate-progress/progress.server";
+import { submissionProgress } from "@/features/candidate-progress/submission-progress";
 import {
   archiveStatements,
   isArchived,
 } from "@/features/archive/archive.server";
-import { uploadWorkflowStatements } from "@/features/workflows/workflow.server";
+import {
+  uploadWorkflowStatements,
+  listWorkflows,
+} from "@/features/workflows/workflow.server";
 import { notArchived } from "@/features/archive/archive";
 import "server-only";
 import { and, desc, eq, isNull, lt, or, sql } from "drizzle-orm";
@@ -139,7 +144,15 @@ export async function processTelegramUpdate(id: number) {
   try {
     const m = update.message,
       chatId = String(m.chat.id),
-      text = m.text?.trim() ?? "";
+      rawText = m.text?.trim() ?? "",
+      text =
+        (
+          {
+            "Add another CV": "/add_cv",
+            "Replace unreviewed CV": "/replace_cv",
+            "Check application status": "/status",
+          } as Record<string, string>
+        )[rawText] ?? rawText;
     let [connection] = await db
       .select()
       .from(telegramConnections)
@@ -216,21 +229,38 @@ export async function processTelegramUpdate(id: number) {
         "Welcome to ANG HR recruitment. Please send your full name. Your contact details and PDF will be stored for HR review. AI analysis starts only when HR requests it.";
     } else if (text === "/status") {
       await db.batch([guard(), done()]);
-      reply = connection.candidateId
-        ? "Your CV is saved for HR review. HR will send an invitation after approval."
-        : "Please complete your name, email, and PDF CV submission. Use /start to begin again.";
+      const progress = connection.candidateId
+        ? (await progressOverview(ownerEmail)).find(
+            (p) => p.id === connection.candidateId,
+          )
+        : null;
+      reply = progress
+        ? `Application status: ${submissionProgress(progress).label}.\nCV: ${progress.selectedCv.fileName}\n${progress.facts.required ? `${progress.facts.completed}/${progress.facts.required} required forms submitted.` : "HR will contact you about the next step."}${progress.facts.invitationSent ? "\nAn invitation was sent through Telegram. This does not indicate whether it was read." : ""}`
+        : connection.candidateId
+          ? "Your saved application is with HR. Contact HR for an update."
+          : "Please complete your name, email, and PDF CV submission. Use /start to begin again.";
     } else if (["/add_cv", "/replace_cv", "/cancel"].includes(text)) {
       if (!connection.candidateId || connection.stage !== "pdf") {
         await db.batch([guard(), done()]);
         reply = "Complete your full name and email first.";
       } else {
+        const previous =
+          text === "/replace_cv"
+            ? await getDatabaseBinding()
+                .prepare(
+                  "SELECT r.file_name fileName,r.verification_status verificationStatus FROM telegram_intakes i JOIN resumes r ON r.id=i.resume_id WHERE i.connection_id=? AND i.owner_email=? ORDER BY i.created_at DESC,i.update_id DESC LIMIT 1",
+                )
+                .bind(connection.id, ownerEmail)
+                .first<{ fileName: string; verificationStatus: string }>()
+            : null;
         await db.batch([
           guard(),
           db
             .update(telegramConnections)
             .set({
               submissionMode:
-                text === "/cancel"
+                text === "/cancel" ||
+                previous?.verificationStatus === "verified"
                   ? "completed"
                   : text === "/replace_cv"
                     ? "replace"
@@ -244,7 +274,9 @@ export async function processTelegramUpdate(id: number) {
           text === "/cancel"
             ? "CV upload cancelled. Your saved CVs are unchanged."
             : text === "/replace_cv"
-              ? "Upload the replacement PDF. Only your latest unverified CV can be replaced; the previous PDF will remain archived for HR."
+              ? previous?.verificationStatus === "verified"
+                ? `${previous.fileName} has already been approved. Choose Add another CV to keep its history.`
+                : `Upload the replacement PDF. It will archive ${previous?.fileName ?? "your latest unreviewed CV"}. A previously approved CV cannot be replaced; choose Add another CV instead. Use /cancel to keep your saved CV unchanged.`
               : "Upload an additional PDF. It will be added to your existing candidate and CV history.";
       }
     } else if (connection.stage === "name") {
@@ -469,14 +501,19 @@ export async function processTelegramUpdate(id: number) {
             }
             await binding.batch(raw);
             fileKey = null;
-            reply =
-              "CV received. Awaiting HR review. No AI analysis or login account has been created. Use /replace_cv or /add_cv if you need to submit another PDF.";
+            reply = `CV received. Awaiting HR review. No AI analysis or new login account was created by this upload.${replacement ? ` Archived previous CV: ${replacement.resume.fileName}.` : ""} Use the buttons below to add, replace or check status.`;
           }
         }
       }
     }
     // A failed acknowledgement never replays the completed intake transaction.
-    await sendBotMessage(chatId, reply).catch(() =>
+    await sendBotMessage(
+      chatId,
+      reply,
+      undefined,
+      undefined,
+      !!connection?.candidateId || reply.startsWith("CV received"),
+    ).catch(() =>
       console.warn("Telegram intake acknowledgement unavailable", {
         updateId: id,
       }),
@@ -508,6 +545,7 @@ export async function intakeList(ownerEmail: string, query: URLSearchParams) {
       connection: telegramConnections,
       candidate: candidates,
       resume: resumes,
+      reviewReady: sql<number>`EXISTS(SELECT 1 FROM candidate_profile_versions p WHERE p.resume_id=${resumes.id} AND p.candidate_id=${candidates.id} AND p.owner_email=${candidates.ownerEmail} AND p.created_by_email=${candidates.ownerEmail} AND p.verification_status='verified' AND ${resumes.verificationStatus}='verified' AND ${candidates.verificationStatus}='verified' AND ${resumes.duplicateCandidateId} IS NULL AND p.created_at>=${resumes.updatedAt} AND p.created_at>=${candidates.updatedAt})`,
     })
     .from(telegramIntakes)
     .innerJoin(
@@ -532,12 +570,29 @@ export async function intakeList(ownerEmail: string, query: URLSearchParams) {
     if (!latest.has(row.connection.id)) latest.set(row.connection.id, row);
   const counts = await getDatabaseBinding()
     .prepare(
-      "SELECT i.connection_id,count(*) cvCount,sum(CASE WHEN r.verification_status='verified' THEN 1 ELSE 0 END) verifiedCvCount FROM telegram_intakes i JOIN resumes r ON r.id=i.resume_id WHERE i.owner_email=? AND NOT EXISTS(SELECT 1 FROM archive_records ar WHERE (ar.entity_type='intake' AND ar.entity_id=i.id) OR (ar.entity_type='resume' AND ar.entity_id=r.id)) GROUP BY i.connection_id",
+      "SELECT i.connection_id,count(*) cvCount,sum(CASE WHEN r.verification_status='verified' AND c.verification_status='verified' AND r.duplicate_candidate_id IS NULL AND EXISTS(SELECT 1 FROM candidate_profile_versions p WHERE p.resume_id=r.id AND p.candidate_id=c.id AND p.owner_email=c.owner_email AND p.created_by_email=c.owner_email AND p.verification_status='verified' AND p.created_at>=r.updated_at AND p.created_at>=c.updated_at) THEN 1 ELSE 0 END) verifiedCvCount FROM telegram_intakes i JOIN resumes r ON r.id=i.resume_id JOIN candidates c ON c.id=r.candidate_id WHERE i.owner_email=? AND NOT EXISTS(SELECT 1 FROM archive_records ar WHERE (ar.entity_type='intake' AND ar.entity_id=i.id) OR (ar.entity_type='resume' AND ar.entity_id=r.id)) GROUP BY i.connection_id",
     )
     .bind(ownerEmail)
     .all<{ connection_id: string; cvCount: number; verifiedCvCount: number }>();
   const countMap = new Map(
     (counts.results ?? []).map((c) => [c.connection_id, c]),
+  );
+  const configured = (await listWorkflows(ownerEmail)).some(
+    (w) => w.active && w.version > 0 && w.hasTelegram,
+  );
+  const progress = new Map(
+    (await progressOverview(ownerEmail)).map((p) => {
+      const summary = submissionProgress(p);
+      if (
+        summary.label === "CV approved" &&
+        p.contactConfirmed &&
+        !configured
+      ) {
+        summary.next = "Configure workflow";
+        summary.href = "/workflows";
+      }
+      return [p.id, { ...summary, fileName: p.selectedCv.fileName }];
+    }),
   );
   return [...latest.values()]
     .filter(
@@ -548,16 +603,12 @@ export async function intakeList(ownerEmail: string, query: URLSearchParams) {
             .includes(search)) &&
         (!status ||
           status === "all" ||
-          (status === "verified"
-            ? r.resume.verificationStatus === "verified"
-            : r.resume.verificationStatus !== "verified")),
+          (status === "verified" ? !!r.reviewReady : !r.reviewReady)),
     )
     .map((r) => ({
       id: r.intake.id,
-      reviewStatus:
-        r.resume.verificationStatus === "verified"
-          ? "verified"
-          : "needs_review",
+      progress: progress.get(r.candidate.id) ?? null,
+      reviewStatus: !!r.reviewReady ? "verified" : "needs_review",
       cvCount: countMap.get(r.connection.id)?.cvCount ?? 1,
       verifiedCvCount: countMap.get(r.connection.id)?.verifiedCvCount ?? 0,
       resumeId: r.resume.id,

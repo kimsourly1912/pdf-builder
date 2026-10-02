@@ -1,5 +1,5 @@
 import { and, eq, isNull } from "drizzle-orm";
-import { getDb } from "@/db";
+import { getDb, getDatabaseBinding } from "@/db";
 import { requireRequestOwner } from "@/features/templates/template.server";
 import {
   workflowBody,
@@ -35,7 +35,7 @@ export async function POST(request: Request, context: Context) {
     const verified = await verifiedResume(owner, intake.resume.id);
     if (!verified)
       fail(
-        "Review and save this CV as verified in the Resume Editor first. AI extraction is optional.",
+        "Approve this CV in the Resume Editor first. AI extraction is optional.",
         422,
       );
     if (
@@ -53,7 +53,24 @@ export async function POST(request: Request, context: Context) {
     if (existing && body.existingAccountId !== existing.id)
       fail("Explicitly confirm the existing account before reusing it.", 422);
     const workflow = await getWorkflow(owner, String(body.workflowId ?? ""));
-    if (!workflow.version) fail("Publish the workflow first.", 422);
+    if (!workflow.version || !workflow.active)
+      fail("Publish an active preparation workflow first.", 422);
+    const published = await getDatabaseBinding()
+      .prepare(
+        "SELECT published_json FROM workflows WHERE id=? AND owner_email=?",
+      )
+      .bind(workflow.id, owner)
+      .first<{ published_json: string }>();
+    if (
+      !published ||
+      !JSON.parse(published.published_json).nodes.some(
+        (n: { kind: string }) => n.kind === "send_telegram",
+      )
+    )
+      fail(
+        "Choose a preparation workflow with a Telegram invitation step.",
+        422,
+      );
     // The approval is consumed by the published snapshot, so it cannot bypass graph ordering.
     const initial = {
       steps: {},

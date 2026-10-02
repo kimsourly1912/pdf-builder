@@ -407,7 +407,7 @@ test("approved workflow creates account and mapped forms, then sends encrypted s
       .password_hash,
     null,
   );
-  const invitation = messages.find((m) => m.reply_markup);
+  const invitation = messages.find((m) => m.reply_markup?.inline_keyboard);
   assert(invitation);
   assert.equal(
     invitation.reply_markup.inline_keyboard[0][0].text,
@@ -428,7 +428,10 @@ test("approved workflow creates account and mapped forms, then sends encrypted s
     .all())
     assert.equal(JSON.parse(r.initial_values_json).name, "TEST Dara Sok");
   await runner.processWorkflowRun(runId);
-  assert.equal(messages.filter((m) => m.reply_markup).length, 1);
+  assert.equal(
+    messages.filter((m) => m.reply_markup?.inline_keyboard).length,
+    1,
+  );
   assert.equal(count("form_assignments"), 2);
   const activate = () =>
     new Request("http://localhost:5173/api/activate", {
@@ -728,7 +731,7 @@ async function verifyCv(row, confirmTelegram = false) {
     ownerRequest(
       "/api/resumes/" + row.resume_id,
       {
-        action: "update_candidate",
+        action: "approve_cv",
         candidate: resume.candidate,
         confirmTelegram,
         resumeRevision: resume.updatedAt,
@@ -903,7 +906,7 @@ test("completed bot intake rejects unsolicited PDFs and explicitly groups additi
   await freshPdf("blocked replacement");
   await chat(70002, null, { file_id: "test", file_name: "blocked.pdf" });
   assert.equal(count("telegram_intakes"), intakes + 2);
-  assert.match(messages.at(-1).text, /reviewed or archived/);
+  assert.match(messages.at(-1).text, /already saved|reviewed or archived/);
   assert.equal(aiCalls, calls);
 });
 
@@ -1494,5 +1497,365 @@ test("candidate stage transaction rejects form changes after the page revision w
         "UPDATE form_assignments SET status='assigned',updated_at=? WHERE id=?",
       )
       .run(form.updated_at, form.id);
+  }
+});
+
+test("saving unfinished CV edits never approves or starts automation; explicit approval does", async () => {
+  const intake = await submit(91001, "draftsave@example.com");
+  const automatic = await workflowWithTrigger("resume_verified");
+  const context = { params: Promise.resolve({ id: intake.resume_id }) };
+  let detail = (
+    await (
+      await resumeRoute.GET(
+        ownerRequest("/api/resumes/" + intake.resume_id, null, "GET"),
+        context,
+      )
+    ).json()
+  ).resume;
+  const runs = count("workflow_runs"),
+    profiles = count("candidate_profile_versions"),
+    calls = aiCalls;
+  let response = await resumeRoute.PATCH(
+    ownerRequest(
+      "/api/resumes/" + intake.resume_id,
+      {
+        action: "save_changes",
+        candidate: { ...detail.candidate, fullName: "", email: "" },
+        resumeRevision: detail.updatedAt,
+        candidateRevision: detail.candidateRevision,
+        confirmTelegram: true,
+      },
+      "PATCH",
+    ),
+    context,
+  );
+  assert.equal(response.status, 200, await response.text());
+  assert.equal(count("workflow_runs"), runs);
+  assert.equal(count("candidate_profile_versions"), profiles);
+  assert.equal(aiCalls, calls);
+  assert.equal((await overview(intake)).reviewReady, false);
+  detail = (
+    await (
+      await resumeRoute.GET(
+        ownerRequest("/api/resumes/" + intake.resume_id, null, "GET"),
+        context,
+      )
+    ).json()
+  ).resume;
+  response = await resumeRoute.PATCH(
+    ownerRequest(
+      "/api/resumes/" + intake.resume_id,
+      {
+        action: "approve_cv",
+        candidate: detail.candidate,
+        resumeRevision: detail.updatedAt,
+        candidateRevision: detail.candidateRevision,
+      },
+      "PATCH",
+    ),
+    context,
+  );
+  assert.equal(response.status, 422);
+  response = await resumeRoute.PATCH(
+    ownerRequest(
+      "/api/resumes/" + intake.resume_id,
+      {
+        action: "approve_cv",
+        candidate: {
+          ...detail.candidate,
+          fullName: "TEST Saved Draft",
+          email: "draftsave@example.com",
+        },
+        resumeRevision: detail.updatedAt,
+        candidateRevision: detail.candidateRevision,
+      },
+      "PATCH",
+    ),
+    context,
+  );
+  assert.equal(response.status, 200, await response.text());
+  assert.equal((await overview(intake)).reviewReady, true);
+  assert.equal(count("candidate_profile_versions"), profiles + 1);
+  assert.equal(aiCalls, calls);
+  assert(
+    d1.sqlite
+      .prepare(
+        "SELECT id FROM workflow_runs WHERE workflow_id=? AND resume_id=?",
+      )
+      .get(automatic.id, intake.resume_id),
+  );
+  const stale = await resumeRoute.PATCH(
+    ownerRequest(
+      "/api/resumes/" + intake.resume_id,
+      {
+        action: "save_changes",
+        candidate: detail.candidate,
+        resumeRevision: detail.updatedAt,
+        candidateRevision: detail.candidateRevision,
+      },
+      "PATCH",
+    ),
+    context,
+  );
+  assert.equal(stale.status, 409);
+});
+
+test("contact confirmation is explicit and does not approve, run or send an invitation", async () => {
+  const intake = await submit(91002, "contactonly@example.com"),
+    before = await overview(intake);
+  const runs = count("workflow_runs"),
+    profiles = count("candidate_profile_versions"),
+    sent = messages.length;
+  const context = { params: Promise.resolve({ id: intake.id }) };
+  let response = await intakeDetailRoute.PATCH(
+    ownerRequest(
+      "/api/intake/" + intake.id,
+      {
+        action: "confirm_contact",
+        confirm: true,
+        contactRevision: before.contactRevision,
+        resumeRevision: before.resumeRevision,
+        candidateRevision: before.candidateRevision,
+      },
+      "PATCH",
+    ),
+    context,
+  );
+  assert.equal(response.status, 200, await response.text());
+  assert.equal((await overview(intake)).confirmed, true);
+  assert.equal((await overview(intake)).reviewReady, false);
+  assert.equal(count("workflow_runs"), runs);
+  assert.equal(count("candidate_profile_versions"), profiles);
+  assert.equal(messages.length, sent);
+  response = await intakeDetailRoute.PATCH(
+    ownerRequest(
+      "/api/intake/" + intake.id,
+      {
+        action: "confirm_contact",
+        confirm: true,
+        contactRevision: before.contactRevision,
+        resumeRevision: "stale",
+        candidateRevision: before.candidateRevision,
+      },
+      "PATCH",
+    ),
+    context,
+  );
+  assert.equal(response.status, 409);
+});
+
+test("purpose presets keep Telegram review separate from candidate preparation", async () => {
+  const { presetGraph, WORKFLOW_PRESETS } = await vite.ssrLoadModule(
+    "/features/workflows/presets.ts",
+  );
+  const { graphIssues, workflowTrigger } = await vite.ssrLoadModule(
+    "/features/workflows/workflow.ts",
+  );
+  const graph = presetGraph("telegram");
+  assert.deepEqual(graphIssues(graph), []);
+  assert.equal(workflowTrigger(graph), "telegram_submission");
+  assert(
+    !graph.nodes.some((n) =>
+      ["create_account", "assign_forms", "send_telegram"].includes(n.kind),
+    ),
+  );
+  for (const key of ["approval", "manual"]) {
+    const g = presetGraph(key);
+    assert.equal(workflowTrigger(g), WORKFLOW_PRESETS[key].trigger);
+    assert(g.nodes.some((n) => n.kind === "send_telegram"));
+    g.nodes.find((n) => n.kind === "assign_forms").config.forms = [
+      { templateId: "t1", versionId: "v1", roleId: "r1" },
+    ];
+    assert.deepEqual(graphIssues(g), []);
+  }
+  const w = await workflows.createWorkflow(
+    runtime.MANAGEMENT_EMAIL,
+    "telegram_submission",
+    "telegram",
+  );
+  assert.equal(w.name, WORKFLOW_PRESETS.telegram.name);
+  assert(!w.draft.nodes.some((n) => n.kind === "create_account"));
+});
+
+test("bot buttons map to guarded CV actions and status follows actual HR progress", async () => {
+  const intake = await submit(91003, "buttonstatus@example.com");
+  const menu = messages
+    .at(-1)
+    .reply_markup.keyboard.flat()
+    .map((b) => b.text);
+  assert.deepEqual(menu, [
+    "Add another CV",
+    "Replace unreviewed CV",
+    "Check application status",
+  ]);
+  await chat(91003, "Check application status");
+  assert(messages.at(-1).text.includes("Needs review"));
+  await verifyCv(intake, true);
+  await chat(91003, "Check application status");
+  assert(
+    messages.at(-1).text.includes("CV approved") ||
+      messages.at(-1).text.includes("Preparing account/forms"),
+  );
+  await chat(91003, "Replace unreviewed CV");
+  assert(messages.at(-1).text.includes("already been approved"));
+  assert.equal(
+    d1.sqlite
+      .prepare(
+        "SELECT submission_mode FROM telegram_connections WHERE chat_id=?",
+      )
+      .get("91003").submission_mode,
+    "completed",
+  );
+  await chat(91003, "Add another CV");
+  assert.equal(
+    d1.sqlite
+      .prepare(
+        "SELECT submission_mode FROM telegram_connections WHERE chat_id=?",
+      )
+      .get("91003").submission_mode,
+    "add",
+  );
+  await chat(70001, "Check application status");
+  assert(messages.at(-1).text.includes("Invitation sent"));
+  assert(messages.at(-1).text.includes("0/2 required forms submitted"));
+  assert(
+    messages.at(-1).text.includes("does not indicate whether it was read"),
+  );
+  await chat(12345, "Check application status");
+  assert(messages.at(-1).text.includes("Forms submitted"));
+  assert(messages.at(-1).text.includes("2/2 required forms submitted"));
+});
+
+test("Archive groups linked records, exposes protection reasons and returns revision for safe undo", async () => {
+  const intake = await submit(91004, "archivegroup@example.com");
+  d1.sqlite
+    .prepare("UPDATE workflow_runs SET status='rejected' WHERE resume_id=?")
+    .run(intake.resume_id);
+  let response = await archiveAction("intake", intake.id, {
+    action: "archive",
+  });
+  assert.equal(response.status, 200);
+  const archived = await response.json();
+  assert.equal(archived.undoable, true);
+  assert(archived.archivedAt);
+  let list = await archiveService.archiveList(
+    runtime.MANAGEMENT_EMAIL,
+    new URLSearchParams({ search: "TEST-CV.pdf" }),
+  );
+  const item = list.items.find((i) => i.entity_id === intake.id);
+  assert(item);
+  assert.equal(item.related_count, 2);
+  assert.equal(item.canDelete, true);
+  assert.deepEqual(item.protectionReasons, []);
+  assert.equal(
+    list.items.filter((i) => i.group_id === item.group_id).length,
+    1,
+  );
+  list = await archiveService.archiveList(
+    runtime.MANAGEMENT_EMAIL,
+    new URLSearchParams({ type: "resume" }),
+  );
+  assert(list.items.some((i) => i.group_id === item.group_id));
+  assert(
+    list.items
+      .find((i) => i.group_id === item.group_id)
+      .members.some((m) => m.entity_type === "resume"),
+  );
+  response = await archiveAction("intake", intake.id, {
+    action: "restore",
+    expectedArchivedAt: "stale",
+  });
+  assert.equal(response.status, 409);
+  response = await archiveAction("intake", intake.id, {
+    action: "restore",
+    expectedArchivedAt: archived.archivedAt,
+  });
+  assert.equal(response.status, 200);
+  assert.equal((await overview(intake)).archived, false);
+  const workflow = await workflows.createWorkflow(runtime.MANAGEMENT_EMAIL);
+  await archiveService.archiveEntity(
+    runtime.MANAGEMENT_EMAIL,
+    "workflow",
+    workflow.id,
+  );
+  list = await archiveService.archiveList(
+    runtime.MANAGEMENT_EMAIL,
+    new URLSearchParams({ type: "workflow" }),
+  );
+  assert.equal(
+    list.items.find((i) => i.entity_id === workflow.id).canDelete,
+    true,
+  );
+  // Existing production-like preparation has preserved run history and is protected before a delete attempt.
+  await archiveService.archiveEntity(
+    runtime.MANAGEMENT_EMAIL,
+    "workflow",
+    manualWorkflow.id,
+  );
+  list = await archiveService.archiveList(
+    runtime.MANAGEMENT_EMAIL,
+    new URLSearchParams({ type: "workflow" }),
+  );
+  const protectedItem = list.items.find(
+    (i) => i.entity_id === manualWorkflow.id,
+  );
+  assert.equal(protectedItem.canDelete, false);
+  assert(protectedItem.protectionReasons[0].includes("run history"));
+});
+
+test("Archive paginates full groups with bounded database queries and owner isolation", async () => {
+  const now = new Date().toISOString();
+  for (let i = 0; i < 60; i++) {
+    const id = "bulk-archive-" + i;
+    d1.sqlite
+      .prepare(
+        "INSERT INTO workflows(id,owner_email,name,draft_json,created_at,updated_at) VALUES(?,?,?,'{}',?,?)",
+      )
+      .run(id, runtime.MANAGEMENT_EMAIL, "TEST bulk archive " + i, now, now);
+    d1.sqlite
+      .prepare(
+        "INSERT INTO archive_records(id,owner_email,entity_type,entity_id,label,group_id,archived_by,archived_at) VALUES(?,?,'workflow',?,?,?,?,?)",
+      )
+      .run(
+        id,
+        runtime.MANAGEMENT_EMAIL,
+        id,
+        "TEST bulk archive " + i,
+        id,
+        runtime.MANAGEMENT_EMAIL,
+        now,
+      );
+  }
+  const originalPrepare = d1.prepare;
+  let queries = 0;
+  d1.prepare = function (...args) {
+    queries++;
+    return originalPrepare.apply(this, args);
+  };
+  try {
+    const first = await archiveService.archiveList(
+      runtime.MANAGEMENT_EMAIL,
+      new URLSearchParams({ search: "TEST bulk archive" }),
+    );
+    assert.equal(first.total, 60);
+    assert.equal(first.items.length, 50);
+    assert(first.items.every((i) => i.canDelete && i.members.length === 1));
+    assert(queries <= 3);
+    const next = await archiveService.archiveList(
+      runtime.MANAGEMENT_EMAIL,
+      new URLSearchParams({ search: "TEST bulk archive", page: "2" }),
+    );
+    assert.equal(next.items.length, 10);
+    assert(!next.items.some((i) => first.items.some((f) => f.id === i.id)));
+    assert(queries <= 6);
+    const other = await archiveService.archiveList(
+      "other@example.com",
+      new URLSearchParams({ search: "TEST bulk archive" }),
+    );
+    assert.equal(other.total, 0);
+    assert.equal(other.items.length, 0);
+    assert(queries <= 9);
+  } finally {
+    d1.prepare = originalPrepare;
   }
 });

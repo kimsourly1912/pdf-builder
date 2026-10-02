@@ -1,4 +1,8 @@
 import {
+  WORKFLOW_PRESETS,
+  type WorkflowPreset,
+} from "@/features/workflows/presets";
+import {
   WORKFLOW_TRIGGERS,
   type WorkflowTrigger,
 } from "@/features/workflows/workflow";
@@ -26,14 +30,29 @@ export async function POST(request: Request) {
   return workflowResponse(async () => {
     const owner = await requireRequestOwner(request),
       body = await workflowBody(request),
-      trigger = body.trigger ?? "staff_upload";
+      preset = body.preset,
+      trigger =
+        preset &&
+        typeof preset === "string" &&
+        Object.hasOwn(WORKFLOW_PRESETS, preset)
+          ? WORKFLOW_PRESETS[preset as WorkflowPreset].trigger
+          : (body.trigger ?? "staff_upload");
+    if (
+      preset !== undefined &&
+      (typeof preset !== "string" || !Object.hasOwn(WORKFLOW_PRESETS, preset))
+    )
+      fail("Choose a workflow purpose.", 422);
     if (
       typeof trigger !== "string" ||
       !WORKFLOW_TRIGGERS.includes(trigger as WorkflowTrigger)
     )
       fail("Choose a workflow starting event.", 422);
     return {
-      workflow: await createWorkflow(owner, trigger as WorkflowTrigger),
+      workflow: await createWorkflow(
+        owner,
+        trigger as WorkflowTrigger,
+        preset as WorkflowPreset | undefined,
+      ),
     };
   });
 }

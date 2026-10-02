@@ -1,4 +1,5 @@
 "use client";
+import { archiveNotice } from "./archive-notice";
 import { useState } from "react";
 import { Archive, LoaderCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -32,12 +33,16 @@ export function ArchiveButton({
     setBusy(true);
     setError("");
     try {
-      await workflowApi(`/api/archive/${type}/${encodeURIComponent(id)}`, {
+      const result = await workflowApi<{
+        archivedAt: string | null;
+        undoable: boolean;
+      }>(`/api/archive/${type}/${encodeURIComponent(id)}`, {
         method: "POST",
         body: JSON.stringify({ action: "archive" }),
       });
       setOpen(false);
       onArchived?.();
+      archiveNotice(type, id, label, result, onArchived);
     } catch (e) {
       setError(errorText(e));
     } finally {

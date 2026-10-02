@@ -1,4 +1,8 @@
 "use client";
+import {
+  archiveNotice,
+  type ArchiveReceipt,
+} from "@/features/archive/archive-notice";
 
 import {
   AlertTriangle,
@@ -109,8 +113,7 @@ export function ResumeDetailView(props: { resumeId: string }) {
     return () => window.clearTimeout(timer);
   }, [loadResume]);
 
-  async function saveCandidate(event: React.FormEvent) {
-    event.preventDefault();
+  async function saveCandidate(approve = false) {
     if (!draft) return;
 
     setBusy(true);
@@ -122,7 +125,7 @@ export function ResumeDetailView(props: { resumeId: string }) {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          action: "update_candidate",
+          action: approve ? "approve_cv" : "save_changes",
           candidate: draft,
           confirmTelegram,
           resumeRevision: resume?.updatedAt,
@@ -137,7 +140,11 @@ export function ResumeDetailView(props: { resumeId: string }) {
         );
       }
 
-      setNotice("Candidate information verified and saved.");
+      setNotice(
+        approve
+          ? "CV approved. Published approval workflows may now start."
+          : "Changes saved. This CV still needs approval; no workflow was started.",
+      );
       await loadResume();
     } catch (cause) {
       setError(
@@ -231,8 +238,10 @@ export function ResumeDetailView(props: { resumeId: string }) {
     setError("");
 
     try {
-      const response = await fetch(`/api/resumes/${resume.id}`, {
-        method: "DELETE",
+      const response = await fetch(`/api/archive/resume/${resume.id}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "archive" }),
       });
 
       if (!response.ok) {
@@ -240,7 +249,17 @@ export function ResumeDetailView(props: { resumeId: string }) {
         throw new Error(payload.error || "Resume could not be archived.");
       }
 
-      window.location.assign("/resumes");
+      const receipt = (await response.json()) as ArchiveReceipt;
+      archiveNotice(
+        "resume",
+        resume.id,
+        resume.fileName,
+        receipt,
+        () => void loadResume(),
+      );
+      setArchiveOpen(false);
+      await loadResume();
+      setBusy(false);
     } catch (cause) {
       setError(
         cause instanceof Error
@@ -322,6 +341,18 @@ export function ResumeDetailView(props: { resumeId: string }) {
       </header>
 
       <div className="mx-auto max-w-[1500px] px-4 py-5 sm:px-6">
+        {resume.archived && (
+          <Alert className="mb-4">
+            <Archive />
+            <AlertDescription>
+              This CV is archived. Use Undo archive when offered, or{" "}
+              <Link href="/archive" className="underline">
+                open Archive to restore it
+              </Link>
+              .
+            </AlertDescription>
+          </Alert>
+        )}
         {error && (
           <Alert variant="destructive" className="mb-4">
             <AlertTriangle />
@@ -405,7 +436,12 @@ export function ResumeDetailView(props: { resumeId: string }) {
                   )}
                 </CardHeader>
                 <CardContent>
-                  <form onSubmit={saveCandidate}>
+                  <form
+                    onSubmit={(event) => {
+                      event.preventDefault();
+                      void saveCandidate();
+                    }}
+                  >
                     <div className="grid gap-4 sm:grid-cols-2">
                       <TextField
                         label="Full name"
@@ -537,7 +573,27 @@ export function ResumeDetailView(props: { resumeId: string }) {
                       ) : (
                         <Save />
                       )}
-                      Save and verify CV
+                      Save changes
+                    </Button>
+                    <p className="mt-3 text-sm text-muted-foreground">
+                      Saving unfinished work keeps it pending review. Approving
+                      saves the current details and confirms this CV.{" "}
+                      <strong>This may start your published workflow.</strong>
+                    </p>
+                    <Button
+                      type="button"
+                      className="mt-3 w-full"
+                      variant="outline"
+                      disabled={
+                        busy ||
+                        resume.archived ||
+                        !draft.fullName.trim() ||
+                        !draft.email.trim()
+                      }
+                      onClick={() => void saveCandidate(true)}
+                    >
+                      <UserCheck />
+                      Approve CV
                     </Button>
                   </form>
                 </CardContent>
@@ -601,7 +657,9 @@ export function ResumeDetailView(props: { resumeId: string }) {
             <AlertDialogTitle>Archive this resume?</AlertDialogTitle>
             <AlertDialogDescription>
               The CV and linked intake will be hidden from active lists. The PDF
-              and history remain stored and can be restored from Archive.
+              and history remain stored and can be restored from Archive. Active
+              runs using this CV pause and need an explicit retry after
+              restoration.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

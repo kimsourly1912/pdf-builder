@@ -79,7 +79,7 @@ async function rows<T>(query: string, owner: string) {
   return (await getDatabaseBinding().prepare(query).bind(owner).all<T>())
     .results;
 }
-async function load(owner: string) {
+async function load(owner: string, resumeId?: string) {
   const [cvs, metadata, runs, forms, deliveries, accounts] = await Promise.all([
     rows<CvRow>(
       `SELECT c.id,c.full_name name,c.email,c.user_id userId,c.updated_at candidateRevision,r.id resumeId,r.file_name fileName,r.created_at receivedAt,r.updated_at resumeRevision,
@@ -119,6 +119,7 @@ async function load(owner: string) {
     if (!active.length) continue;
     const meta = metadata.find((m) => m.candidate_id === id),
       cv =
+        active.find((c) => c.resumeId === resumeId) ??
         active.find((c) => c.resumeId === meta?.selected_resume_id) ??
         active.find((c) =>
           runs.some(
@@ -141,6 +142,11 @@ async function load(owner: string) {
       ),
       run =
         matching.find((r) => r.id === meta?.primary_run_id) ??
+        matching.find((r) =>
+          JSON.parse(r.graph_json).nodes.some(
+            (n: { kind: string }) => n.kind === "assign_forms",
+          ),
+        ) ??
         matching[0] ??
         null;
     const context: RunContext = run
@@ -171,7 +177,8 @@ async function load(owner: string) {
     const facts = {
       verified: !!cv.approvalId,
       runStatus: run?.status ?? null,
-      preparationCurrent: current,
+      preparationCurrent:
+        current && !!graph?.nodes.some((n) => n.kind === "assign_forms"),
       assigned: relevant.length,
       required: targets.length,
       completed: relevant.filter(
@@ -571,4 +578,8 @@ export async function updateProgress(
     );
   }
   return { candidate: await detailProgress(owner, id) };
+}
+
+export async function progressOverview(owner: string, resumeId?: string) {
+  return (await load(owner, resumeId)).map((e) => e.item);
 }

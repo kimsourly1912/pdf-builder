@@ -88,6 +88,7 @@ export function sendBotMessage(
   text: string,
   url?: string,
   button?: string,
+  intakeMenu = false,
 ) {
   return botRequest<{ message_id: number }>("sendMessage", {
     chat_id: chatId,
@@ -99,7 +100,18 @@ export function sendBotMessage(
             inline_keyboard: [[{ text: button ?? "Open your forms", url }]],
           },
         }
-      : {}),
+      : intakeMenu
+        ? {
+            reply_markup: {
+              keyboard: [
+                [{ text: "Add another CV" }, { text: "Replace unreviewed CV" }],
+                [{ text: "Check application status" }],
+              ],
+              resize_keyboard: true,
+              is_persistent: true,
+            },
+          }
+        : {}),
   });
 }
 export async function downloadTelegramPdf(fileId: string) {
