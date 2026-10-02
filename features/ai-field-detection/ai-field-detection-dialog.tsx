@@ -96,18 +96,18 @@ export function AiFieldDetectionDialog(props: {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90dvh] max-w-[calc(100dvw-1rem)] overflow-hidden p-0 sm:max-w-3xl">
-        <DialogHeader className="border-b px-5 pb-4 pt-5 pr-12">
+      <DialogContent className="max-h-[calc(100dvh-1rem)] max-w-[calc(100dvw-1rem)] grid-rows-[auto_minmax(0,1fr)_auto] gap-0 overflow-hidden p-0 sm:max-h-[90dvh] sm:max-w-3xl">
+        <DialogHeader className="min-w-0 border-b px-5 pb-4 pt-5 pr-12">
           <DialogTitle className="flex items-center gap-2">
             <Sparkles className="size-5 text-violet-600" /> AI field detection
           </DialogTitle>
-          <DialogDescription>
+          <DialogDescription className="break-words">
             AI suggestions are added only after your review. The current PDF and
             published templates are not changed automatically.
           </DialogDescription>
         </DialogHeader>
 
-        <div className="min-h-0 overflow-y-auto px-5">
+        <div className="min-h-0 overflow-x-hidden overflow-y-auto overscroll-contain px-5 [scrollbar-gutter:stable]">
           {isDetecting ? (
             <div className="flex min-h-64 flex-col items-center justify-center gap-3 text-center">
               <LoaderCircle className="size-8 animate-spin text-violet-600" />
@@ -265,7 +265,7 @@ export function AiFieldDetectionDialog(props: {
                           </label>
                         </div>
                         {candidate.evidence && (
-                          <p className="text-xs leading-5 text-muted-foreground">
+                          <p className="break-words text-xs leading-5 text-muted-foreground">
                             {candidate.evidence}
                           </p>
                         )}
@@ -278,7 +278,7 @@ export function AiFieldDetectionDialog(props: {
           )}
         </div>
 
-        <DialogFooter className="border-t px-5 py-4">
+        <DialogFooter className="border-t bg-background px-5 py-4">
           <Button
             type="button"
             variant="outline"
