@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test, { after } from "node:test";
+import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { createServer } from "vite";
 import { PDFDocument } from "pdf-lib";
@@ -78,6 +79,15 @@ let aiCalls = 0,
 const originalFetch = globalThis.fetch;
 globalThis.fetch = async (url, options) => {
   const target = String(url);
+  if (target.includes("NotoSansKhmer"))
+    return new Response(
+      readFileSync(
+        new URL(
+          "../node_modules/@expo-google-fonts/noto-sans-khmer/400Regular/NotoSansKhmer_400Regular.ttf",
+          import.meta.url,
+        ),
+      ),
+    );
   if (target === "https://api.openai.com/v1/responses") {
     aiCalls++;
     return Response.json({ output_text: JSON.stringify(profile) });
@@ -302,7 +312,7 @@ test("approved workflow creates account and mapped forms, then sends encrypted s
         t + ".pdf",
         "form.pdf",
         annotations,
-        "[]",
+        JSON.stringify([{ id: "page-1", sourcePage: 1, rotation: 0 }]),
         t + "v1",
         now,
         now,
@@ -311,7 +321,16 @@ test("approved workflow creates account and mapped forms, then sends encrypted s
       .prepare(
         "INSERT INTO template_versions(id,template_id,version_number,file_key,file_name,annotations_json,page_order_json,roles_json,published_at)VALUES(?,?,1,?,?,?,?,?,?)",
       )
-      .run(t + "v1", t, t + ".pdf", "form.pdf", annotations, "[]", roles, now);
+      .run(
+        t + "v1",
+        t,
+        t + ".pdf",
+        "form.pdf",
+        annotations,
+        JSON.stringify([{ id: "page-1", sourcePage: 1, rotation: 0 }]),
+        roles,
+        now,
+      );
   }
   const graph = graphModule.defaultGraph();
   graph.nodes.find((n) => n.kind === "assign_forms").config.forms = [
@@ -1208,4 +1227,272 @@ test("draft workflows list their chosen starting event and archives block editin
     }),
     (e) => e.status === 409,
   );
+});
+
+const progressService = await vite.ssrLoadModule(
+  "/features/candidate-progress/progress.server.ts",
+);
+const progressRoute = await vite.ssrLoadModule(
+  "/app/api/candidates/[id]/route.ts",
+);
+let progressIntake;
+const progressGet = (id) =>
+  progressService.detailProgress(runtime.MANAGEMENT_EMAIL, id);
+const progressMove = (item, stage, extra = {}) =>
+  progressRoute.PATCH(
+    ownerRequest(
+      "/api/candidates/" + item.id,
+      { action: "move", stage, expectedRevision: item.revision, ...extra },
+      "PATCH",
+    ),
+    { params: Promise.resolve({ id: item.id }) },
+  );
+test("candidate progress groups CV history and prevents unverified approval, stale moves and cross-owner access", async () => {
+  progressIntake = await submit(71001, "progress@example.com");
+  let item = await progressGet(progressIntake.candidate_id);
+  assert.equal(item.stage, "new");
+  const calls = aiCalls;
+  let response = await progressMove(item, "approved");
+  assert.equal(response.status, 422);
+  assert.equal(aiCalls, calls);
+  response = await progressMove(item, "reviewing");
+  assert.equal(response.status, 200, await response.clone().text());
+  assert.equal((await progressGet(item.id)).stage, "reviewing");
+  response = await progressMove(item, "new", {
+    reason: "HR needs another check",
+  });
+  assert.equal(response.status, 409);
+  item = await progressGet(item.id);
+  response = await progressMove(item, "new");
+  assert.equal(response.status, 422);
+  response = await progressMove(item, "new", {
+    reason: "HR needs another check",
+  });
+  assert.equal(response.status, 200);
+  item = await progressGet(item.id);
+  assert(
+    item.activity.some(
+      (a) =>
+        a.action === "HR stage changed" &&
+        a.metadata.reason === "HR needs another check",
+    ),
+  );
+  await assert.rejects(
+    progressService.detailProgress("other@example.com", item.id),
+    (e) => e.status === 404,
+  );
+  const unauth = await progressRoute.GET(
+    new Request("http://localhost:5173/api/candidates/" + item.id),
+    { params: Promise.resolve({ id: item.id }) },
+  );
+  assert.equal(unauth.status, 401);
+  const crossSite = ownerRequest(
+    "/api/candidates/" + item.id,
+    { action: "move", stage: "reviewing", expectedRevision: item.revision },
+    "PATCH",
+  );
+  crossSite.headers.set("origin", "https://other.example.com");
+  assert.equal(
+    (
+      await progressRoute.PATCH(crossSite, {
+        params: Promise.resolve({ id: item.id }),
+      })
+    ).status,
+    403,
+  );
+  await freshPdf("second progress CV");
+  await chat(71001, "/add_cv");
+  await chat(71001, null, { file_id: "test", file_name: "second.pdf" });
+  const list = await progressService.listProgress(
+    runtime.MANAGEMENT_EMAIL,
+    new URLSearchParams({ search: "progress@example.com" }),
+  );
+  assert.equal(list.total, 1);
+  assert.equal(list.items[0].cvs.length, 2);
+  assert.equal(list.items[0].selectedCv.id, progressIntake.resume_id);
+  assert.equal(list.items[0].stage, "new");
+  const current = list.items[0];
+  await progressService.updateProgress(runtime.MANAGEMENT_EMAIL, current.id, {
+    action: "select_cv",
+    resumeId: progressIntake.resume_id,
+    expectedRevision: current.revision,
+  });
+  assert.equal(
+    (await progressGet(current.id)).selectedCv.id,
+    progressIntake.resume_id,
+  );
+  assert(!JSON.stringify(current).includes("token_cipher"));
+  assert(!JSON.stringify(current).includes("passwordHash"));
+});
+
+test("candidate preparation shows real invitations and incomplete forms cannot move to Ready for HR", async () => {
+  let item = await progressGet(manualIntake.candidate_id);
+  assert.equal(item.run.status, "completed");
+  assert.equal(item.facts.invitationSent, true);
+  assert.equal(item.facts.required, 2);
+  assert.equal(item.facts.completed, 0);
+  assert.equal(item.stage, "awaiting_forms");
+  assert.equal((await progressMove(item, "ready")).status, 422);
+  const run = await workflows.getRun(runtime.MANAGEMENT_EMAIL, runId);
+  const authResponse = await auth.getAuth().handler(
+    new Request("http://localhost:5173/api/auth/sign-in/email", {
+      method: "POST",
+      headers: {
+        origin: "http://localhost:5173",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        email: run.context.reviewedEmail,
+        password: "Candidate!9StrongPassword",
+      }),
+    }),
+  );
+  assert.equal(authResponse.status, 200, await authResponse.clone().text());
+  const candidateCookie = authResponse.headers
+    .getSetCookie()
+    .map((c) => c.split(";")[0])
+    .join("; ");
+  const fillRoute = await vite.ssrLoadModule("/app/api/fill/[token]/route.ts");
+  storage.set("t1.pdf", pdfBytes);
+  storage.set("t2.pdf", pdfBytes);
+  const assigned = d1.sqlite
+    .prepare("SELECT id FROM form_assignments WHERE user_id=?")
+    .all(run.context.userId);
+  assert.equal(assigned.length, 2);
+  let before = await progressGet(intakeRow.candidate_id);
+  assert.equal(before.facts.completed, 0);
+  for (let i = 0; i < assigned.length; i++) {
+    const form = new FormData();
+    form.set("values", JSON.stringify({ name: "TEST Dara Sok" }));
+    form.set("resumeAppliedFieldIds", "[]");
+    const token = "assigned_" + assigned[i].id;
+    const response = await fillRoute.POST(
+      new Request("http://localhost:5173/api/fill/" + token, {
+        method: "POST",
+        headers: {
+          cookie: candidateCookie,
+          origin: "http://localhost:5173",
+          "Idempotency-Key": crypto.randomUUID(),
+        },
+        body: form,
+      }),
+      { params: Promise.resolve({ token }) },
+    );
+    assert.equal(response.status, 201, await response.clone().text());
+    const after = await progressGet(intakeRow.candidate_id);
+    assert.equal(after.facts.completed, i + 1);
+    if (i === 0) {
+      assert.equal(after.stage, "awaiting_forms");
+      assert.equal((await progressMove(after, "ready")).status, 422);
+    } else {
+      assert.equal(after.stage, "ready");
+      assert(after.forms.every((f) => f.url?.startsWith("/api/submissions/")));
+      assert.equal(
+        after.activity.filter((a) => a.action.startsWith("Form submitted"))
+          .length,
+        2,
+      );
+    }
+  }
+  assert.equal((await progressMove(before, "ready")).status, 409);
+  const second = await progressGet(manualIntake.candidate_id);
+  assert.equal(second.facts.completed, 0); // The other candidate's submitted forms never count here.
+});
+
+test("changing selection and archive state preserves preparation history without reusing completion of another CV", async () => {
+  let item = await progressGet(progressIntake.candidate_id);
+  const other = item.cvs.find((c) => c.id !== progressIntake.resume_id);
+  assert(other);
+  await archiveService.archiveEntity(
+    runtime.MANAGEMENT_EMAIL,
+    "resume",
+    progressIntake.resume_id,
+  );
+  item = await progressGet(item.id);
+  assert.equal(item.selectedCv.id, other.id);
+  assert.equal(
+    item.cvs.find((c) => c.id === progressIntake.resume_id).archived,
+    true,
+  );
+  await assert.rejects(
+    progressService.updateProgress(runtime.MANAGEMENT_EMAIL, item.id, {
+      action: "select_cv",
+      resumeId: progressIntake.resume_id,
+      expectedRevision: item.revision,
+    }),
+    (e) => e.status === 422,
+  );
+  await archiveService.archiveEntity(
+    runtime.MANAGEMENT_EMAIL,
+    "resume",
+    other.id,
+  );
+  await assert.rejects(progressGet(item.id), (e) => e.status === 404);
+  const completed = await progressGet(intakeRow.candidate_id);
+  await progressService.updateProgress(runtime.MANAGEMENT_EMAIL, completed.id, {
+    action: "move",
+    stage: "reviewing",
+    reason: "HR wants to check the CV again",
+    expectedRevision: completed.revision,
+  });
+  const moved = await progressGet(completed.id);
+  assert.equal(moved.stage, "reviewing");
+  assert.equal(moved.facts.completed, 2);
+  assert.equal(moved.facts.invitationSent, true);
+  assert.equal(moved.automaticStage, "ready");
+});
+
+test("candidate stage transaction rejects form changes after the page revision was read", async () => {
+  const item = await progressGet(manualIntake.candidate_id),
+    form = d1.sqlite
+      .prepare(
+        "SELECT f.id,f.updated_at FROM form_assignments f WHERE f.user_id=? LIMIT 1",
+      )
+      .get(
+        (await workflows.getRun(runtime.MANAGEMENT_EMAIL, item.run.id)).context
+          .userId,
+      );
+  const originalBatch = d1.batch;
+  let intercepted = false;
+  d1.batch = async (statements) => {
+    if (
+      !intercepted &&
+      statements[0]?.query.includes("candidate_progress_guards")
+    ) {
+      intercepted = true;
+      d1.sqlite
+        .prepare(
+          "UPDATE form_assignments SET status='cancelled',updated_at=? WHERE id=?",
+        )
+        .run(new Date(Date.now() + 1000).toISOString(), form.id);
+    }
+    return originalBatch(statements);
+  };
+  try {
+    await assert.rejects(
+      progressService.updateProgress(runtime.MANAGEMENT_EMAIL, item.id, {
+        action: "move",
+        stage: "reviewing",
+        reason: "Check the CV again",
+        expectedRevision: item.revision,
+      }),
+      (e) => e.status === 409,
+    );
+    assert(intercepted);
+    assert.equal(
+      d1.sqlite
+        .prepare(
+          "SELECT candidate_id FROM candidate_progress WHERE candidate_id=?",
+        )
+        .get(item.id),
+      undefined,
+    );
+  } finally {
+    d1.batch = originalBatch;
+    d1.sqlite
+      .prepare(
+        "UPDATE form_assignments SET status='assigned',updated_at=? WHERE id=?",
+      )
+      .run(form.updated_at, form.id);
+  }
 });

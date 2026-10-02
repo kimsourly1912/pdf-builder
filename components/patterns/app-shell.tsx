@@ -28,6 +28,9 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
+  SidebarMenuSub,
+  SidebarMenuSubItem,
+  SidebarMenuSubButton,
   SidebarProvider,
   SidebarRail,
   SidebarTrigger,
@@ -45,7 +48,7 @@ const navigationItems = [
   { href: "/resumes", label: "Resumes", icon: FileText },
   { href: "/accounts", label: "Accounts", icon: UsersRound },
   { href: "/workflows", label: "Workflows", icon: Workflow },
-  { href: "/intake", label: "Candidate intake", icon: Inbox },
+  { href: "/candidates", label: "Candidates", icon: UsersRound },
   { href: "/analyses", label: "AI analyses", icon: Archive },
   { href: "/archive", label: "Archive", icon: Archive },
   { href: "/activity", label: "Activity", icon: Activity },
@@ -87,9 +90,13 @@ function AppShell(props: AppShellProps) {
             <SidebarGroupContent>
               <SidebarMenu>
                 {navigationItems.map((item) => {
-                  const active = item.exact
-                    ? pathname === item.href
-                    : pathname.startsWith(item.href);
+                  const active =
+                    item.href === "/candidates" &&
+                    pathname.startsWith("/intake")
+                      ? true
+                      : item.exact
+                        ? pathname === item.href
+                        : pathname.startsWith(item.href);
                   const Icon = item.icon;
                   return (
                     <SidebarMenuItem key={item.href}>
@@ -103,6 +110,32 @@ function AppShell(props: AppShellProps) {
                           <span>{item.label}</span>
                         </Link>
                       </SidebarMenuButton>
+                      {item.href === "/candidates" && (
+                        <SidebarMenuSub>
+                          <SidebarMenuSubItem>
+                            <SidebarMenuSubButton
+                              asChild
+                              isActive={pathname.startsWith("/intake")}
+                            >
+                              <Link href="/intake">
+                                <Inbox />
+                                <span>Intake</span>
+                              </Link>
+                            </SidebarMenuSubButton>
+                          </SidebarMenuSubItem>
+                          <SidebarMenuSubItem>
+                            <SidebarMenuSubButton
+                              asChild
+                              isActive={pathname.startsWith("/candidates")}
+                            >
+                              <Link href="/candidates">
+                                <Activity />
+                                <span>Progress</span>
+                              </Link>
+                            </SidebarMenuSubButton>
+                          </SidebarMenuSubItem>
+                        </SidebarMenuSub>
+                      )}
                     </SidebarMenuItem>
                   );
                 })}
@@ -138,7 +171,13 @@ function AppShell(props: AppShellProps) {
           <SidebarTrigger className="-ml-1" />
           <Separator orientation="vertical" className="mx-1 h-4" />
           <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-medium">{currentItem.label}</p>
+            <p className="truncate text-sm font-medium">
+              {pathname.startsWith("/intake")
+                ? "Candidate intake"
+                : pathname.startsWith("/candidates")
+                  ? "Candidate progress"
+                  : currentItem.label}
+            </p>
           </div>
           <SignOutButton />
         </header>

@@ -557,6 +557,13 @@ export function ResumeDetailView(props: { resumeId: string }) {
         </div>
       </div>
 
+      {resume.candidate && (
+        <Button asChild variant="outline">
+          <Link href={`/candidates/${resume.candidate.id}`}>
+            Return to candidate progress
+          </Link>
+        </Button>
+      )}
       {resume.intakeId && (
         <Button asChild variant="outline">
           <Link href={`/intake/${resume.intakeId}`}>
