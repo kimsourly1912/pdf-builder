@@ -20,3 +20,8 @@ export const workflowRuns = sqliteTable("workflow_runs", {
 export const workflowReviewDecisions = sqliteTable("workflow_review_decisions", {
   id: text("id").primaryKey(), runId: text("run_id").notNull().references(() => workflowRuns.id), ownerEmail: text("owner_email").notNull(), candidateId: text("candidate_id").notNull(), runLockToken: text("run_lock_token").notNull(), resumeRevision: text("resume_revision").notNull(), candidateRevision: text("candidate_revision").notNull(), action: text("action").notNull(), createdAt: text("created_at").notNull(),
 }, t => [index("workflow_review_decisions_run_idx").on(t.runId)]);
+
+// A trigger validates and removes this transient transaction guard.
+export const workflowExecutionGuards = sqliteTable("workflow_execution_guards", {
+  runId: text("run_id").notNull(), lockToken: text("lock_token").notNull(), checkedAt: text("checked_at").notNull(),
+});

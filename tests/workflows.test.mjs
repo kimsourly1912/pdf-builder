@@ -79,3 +79,27 @@ test("review guard rejects the wrong owner or a stale worker lease", () => {
 test("removing a resume retains workflow history for staff diagnosis", () => {
   const db = database(); db.exec("DELETE FROM resumes WHERE id='resume'"); assert.equal(db.prepare("SELECT COUNT(*) AS n FROM workflow_runs").get().n, 1); db.close();
 });
+
+test("side-effect batches abort for expired or replaced execution leases", () => {
+  const db = database();
+  db.exec("UPDATE workflow_runs SET locked_until='2026-10-02T12:10:00Z' WHERE id='run'");
+  const guard = db.prepare("INSERT INTO workflow_execution_guards VALUES ('run',?,?)");
+  assert.throws(() => guard.run("old-lock", "2026-10-02T12:00:00Z"), /WORKFLOW_LEASE_CHANGED/);
+  assert.throws(() => guard.run("lock", "2026-10-02T12:11:00Z"), /WORKFLOW_LEASE_CHANGED/);
+  db.exec("BEGIN");
+  db.exec("UPDATE candidates SET full_name='Uncommitted side effect' WHERE id='candidate'");
+  assert.throws(() => guard.run("old-lock", "2026-10-02T12:00:00Z"), /WORKFLOW_LEASE_CHANGED/);
+  db.exec("ROLLBACK");
+  assert.equal(db.prepare("SELECT full_name FROM candidates").get().full_name, "Sokha");
+  guard.run("lock", "2026-10-02T12:00:00Z");
+  assert.equal(db.prepare("SELECT COUNT(*) AS n FROM workflow_execution_guards").get().n, 0);
+  db.close();
+});
+
+test("unexpected database errors never expose credentials in run errors", async () => {
+  const { WorkflowStepError, workflowErrorMessage } = await import("../features/workflows/workflow-errors.ts");
+  const sensitive = "Failed query: INSERT INTO account password params: private-password-hash";
+  assert.equal(workflowErrorMessage(new Error(sensitive)).includes("private-password-hash"), false);
+  assert.equal(workflowErrorMessage({ message: sensitive }).includes("private-password-hash"), false);
+  assert.equal(workflowErrorMessage(new WorkflowStepError("Template was archived.")), "Template was archived.");
+});
