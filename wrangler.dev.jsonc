@@ -1,0 +1,45 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "pdf-builder-dev",
+  "main": "worker/index.ts",
+  "compatibility_date": "2026-08-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "vars": {
+    "ENVIRONMENT": "development",
+    "BETTER_AUTH_URL": "http://localhost:5173",
+    "MANAGEMENT_EMAIL": "owner@localhost"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "pdf-builder-db",
+      "database_id": "00000000-0000-4000-8000-000000000000",
+      "migrations_dir": "drizzle"
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "FILES",
+      "bucket_name": "pdf-builder-files"
+    }
+  ],
+  "queues": {
+    "producers": [
+      {
+        "binding": "AI_FIELD_DETECTION_QUEUE",
+        "queue": "pdf-builder-ai-field-detection-dev"
+      }
+    ],
+    "consumers": [
+      {
+        "queue": "pdf-builder-ai-field-detection-dev",
+        "max_batch_size": 1,
+        "max_batch_timeout": 1,
+        "max_retries": 3
+      }
+    ]
+  },
+  "triggers": {
+    "crons": ["*/15 * * * *"]
+  }
+}

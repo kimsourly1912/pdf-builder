@@ -1,0 +1,6742 @@
+"use client";
+
+import {
+  AlignLeft,
+  ArrowDown,
+  ArrowUp,
+  CalendarDays,
+  CheckSquare2,
+  CircleDot,
+  Circle,
+  Check,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  Copy,
+  Download,
+  FileCode2,
+  FileSearch,
+  FileText,
+  Eye,
+  FolderOpen,
+  GripVertical,
+  Hand,
+  Highlighter,
+  ImagePlus,
+  Keyboard,
+  Link2,
+  ListFilter,
+  LockKeyhole,
+  MapPinned,
+  Maximize2,
+  Minus,
+  MousePointer2,
+  PenLine,
+  Pipette,
+  Plus,
+  Redo2,
+  RotateCcw,
+  RotateCw,
+  Signature,
+  Sparkles,
+  Save,
+  Square,
+  TextCursorInput,
+  TriangleAlert,
+  Trash2,
+  Type,
+  Undo2,
+  UploadCloud,
+  Users,
+  Wrench,
+  ZoomIn,
+  ZoomOut,
+} from "lucide-react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
+import Image from "next/image";
+import khmerFontUrl from "@expo-google-fonts/noto-sans-khmer/400Regular/NotoSansKhmer_400Regular.ttf?url";
+import type { RecipientRole } from "@/features/templates/template.types";
+import { CandidatePrefillCombobox } from "@/features/resumes/candidate-prefill-combobox";
+import type { CandidatePrefillKey } from "@/features/resumes/resume.types";
+import type { LabelBinding } from "@/features/templates/label-binding";
+import {
+  annotationFieldKey,
+  createFieldKey,
+  createUniqueFieldKey,
+  duplicateFieldKeys,
+} from "@/features/templates/label-binding";
+import {
+  normalizedPointToPdf,
+  normalizedRectToPdfBox,
+} from "@/features/templates/pdf-coordinates";
+import {
+  getNormalizedStandardFieldDimensions,
+  getScaledFieldIconSize,
+  isStandardFieldType,
+} from "@/features/templates/field-layout";
+import {
+  DEFAULT_ELEMENT_BORDER_COLOR,
+  DEFAULT_ELEMENT_FONT_SIZE,
+  DEFAULT_ELEMENT_TEXT_COLOR,
+  DEFAULT_HIGHLIGHT_COLOR,
+  getDefaultElementColor,
+} from "@/features/templates/field-style";
+import {
+  moveEditorAnnotations,
+  reorderEditorAnnotations,
+  resizeEditorAnnotationProportionally,
+} from "@/features/templates/editor-shortcuts";
+import { formatLocalDateTime } from "@/features/templates/date-time";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { DatePicker } from "@/components/ui/date-picker";
+import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Slider } from "@/components/ui/slider";
+import { Spinner } from "@/components/ui/spinner";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  ToggleGroup,
+  ToggleGroupItem,
+} from "@/components/ui/toggle-group";
+import { PdfExtractionDialog } from "@/features/extraction/pdf-extraction-dialog";
+import { extractPdfContent } from "@/features/extraction/pdf-extraction";
+import { AiFieldDetectionDialog } from "@/features/ai-field-detection/ai-field-detection-dialog";
+import { buildDetectedAnnotations } from "@/features/ai-field-detection/field-detection";
+import type {
+  DetectedFieldCandidate,
+  FieldDetectionResult,
+} from "@/features/ai-field-detection/field-detection";
+import type {
+  AiFieldDetectionRun,
+  AiFieldDetectionRunStatus,
+} from "@/features/ai-field-detection/run-types";
+import { CambodiaAddressField } from "@/features/gazetteer/cambodia-address-field";
+import {
+  formatCambodiaAddress,
+  isAddressComplete,
+  parseCambodiaAddress,
+  truncateCambodiaAddress,
+} from "@/features/gazetteer/gazetteer";
+import type {
+  PdfDocumentForExtraction,
+  PdfExtractionResult,
+} from "@/features/extraction/pdf-extraction";
+import type {
+  CambodiaAddressValue,
+  GazetteerLanguage,
+  GazetteerLevel,
+} from "@/features/gazetteer/gazetteer.types";
+import { getCanvasFieldRectStyle } from "@/features/templates/canvas-field-style";
+import { cn } from "@/lib/utils";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogMedia,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  Empty,
+  EmptyContent,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from "@/components/ui/empty";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+
+type Tool =
+  | "select"
+  | "pan"
+  | "text"
+  | "highlight"
+  | "pen"
+  | "rectangle"
+  | "input"
+  | "textarea"
+  | "dropdown"
+  | "cambodia-address"
+  | "checkbox"
+  | "radio"
+  | "checkbox-group"
+  | "radio-group"
+  | "signature"
+  | "date"
+  | "initials"
+  | "ellipse"
+  | "line"
+  | "image"
+  | "image-placeholder";
+type Point = { x: number; y: number };
+type FieldOption = { id: string; label: string; checked: boolean };
+type AnnotationType =
+  | "text"
+  | "highlight"
+  | "drawing"
+  | "rectangle"
+  | "input"
+  | "textarea"
+  | "dropdown"
+  | "cambodia-address"
+  | "checkbox"
+  | "radio"
+  | "checkbox-group"
+  | "radio-group"
+  | "signature"
+  | "date"
+  | "initials"
+  | "ellipse"
+  | "line"
+  | "image"
+  | "image-placeholder";
+type Annotation = {
+  id: string;
+  page: number;
+  type: AnnotationType;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  color: string;
+  borderColor?: string;
+  text?: string;
+  fontSize?: number;
+  strokeWidth?: number;
+  points?: Point[];
+  strokes?: Point[][];
+  checked?: boolean;
+  lineDirection?: "down" | "up";
+  imageData?: string;
+  imageName?: string;
+  label?: string;
+  options?: FieldOption[];
+  fieldName?: string;
+  fieldKey?: string;
+  prefillKey?: CandidatePrefillKey;
+  labelBinding?: LabelBinding;
+  placeholder?: string;
+  required?: boolean;
+  multiline?: boolean;
+  validation?: "none" | "email" | "number" | "phone";
+  tabIndex?: number;
+  recipientRoleId?: string;
+  address?: CambodiaAddressValue;
+  gazetteerLanguage?: GazetteerLanguage;
+  gazetteerLevel?: GazetteerLevel;
+};
+type EditorMode = "build" | "fill";
+type PageEntry = {
+  id: string;
+  sourcePage: number;
+  rotation: 0 | 90 | 180 | 270;
+};
+type EditorDraft = {
+  version: 1;
+  fileName: string;
+  fileBytes: ArrayBuffer;
+  annotations: Annotation[];
+  pageOrder: PageEntry[];
+  savedAt: number;
+  templateId?: string;
+  templateVersionNumber?: number;
+  templateName?: string;
+  templateDescription?: string;
+  recipientRoles?: RecipientRole[];
+  aiFieldDetectionRunId?: string;
+};
+type Interaction =
+  | {
+      mode: "move";
+      ids: string[];
+      start: Point;
+      origins: Annotation[];
+      before: Annotation[];
+      changed: boolean;
+    }
+  | {
+      mode: "resize";
+      id: string;
+      start: Point;
+      origin: Annotation;
+      before: Annotation[];
+      changed: boolean;
+      proportional: boolean;
+    }
+  | {
+      mode: "pan";
+      clientX: number;
+      clientY: number;
+      scrollLeft: number;
+      scrollTop: number;
+    };
+type AnnotationClipboard = {
+  annotations: Annotation[];
+  mode: "copy" | "cut";
+  pasteCount: number;
+};
+type PdfViewport = {
+  width: number;
+  height: number;
+  convertToViewportPoint(x: number, y: number): [number, number];
+};
+type PdfTextRun = {
+  id: string;
+  text: string;
+  rect: { x: number; y: number; width: number; height: number };
+};
+type PdfPage = {
+  rotate: number;
+  getViewport(options: { scale: number; rotation?: number }): PdfViewport;
+  render(options: {
+    canvas: HTMLCanvasElement;
+    canvasContext: CanvasRenderingContext2D;
+    viewport: PdfViewport;
+  }): { promise: Promise<void>; cancel: () => void };
+  getTextContent(): Promise<{
+    items: Array<{
+      str?: string;
+      width?: number;
+      height?: number;
+      transform?: number[];
+    }>;
+  }>;
+};
+type PdfDocument = {
+  numPages: number;
+  getPage(pageNumber: number): Promise<PdfPage>;
+  destroy(): Promise<void>;
+};
+type PinchGesture = {
+  startDistance: number;
+  startZoom: number;
+  targetZoom: number;
+  contentX: number;
+  contentY: number;
+  centerOffsetX: number;
+  centerOffsetY: number;
+};
+
+const COLORS = [
+  DEFAULT_ELEMENT_TEXT_COLOR,
+  "#1d4ed8",
+  "#e11d48",
+  "#0f766e",
+  DEFAULT_HIGHLIGHT_COLOR,
+  "#111827",
+];
+const RECIPIENT_COLORS = ["#2563eb", "#e11d48", "#0f766e", "#9333ea", "#ea580c"];
+const KHMER_FONT_FAMILY = "PDF Studio Khmer";
+const KHMER_REGRESSION_SAMPLES = ["សួស្តីបង", "រាត្រីសួស្តី"] as const;
+const DRAFT_DATABASE = "pdf-studio-drafts";
+const DRAFT_STORE = "drafts";
+const ACTIVE_DRAFT_KEY = "active";
+const DEFAULT_ZOOM = 1.15;
+const MIN_ZOOM = 0.25;
+const MAX_ZOOM = 2.5;
+const FONT_SIZE_PRESETS = [8, 10, 12, 14, 16, 20, 24];
+const MIN_FONT_SIZE = 6;
+const MAX_FONT_SIZE = 96;
+const TOOL_SHORTCUT_ITEMS: Array<{
+  key: string;
+  label: string;
+  tool: Tool;
+}> = [
+  { key: "A", label: "Select", tool: "select" },
+  { key: "H", label: "Pan document", tool: "pan" },
+  { key: "T", label: "Add text", tool: "text" },
+  { key: "G", label: "Highlight", tool: "highlight" },
+  { key: "P", label: "Draw", tool: "pen" },
+  { key: "R", label: "Rectangle", tool: "rectangle" },
+  { key: "I", label: "Text input", tool: "input" },
+  { key: "X", label: "Textarea", tool: "textarea" },
+  { key: "V", label: "Dropdown", tool: "dropdown" },
+  { key: "K", label: "Cambodia address", tool: "cambodia-address" },
+  { key: "C", label: "Checkbox", tool: "checkbox" },
+  { key: "O", label: "Radio button", tool: "radio" },
+  { key: "B", label: "Checkbox group", tool: "checkbox-group" },
+  { key: "Q", label: "Radio group", tool: "radio-group" },
+  { key: "S", label: "Signature", tool: "signature" },
+  { key: "D", label: "Date", tool: "date" },
+  { key: "N", label: "Initials", tool: "initials" },
+  { key: "E", label: "Ellipse", tool: "ellipse" },
+  { key: "L", label: "Line", tool: "line" },
+  { key: "U", label: "Upload image", tool: "image" },
+  { key: "M", label: "Image placeholder", tool: "image-placeholder" },
+];
+const TOOL_SHORTCUTS = Object.fromEntries(
+  TOOL_SHORTCUT_ITEMS.map((item) => [item.key.toLowerCase(), item.tool]),
+) as Record<string, Tool>;
+const EDITOR_SHORTCUT_ITEMS = [
+  ["Arrow keys", "Move the selection by 1 px"],
+  ["Shift + Arrow", "Move the selection by 10 px"],
+  ["Shift + click", "Add an item to the selection"],
+  ["Shift + left drag", "Resize an element proportionally"],
+  ["Alt/Option + drag", "Duplicate, then move the selection"],
+  ["Ctrl/Cmd + A", "Select every item on the current page"],
+  ["Ctrl/Cmd + C / X", "Copy or cut the selection"],
+  ["Ctrl/Cmd + V", "Paste on the current page"],
+  ["Ctrl/Cmd + D", "Duplicate with a small offset"],
+  ["Delete / Backspace", "Remove the selection"],
+  ["Ctrl/Cmd + [ / ]", "Move backward or forward one layer"],
+  ["Ctrl/Cmd + Shift + [ / ]", "Send to back or bring to front"],
+  ["Page Up / Page Down", "Go to the previous or next page"],
+  ["Ctrl/Cmd + 0", "Fit the page to the editor"],
+  ["Ctrl/Cmd + + / -", "Zoom in or out"],
+  ["Ctrl/Cmd + Z", "Undo the last editor change"],
+  ["Ctrl/Cmd + Shift + Z", "Redo the last editor change"],
+  ["Space + drag", "Temporarily pan the document"],
+  ["Ctrl/Cmd + wheel", "Zoom around the mouse pointer"],
+  ["Esc", "Cancel the active action or clear selection"],
+] as const;
+const BATCH_STYLE_KEYS = new Set([
+  "color",
+  "borderColor",
+  "fontSize",
+  "strokeWidth",
+]);
+
+function isTypingTarget(target: EventTarget | null) {
+  if (!(target instanceof HTMLElement)) return false;
+  return (
+    target.isContentEditable ||
+    target instanceof HTMLInputElement ||
+    target instanceof HTMLTextAreaElement ||
+    target instanceof HTMLSelectElement
+  );
+}
+
+function clampZoom(value: number) {
+  return Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, value));
+}
+
+function clampFontSize(value: number) {
+  return Math.min(MAX_FONT_SIZE, Math.max(MIN_FONT_SIZE, value));
+}
+
+function formatAnnotationTypeLabel(type: AnnotationType) {
+  return type
+    .split("-")
+    .map((part) => `${part.charAt(0).toUpperCase()}${part.slice(1)}`)
+    .join(" ");
+}
+
+function pointDistance(first: Point, second: Point) {
+  return Math.hypot(second.x - first.x, second.y - first.y);
+}
+
+function isSquareField(type: AnnotationType) {
+  return type === "checkbox" || type === "radio";
+}
+
+function isInteractivePdfField(type: AnnotationType) {
+  return (
+    type === "input" ||
+    type === "textarea" ||
+    type === "dropdown" ||
+    type === "cambodia-address" ||
+    type === "date" ||
+    type === "initials" ||
+    type === "checkbox" ||
+    type === "radio"
+  );
+}
+
+function isAssignableTemplateField(type: AnnotationType) {
+  return (
+    isInteractivePdfField(type) ||
+    type === "checkbox-group" ||
+    type === "radio-group" ||
+    type === "image-placeholder"
+  );
+}
+
+function createPdfFieldName(annotation: Annotation) {
+  const customName = annotation.fieldName
+    ?.trim()
+    .replaceAll(/[^a-zA-Z0-9_-]/g, "_")
+    .slice(0, 40);
+  const safeId = annotation.id.replaceAll(/[^a-zA-Z0-9]/g, "");
+  return `${customName || `pdfstudio_${annotation.type}`}_${annotation.page}_${safeId}`;
+}
+
+function cloneAnnotations(annotations: Annotation[]) {
+  return annotations.map((annotation) => ({
+    ...annotation,
+    points: annotation.points?.map((point) => ({ ...point })),
+    strokes: annotation.strokes?.map((stroke) =>
+      stroke.map((point) => ({ ...point })),
+    ),
+    options: annotation.options?.map((option) => ({ ...option })),
+    address: annotation.address
+      ? parseCambodiaAddress(annotation.address)
+      : undefined,
+    labelBinding: annotation.labelBinding
+      ? { ...annotation.labelBinding, rect: { ...annotation.labelBinding.rect } }
+      : undefined,
+  }));
+}
+
+function createAnnotationDuplicate(options: {
+  annotation: Annotation;
+  annotations: Annotation[];
+  page: number;
+  fieldNameSuffix?: string;
+}) {
+  const { annotation, annotations, page, fieldNameSuffix = "copy" } = options;
+  const duplicate = cloneAnnotations([annotation])[0];
+  const assignable = isAssignableTemplateField(annotation.type);
+  const existingFields = annotations.filter((item) =>
+    isAssignableTemplateField(item.type),
+  );
+  const maximumTabIndex = existingFields.reduce(
+    (maximum, item) => Math.max(maximum, item.tabIndex ?? 0),
+    0,
+  );
+
+  return {
+    ...duplicate,
+    id: createAnnotationId(),
+    page,
+    fieldName:
+      assignable && annotation.fieldName
+        ? `${annotation.fieldName} ${fieldNameSuffix}`
+        : annotation.fieldName,
+    fieldKey: assignable
+      ? createUniqueFieldKey(annotationFieldKey(annotation), existingFields)
+      : annotation.fieldKey,
+    labelBinding: undefined,
+    tabIndex: assignable ? maximumTabIndex + 1 : annotation.tabIndex,
+  };
+}
+
+function createPageEntry(sourcePage: number): PageEntry {
+  return {
+    id: createAnnotationId(),
+    sourcePage,
+    rotation: 0,
+  };
+}
+
+function createPdfTextRuns(
+  items: Array<{ str?: string; width?: number; height?: number; transform?: number[] }>,
+  viewport: PdfViewport,
+) {
+  return items.flatMap<PdfTextRun>((item, index) => {
+    const text = item.str?.trim();
+    const transform = item.transform;
+    if (!text || !transform || transform.length < 6) return [];
+    const x = transform[4];
+    const baseline = transform[5];
+    const width = Math.max(item.width ?? 0, 1);
+    const height = Math.max(item.height ?? Math.abs(transform[3]) ?? 0, 1);
+    const corners = [
+      viewport.convertToViewportPoint(x, baseline),
+      viewport.convertToViewportPoint(x + width, baseline),
+      viewport.convertToViewportPoint(x, baseline + height),
+      viewport.convertToViewportPoint(x + width, baseline + height),
+    ];
+    const xs = corners.map(([pointX]) => pointX);
+    const ys = corners.map(([, pointY]) => pointY);
+    const left = Math.max(0, Math.min(...xs));
+    const top = Math.max(0, Math.min(...ys));
+    const right = Math.min(viewport.width, Math.max(...xs));
+    const bottom = Math.min(viewport.height, Math.max(...ys));
+    return [{
+      id: `${index}-${text}`,
+      text,
+      rect: {
+        x: left / viewport.width,
+        y: top / viewport.height,
+        width: Math.max(2, right - left) / viewport.width,
+        height: Math.max(2, bottom - top) / viewport.height,
+      },
+    }];
+  });
+}
+
+function openDraftDatabase() {
+  return new Promise<IDBDatabase>((resolve, reject) => {
+    const request = window.indexedDB.open(DRAFT_DATABASE, 1);
+    request.addEventListener("upgradeneeded", () => {
+      if (!request.result.objectStoreNames.contains(DRAFT_STORE)) {
+        request.result.createObjectStore(DRAFT_STORE);
+      }
+    });
+    request.addEventListener("success", () => resolve(request.result));
+    request.addEventListener("error", () => reject(request.error));
+  });
+}
+
+async function writeDraft(draft: EditorDraft) {
+  const database = await openDraftDatabase();
+  await new Promise<void>((resolve, reject) => {
+    const transaction = database.transaction(DRAFT_STORE, "readwrite");
+    transaction.objectStore(DRAFT_STORE).put(draft, ACTIVE_DRAFT_KEY);
+    transaction.addEventListener("complete", () => resolve());
+    transaction.addEventListener("error", () => reject(transaction.error));
+  });
+  database.close();
+}
+
+async function readDraft() {
+  const database = await openDraftDatabase();
+  const draft = await new Promise<EditorDraft | null>((resolve, reject) => {
+    const transaction = database.transaction(DRAFT_STORE, "readonly");
+    const request = transaction.objectStore(DRAFT_STORE).get(ACTIVE_DRAFT_KEY);
+    request.addEventListener("success", () =>
+      resolve((request.result as EditorDraft | undefined) ?? null),
+    );
+    request.addEventListener("error", () => reject(request.error));
+  });
+  database.close();
+  return draft;
+}
+
+async function removeDraft() {
+  const database = await openDraftDatabase();
+  await new Promise<void>((resolve, reject) => {
+    const transaction = database.transaction(DRAFT_STORE, "readwrite");
+    transaction.objectStore(DRAFT_STORE).delete(ACTIVE_DRAFT_KEY);
+    transaction.addEventListener("complete", () => resolve());
+    transaction.addEventListener("error", () => reject(transaction.error));
+  });
+  database.close();
+}
+
+function fieldValueIsValid(annotation: Annotation) {
+  const value = annotation.text?.trim() ?? "";
+  if (annotation.required) {
+    if (
+      (annotation.type === "checkbox" || annotation.type === "radio") &&
+      !annotation.checked
+    ) {
+      return false;
+    }
+    if (
+      annotation.type === "dropdown" &&
+      !annotation.options?.some((option) => option.checked)
+    ) {
+      return false;
+    }
+    if (
+      annotation.type === "cambodia-address" &&
+      !isAddressComplete(
+        annotation.address,
+        annotation.gazetteerLevel ?? "village",
+      )
+    ) {
+      return false;
+    }
+    if (
+      (annotation.type === "checkbox-group" ||
+        annotation.type === "radio-group") &&
+      !annotation.options?.some((option) => option.checked)
+    ) {
+      return false;
+    }
+    if (
+      ["input", "textarea", "date", "initials"].includes(annotation.type) &&
+      !value
+    ) {
+      return false;
+    }
+  }
+  if (!value || !annotation.validation || annotation.validation === "none") {
+    return true;
+  }
+  if (annotation.validation === "email") {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/u.test(value);
+  }
+  if (annotation.validation === "number") {
+    return Number.isFinite(Number(value));
+  }
+  return /^[+()\d\s.-]{6,}$/u.test(value);
+}
+
+function currentDateValue() {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function formatDateValue(value?: string) {
+  if (!value) return "Choose a date";
+  const parsed = new Date(`${value}T00:00:00`);
+  if (Number.isNaN(parsed.getTime())) return value;
+  return new Intl.DateTimeFormat(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  }).format(parsed);
+}
+
+function hexToRgb(hex: string) {
+  const value = hex.replace("#", "");
+  return {
+    r: Number.parseInt(value.slice(0, 2), 16) / 255,
+    g: Number.parseInt(value.slice(2, 4), 16) / 255,
+    b: Number.parseInt(value.slice(4, 6), 16) / 255,
+  };
+}
+
+function dataUrlToBytes(dataUrl: string) {
+  const encoded = dataUrl.split(",")[1] ?? "";
+  const binary = window.atob(encoded);
+  return Uint8Array.from(binary, (character) => character.charCodeAt(0));
+}
+
+let khmerFontBytesPromise: Promise<Uint8Array<ArrayBuffer>> | null = null;
+let khmerBrowserFontPromise: Promise<void> | null = null;
+
+function loadKhmerFontBytes() {
+  if (!khmerFontBytesPromise) {
+    khmerFontBytesPromise = fetch(khmerFontUrl).then(async (response) => {
+      if (!response.ok) throw new Error("Khmer font could not be loaded");
+      return new Uint8Array(
+        await response.arrayBuffer(),
+      ) as Uint8Array<ArrayBuffer>;
+    });
+  }
+  return khmerFontBytesPromise;
+}
+
+function containsKhmer(value?: string) {
+  return /[\u1780-\u17ff\u19e0-\u19ff]/u.test(value ?? "");
+}
+
+function annotationContainsKhmer(annotation: Annotation) {
+  return (
+    containsKhmer(annotation.text) ||
+    containsKhmer(annotation.label) ||
+    containsKhmer(formatCambodiaAddress(annotation.address, "km")) ||
+    annotation.options?.some((option) => containsKhmer(option.label)) === true
+  );
+}
+
+function loadKhmerBrowserFont() {
+  if (typeof FontFace === "undefined" || !window.document.fonts) {
+    return Promise.resolve();
+  }
+  if (!khmerBrowserFontPromise) {
+    const khmerFont = new FontFace(
+      KHMER_FONT_FAMILY,
+      `url(${khmerFontUrl})`,
+      { style: "normal", weight: "400" },
+    );
+    khmerBrowserFontPromise = khmerFont
+      .load()
+      .then(async (loadedFont) => {
+        window.document.fonts.add(loadedFont);
+        const sampleFaces = await Promise.all(
+          KHMER_REGRESSION_SAMPLES.map((sample) =>
+            window.document.fonts.load(
+              `400 16px "${KHMER_FONT_FAMILY}"`,
+              sample,
+            ),
+          ),
+        );
+        if (sampleFaces.some((faces) => faces.length === 0)) {
+          throw new Error("Khmer shaping font did not become available");
+        }
+      })
+      .catch((error) => {
+        khmerBrowserFontPromise = null;
+        throw error;
+      });
+  }
+  return khmerBrowserFontPromise;
+}
+
+async function renderKhmerTextImage(options: {
+  text: string;
+  fontSize: number;
+  color: string;
+  maxWidth: number;
+}) {
+  const { text, fontSize, color, maxWidth } = options;
+  const normalizedText = text.normalize("NFC");
+  const scale = 3;
+  const horizontalPadding = 2;
+  const verticalPadding = Math.max(2, fontSize * 0.28);
+  const lineHeight = fontSize * 1.55;
+  const lines = normalizedText.split("\n");
+  const width = Math.max(1, maxWidth);
+  const height = Math.max(
+    1,
+    verticalPadding * 2 + lineHeight * Math.max(1, lines.length),
+  );
+  await loadKhmerBrowserFont();
+  await window.document.fonts.load(
+    `400 ${fontSize}px "${KHMER_FONT_FAMILY}"`,
+    normalizedText,
+  );
+  const canvas = window.document.createElement("canvas");
+  canvas.width = Math.ceil(width * scale);
+  canvas.height = Math.ceil(height * scale);
+  const context = canvas.getContext("2d");
+  if (!context) throw new Error("Canvas is unavailable");
+  context.scale(scale, scale);
+  context.font = `400 ${fontSize}px "${KHMER_FONT_FAMILY}"`;
+  context.fillStyle = color;
+  context.direction = "ltr";
+  context.fontKerning = "normal";
+  context.textBaseline = "alphabetic";
+  lines.forEach((line, index) => {
+    context.fillText(
+      line,
+      horizontalPadding,
+      verticalPadding + fontSize + lineHeight * index,
+    );
+  });
+  return {
+    dataUrl: canvas.toDataURL("image/png"),
+    width,
+    height,
+  };
+}
+
+function bytesToDataUrl(bytes: Uint8Array<ArrayBuffer>, mimeType: string) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.addEventListener("load", () => resolve(String(reader.result)));
+    reader.addEventListener("error", () =>
+      reject(new Error("Font data could not be encoded")),
+    );
+    reader.readAsDataURL(new Blob([bytes], { type: mimeType }));
+  });
+}
+
+function createAnnotationId() {
+  if (typeof crypto !== "undefined" && crypto.getRandomValues) {
+    const values = new Uint32Array(4);
+    crypto.getRandomValues(values);
+    return Array.from(values, (value) => value.toString(16)).join("-");
+  }
+  return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+function escapeHtml(value: string) {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
+function annotationToSvg(
+  annotation: Annotation,
+  pageWidth: number,
+  pageHeight: number,
+) {
+  const x = annotation.x * pageWidth;
+  const y = annotation.y * pageHeight;
+  const width = annotation.width * pageWidth;
+  const height = annotation.height * pageHeight;
+  const color = escapeHtml(annotation.color);
+  const strokeWidth = annotation.strokeWidth ?? 2;
+
+  if (
+    (annotation.type === "image" || annotation.type === "image-placeholder") &&
+    annotation.imageData
+  ) {
+    return `<image href="${escapeHtml(annotation.imageData)}" x="${x}" y="${y}" width="${width}" height="${height}" preserveAspectRatio="none"/>`;
+  }
+
+  if (annotation.type === "image-placeholder") {
+    const fontSize = annotation.fontSize ?? DEFAULT_ELEMENT_FONT_SIZE;
+    const borderColor = escapeHtml(
+      annotation.borderColor ?? DEFAULT_ELEMENT_BORDER_COLOR,
+    );
+    return `<rect x="${x}" y="${y}" width="${width}" height="${height}" rx="8" fill="#f8fafc" stroke="${borderColor}" stroke-width="1.5" stroke-dasharray="7 5"/><text x="${x + width / 2}" y="${y + height / 2}" text-anchor="middle" dominant-baseline="middle" fill="${color}" font-family="PDF Studio Khmer, Arial, sans-serif" font-size="${fontSize}">${escapeHtml(annotation.label ?? "Upload image")}</text>`;
+  }
+
+  if (
+    annotation.type === "text" ||
+    annotation.type === "initials"
+  ) {
+    const fontSize = annotation.fontSize ?? DEFAULT_ELEMENT_FONT_SIZE;
+    const lines = (annotation.text ?? "").split("\n");
+    return `<text x="${x}" y="${y + fontSize}" fill="${color}" font-family="PDF Studio Khmer, Arial, sans-serif" font-size="${fontSize}">${lines
+      .map(
+        (line, index) =>
+          `<tspan x="${x}" dy="${index === 0 ? 0 : fontSize * 1.2}">${escapeHtml(line)}</tspan>`,
+      )
+      .join("")}</text>`;
+  }
+  if (annotation.type === "date") {
+    const fontSize = annotation.fontSize ?? DEFAULT_ELEMENT_FONT_SIZE;
+    const borderColor = escapeHtml(
+      annotation.borderColor ?? DEFAULT_ELEMENT_BORDER_COLOR,
+    );
+    return `<rect x="${x}" y="${y}" width="${width}" height="${height}" rx="4" fill="white" stroke="${borderColor}"/><text x="${x + 9}" y="${y + height / 2}" dominant-baseline="middle" fill="${color}" font-family="PDF Studio Khmer, Arial, sans-serif" font-size="${fontSize}">${escapeHtml(formatDateValue(annotation.text))}</text><text x="${x + width - 20}" y="${y + height / 2}" dominant-baseline="middle" fill="${borderColor}" font-family="PDF Studio Khmer, Arial, sans-serif" font-size="${fontSize}">▣</text>`;
+  }
+  if (annotation.type === "input" || annotation.type === "textarea") {
+    const fontSize = annotation.fontSize ?? DEFAULT_ELEMENT_FONT_SIZE;
+    const borderColor = escapeHtml(
+      annotation.borderColor ?? DEFAULT_ELEMENT_BORDER_COLOR,
+    );
+    const textY = annotation.type === "textarea" ? y + fontSize + 5 : y + height / 2;
+    const baseline = annotation.type === "textarea" ? "auto" : "middle";
+    const lines = (annotation.text ?? "").split("\n");
+    return `<rect x="${x}" y="${y}" width="${width}" height="${height}" fill="white" stroke="${borderColor}"/><text x="${x + 5}" y="${textY}" dominant-baseline="${baseline}" fill="${color}" font-family="PDF Studio Khmer, Arial, sans-serif" font-size="${fontSize}">${lines.map((line, index) => `<tspan x="${x + 5}" dy="${index === 0 ? 0 : fontSize * 1.35}">${escapeHtml(line)}</tspan>`).join("")}</text>`;
+  }
+  if (annotation.type === "dropdown") {
+    const fontSize = annotation.fontSize ?? DEFAULT_ELEMENT_FONT_SIZE;
+    const borderColor = escapeHtml(
+      annotation.borderColor ?? DEFAULT_ELEMENT_BORDER_COLOR,
+    );
+    const selected = annotation.options?.find((option) => option.checked)?.label;
+    return `<rect x="${x}" y="${y}" width="${width}" height="${height}" rx="4" fill="white" stroke="${borderColor}"/><text x="${x + 7}" y="${y + height / 2}" dominant-baseline="middle" fill="${color}" font-family="PDF Studio Khmer, Arial, sans-serif" font-size="${fontSize}">${escapeHtml(selected ?? annotation.label ?? "Select an option")}</text><text x="${x + width - 16}" y="${y + height / 2}" dominant-baseline="middle" fill="${DEFAULT_ELEMENT_BORDER_COLOR}" font-size="${fontSize}">▼</text>`;
+  }
+  if (annotation.type === "cambodia-address") {
+    const fontSize = annotation.fontSize ?? DEFAULT_ELEMENT_FONT_SIZE;
+    const borderColor = escapeHtml(
+      annotation.borderColor ?? DEFAULT_ELEMENT_BORDER_COLOR,
+    );
+    const address = formatCambodiaAddress(
+      annotation.address,
+      annotation.gazetteerLanguage ?? "bilingual",
+    );
+    const lines = [address || annotation.label || "Cambodia address"];
+    return `<rect x="${x}" y="${y}" width="${width}" height="${height}" rx="4" fill="white" stroke="${borderColor}"/><text x="${x + 7}" y="${y + fontSize + 5}" fill="${color}" font-family="PDF Studio Khmer, Arial, sans-serif" font-size="${fontSize}">${lines.map((line, index) => `<tspan x="${x + 7}" dy="${index === 0 ? 0 : fontSize * 1.45}">${escapeHtml(line)}</tspan>`).join("")}</text>`;
+  }
+  if (annotation.type === "highlight") {
+    return `<rect x="${x}" y="${y}" width="${width}" height="${height}" fill="${color}" opacity="0.35"/>`;
+  }
+  if (annotation.type === "rectangle") {
+    return `<rect x="${x}" y="${y}" width="${width}" height="${height}" fill="none" stroke="${color}" stroke-width="${strokeWidth}"/>`;
+  }
+  if (annotation.type === "ellipse") {
+    return `<ellipse cx="${x + width / 2}" cy="${y + height / 2}" rx="${width / 2}" ry="${height / 2}" fill="none" stroke="${color}" stroke-width="${strokeWidth}"/>`;
+  }
+  if (annotation.type === "line") {
+    const firstY = annotation.lineDirection === "up" ? y + height : y;
+    const secondY = annotation.lineDirection === "up" ? y : y + height;
+    return `<line x1="${x}" y1="${firstY}" x2="${x + width}" y2="${secondY}" stroke="${color}" stroke-width="${strokeWidth}" stroke-linecap="round"/>`;
+  }
+  if (annotation.type === "drawing") {
+    const points = (annotation.points ?? [])
+      .map((point) => `${point.x * pageWidth},${point.y * pageHeight}`)
+      .join(" ");
+    return `<polyline points="${points}" fill="none" stroke="${color}" stroke-width="${strokeWidth}" stroke-linecap="round" stroke-linejoin="round"/>`;
+  }
+  if (annotation.type === "checkbox") {
+    const check = annotation.checked
+      ? `<polyline points="${x + width * 0.18},${y + height * 0.52} ${x + width * 0.42},${y + height * 0.78} ${x + width * 0.84},${y + height * 0.22}" fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`
+      : "";
+    return `<rect x="${x}" y="${y}" width="${width}" height="${height}" fill="white" stroke="${color}" stroke-width="1.5"/>${check}`;
+  }
+  if (annotation.type === "radio") {
+    const radius = Math.min(width, height) / 2;
+    const centerX = x + width / 2;
+    const centerY = y + height / 2;
+    const dot = annotation.checked
+      ? `<circle cx="${centerX}" cy="${centerY}" r="${radius * 0.48}" fill="${color}"/>`
+      : "";
+    return `<circle cx="${centerX}" cy="${centerY}" r="${radius}" fill="white" stroke="${color}" stroke-width="1.5"/>${dot}`;
+  }
+  if (
+    annotation.type === "checkbox-group" ||
+    annotation.type === "radio-group"
+  ) {
+    const options = annotation.options ?? [];
+    const fontSize = annotation.fontSize ?? DEFAULT_ELEMENT_FONT_SIZE;
+    const labelSize = fontSize;
+    const rowHeight = Math.max(18, (height - labelSize - 8) / Math.max(1, options.length));
+    const controlSize = Math.min(14, rowHeight * 0.58);
+    const rows = options
+      .map((option, index) => {
+        const centerY = y + labelSize + 10 + rowHeight * index + rowHeight / 2;
+        const controlX = x + 5;
+        const controlY = centerY - controlSize / 2;
+        const mark = option.checked
+          ? annotation.type === "radio-group"
+            ? `<circle cx="${controlX + controlSize / 2}" cy="${centerY}" r="${controlSize * 0.28}" fill="${color}"/>`
+            : `<polyline points="${controlX + controlSize * 0.18},${centerY} ${controlX + controlSize * 0.42},${centerY + controlSize * 0.25} ${controlX + controlSize * 0.84},${centerY - controlSize * 0.27}" fill="none" stroke="${color}" stroke-width="2"/>`
+          : "";
+        const control = annotation.type === "radio-group"
+          ? `<circle cx="${controlX + controlSize / 2}" cy="${centerY}" r="${controlSize / 2}" fill="white" stroke="${color}"/>`
+          : `<rect x="${controlX}" y="${controlY}" width="${controlSize}" height="${controlSize}" fill="white" stroke="${color}"/>`;
+        return `${control}${mark}<text x="${controlX + controlSize + 7}" y="${centerY}" dominant-baseline="middle" fill="${color}" font-family="PDF Studio Khmer, Arial, sans-serif" font-size="${fontSize}">${escapeHtml(option.label)}</text>`;
+      })
+      .join("");
+    return `<text x="${x + 5}" y="${y + labelSize}" fill="${color}" font-family="PDF Studio Khmer, Arial, sans-serif" font-size="${labelSize}" font-weight="600">${escapeHtml(annotation.label ?? "Options")}</text>${rows}`;
+  }
+  if (annotation.type === "signature") {
+    return (annotation.strokes ?? [])
+      .map((stroke) => {
+        const points = stroke
+          .map(
+            (point) =>
+              `${x + point.x * width},${y + point.y * height}`,
+          )
+          .join(" ");
+        return `<polyline points="${points}" fill="none" stroke="${color}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>`;
+      })
+      .join("");
+  }
+  return "";
+}
+
+function ToolButton(props: {
+  label: string;
+  shortcut?: string;
+  active?: boolean;
+  disabled?: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  const accessibleLabel = props.shortcut
+    ? `${props.label} (${props.shortcut})`
+    : props.label;
+
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        asChild
+      >
+        <Button
+          type="button"
+          variant={props.active ? "default" : "ghost"}
+          size="icon-sm"
+          aria-label={accessibleLabel}
+          disabled={props.disabled}
+          onClick={props.onClick}
+          className={cn(
+            "size-10 shrink-0 sm:size-8",
+            !props.active && "text-muted-foreground",
+          )}
+        >
+          {props.children}
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent side="bottom" sideOffset={8}>
+        <span className="flex items-center gap-2">
+          {props.label}
+          {props.shortcut && (
+            <kbd className="rounded border border-slate-300 bg-white/80 px-1.5 py-0.5 font-mono text-[10px] font-semibold text-slate-600 shadow-sm">
+              {props.shortcut}
+            </kbd>
+          )}
+        </span>
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
+function ColorControl(props: {
+  value: string;
+  compact?: boolean;
+  onChange: (value: string) => void;
+}) {
+  const { value, compact, onChange } = props;
+  const sizeClass = compact ? "size-5" : "size-8";
+
+  return (
+    <div className="flex flex-wrap items-center gap-2.5">
+      <ToggleGroup
+        type="single"
+        value={COLORS.includes(value) ? value : ""}
+        onValueChange={(nextValue) => {
+          if (nextValue) onChange(nextValue);
+        }}
+        aria-label="Color presets"
+        className="flex-wrap gap-2.5"
+      >
+        {COLORS.map((item) => (
+          <ToggleGroupItem
+            key={item}
+            value={item}
+            aria-label={`Use ${item} color`}
+            className={cn(
+              sizeClass,
+              "shrink-0 rounded-full border-2 border-background p-0 ring-1 ring-border transition data-[state=on]:scale-105 data-[state=on]:ring-foreground",
+            )}
+            style={{ backgroundColor: item }}
+          />
+        ))}
+      </ToggleGroup>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <label
+            aria-label="Choose a custom color"
+            className={`${sizeClass} relative flex shrink-0 cursor-pointer items-center justify-center overflow-hidden rounded-full border-2 border-background text-white shadow-sm ring-1 ring-border`}
+            style={{ backgroundColor: value }}
+          >
+            <Pipette className={compact ? "size-3" : "size-3.5"} />
+            <input
+              type="color"
+              value={value}
+              aria-label="Custom color"
+              onChange={(event) => onChange(event.target.value)}
+              className="absolute inset-0 size-full cursor-pointer opacity-0"
+            />
+          </label>
+        </TooltipTrigger>
+        <TooltipContent>Choose a custom color</TooltipContent>
+      </Tooltip>
+    </div>
+  );
+}
+
+function FontSizeControl(props: {
+  value: number;
+  compact?: boolean;
+  onChange: (value: number) => void;
+}) {
+  const { value, compact, onChange } = props;
+
+  return (
+    <div className={compact ? "w-80 shrink-0" : "w-full"}>
+      <ToggleGroup
+        type="single"
+        value={String(value)}
+        onValueChange={(nextValue) => {
+          if (nextValue) onChange(Number(nextValue));
+        }}
+        aria-label="Font size presets"
+        className="grid w-full grid-cols-4 gap-1.5 sm:grid-cols-7 xl:grid-cols-4"
+      >
+        {FONT_SIZE_PRESETS.map((size) => (
+          <ToggleGroupItem
+            key={size}
+            value={String(size)}
+            aria-label={`Set font size to ${size} points`}
+            variant="outline"
+            className="h-8 min-w-0 rounded-md px-1.5 text-[11px] font-semibold data-[state=on]:border-primary data-[state=on]:bg-primary data-[state=on]:text-primary-foreground"
+          >
+            {size}
+          </ToggleGroupItem>
+        ))}
+      </ToggleGroup>
+      <div className="mt-2 flex items-center gap-2">
+        <Slider
+          min={MIN_FONT_SIZE}
+          max={72}
+          step={1}
+          value={[value]}
+          aria-label="Custom font size"
+          onValueChange={(values) =>
+            onChange(clampFontSize(values[0] ?? value))
+          }
+          className="min-w-0 flex-1"
+        />
+        <label className="flex shrink-0 items-center gap-1 text-[11px] font-medium text-slate-500">
+          <span className="sr-only">Exact font size</span>
+          <Input
+            type="number"
+            min={MIN_FONT_SIZE}
+            max={MAX_FONT_SIZE}
+            step="1"
+            value={value}
+            onChange={(event) => {
+              if (!event.target.value) return;
+              onChange(clampFontSize(Number(event.target.value)));
+            }}
+            className="h-8 w-16 rounded-md border border-slate-200 bg-white px-2 text-right text-xs font-semibold tabular-nums text-slate-700 shadow-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+          />
+          pt
+        </label>
+      </div>
+    </div>
+  );
+}
+
+function GroupFieldEditor(props: {
+  annotation: Annotation;
+  compact?: boolean;
+  onChange: (changes: Partial<Annotation>) => void;
+}) {
+  const options = props.annotation.options ?? [];
+  const isRadio =
+    props.annotation.type === "radio-group" ||
+    props.annotation.type === "dropdown";
+
+  function updateOption(optionId: string, changes: Partial<FieldOption>) {
+    props.onChange({
+      options: options.map((option) =>
+        option.id === optionId ? { ...option, ...changes } : option,
+      ),
+    });
+  }
+
+  function toggleOption(optionId: string) {
+    props.onChange({
+      options: options.map((option) => ({
+        ...option,
+        checked:
+          option.id === optionId
+            ? isRadio
+              ? true
+              : !option.checked
+            : isRadio
+              ? false
+              : option.checked,
+      })),
+    });
+  }
+
+  function addOption() {
+    props.onChange({
+      options: [
+        ...options,
+        {
+          id: createAnnotationId(),
+          label: `Option ${options.length + 1}`,
+          checked: false,
+        },
+      ],
+    });
+  }
+
+  function removeOption(optionId: string) {
+    if (options.length <= 1) return;
+    props.onChange({ options: options.filter((option) => option.id !== optionId) });
+  }
+
+  return (
+    <div
+      className={
+        props.compact
+          ? "flex min-w-max items-center gap-2"
+          : "space-y-3"
+      }
+    >
+      <Input
+        aria-label="Group label"
+        value={props.annotation.label ?? ""}
+        onChange={(event) => props.onChange({ label: event.target.value })}
+        placeholder="Group label"
+        className={`${props.compact ? "h-8 w-40 rounded-md px-2" : "h-9 w-full rounded-lg px-3 shadow-sm"} border border-slate-200 bg-white text-sm text-slate-800 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100`}
+      />
+      <div className={props.compact ? "flex items-center gap-2" : "space-y-2"}>
+        {options.map((option) => (
+          <div key={option.id} className="flex items-center gap-2">
+            <Button variant="ghost"
+              type="button"
+              aria-label={`${option.checked ? "Unselect" : "Select"} ${option.label}`}
+              onClick={() => toggleOption(option.id)}
+              className={`flex size-6 shrink-0 items-center justify-center border-2 bg-white transition hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500 ${isRadio ? "rounded-full" : "rounded-md"}`}
+              style={{ borderColor: props.annotation.color }}
+            >
+              {option.checked &&
+                (isRadio ? (
+                  <span
+                    className="size-2.5 rounded-full"
+                    style={{ backgroundColor: props.annotation.color }}
+                  />
+                ) : (
+                  <Check
+                    className="size-4"
+                    style={{ color: props.annotation.color }}
+                    strokeWidth={3}
+                  />
+                ))}
+            </Button>
+            <Input
+              aria-label="Option label"
+              value={option.label}
+              onChange={(event) =>
+                updateOption(option.id, { label: event.target.value })
+              }
+              className={`${props.compact ? "h-8 w-28 rounded-md px-2 text-xs" : "h-9 min-w-0 flex-1 rounded-lg px-3 text-sm shadow-sm"} border border-slate-200 bg-white text-slate-800 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100`}
+            />
+            <Button variant="ghost"
+              type="button"
+              aria-label={`Remove ${option.label}`}
+              disabled={options.length <= 1}
+              onClick={() => removeOption(option.id)}
+              className="flex size-9 shrink-0 items-center justify-center rounded-lg text-slate-400 transition hover:bg-rose-50 hover:text-rose-600 focus-visible:outline-2 focus-visible:outline-rose-500 disabled:opacity-30"
+            >
+              <Minus className="size-3.5" />
+            </Button>
+          </div>
+        ))}
+      </div>
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        onClick={addOption}
+        className={props.compact ? undefined : "w-full"}
+      >
+        <Plus className="size-3.5" /> Add option
+      </Button>
+    </div>
+  );
+}
+
+function GazetteerFieldEditor(props: {
+  annotation: Annotation;
+  compact?: boolean;
+  onChange: (changes: Partial<Annotation>) => void;
+}) {
+  return (
+    <div className={props.compact ? "flex min-w-max items-center gap-2" : "space-y-3"}>
+      <label className="block text-[11px] font-semibold text-slate-500">
+        <span className={props.compact ? "sr-only" : "block"}>Field label</span>
+        <Input
+          aria-label="Cambodia address field label"
+          value={props.annotation.label ?? ""}
+          onChange={(event) => props.onChange({ label: event.target.value })}
+          placeholder="Cambodia address"
+          className={`${props.compact ? "h-8 w-40 rounded-md px-2 text-xs" : "mt-1.5 h-9 w-full rounded-lg px-3 text-sm shadow-sm"} border border-slate-200 bg-white font-normal text-slate-800 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100`}
+        />
+      </label>
+      <label className="block text-[11px] font-semibold text-slate-500">
+        <span className={props.compact ? "sr-only" : "block"}>Display language</span>
+        <Select
+          value={props.annotation.gazetteerLanguage ?? "bilingual"}
+          onValueChange={(value) => {
+            const gazetteerLanguage = value as GazetteerLanguage;
+            props.onChange({
+              gazetteerLanguage,
+              text: formatCambodiaAddress(
+                props.annotation.address,
+                gazetteerLanguage,
+              ),
+            });
+          }}
+        >
+          <SelectTrigger
+            aria-label="Cambodia address display language"
+            className={props.compact ? "h-8 w-32 text-xs" : "mt-1.5 h-9 w-full"}
+          >
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="bilingual">Khmer + English</SelectItem>
+            <SelectItem value="km">Khmer</SelectItem>
+            <SelectItem value="en">English</SelectItem>
+          </SelectContent>
+        </Select>
+      </label>
+      <label className="block text-[11px] font-semibold text-slate-500">
+        <span className={props.compact ? "sr-only" : "block"}>Address depth</span>
+        <Select
+          value={props.annotation.gazetteerLevel ?? "village"}
+          onValueChange={(value) => {
+            const gazetteerLevel = value as GazetteerLevel;
+            const address = truncateCambodiaAddress(
+              props.annotation.address,
+              gazetteerLevel,
+            );
+            props.onChange({
+              gazetteerLevel,
+              address,
+              text: formatCambodiaAddress(
+                address,
+                props.annotation.gazetteerLanguage ?? "bilingual",
+              ),
+            });
+          }}
+        >
+          <SelectTrigger
+            aria-label="Cambodia address depth"
+            className={props.compact ? "h-8 w-32 text-xs" : "mt-1.5 h-9 w-full"}
+          >
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="province">Province</SelectItem>
+            <SelectItem value="district">District</SelectItem>
+            <SelectItem value="commune">Commune</SelectItem>
+            <SelectItem value="village">Village</SelectItem>
+          </SelectContent>
+        </Select>
+      </label>
+    </div>
+  );
+}
+
+function ShortcutsDialog(props: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const { open, onOpenChange } = props;
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-h-[85dvh] overflow-y-auto sm:max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>Keyboard shortcuts</DialogTitle>
+          <DialogDescription>
+            Switch tools without leaving the document. Shortcuts pause while
+            you type in a field.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="grid gap-2 sm:grid-cols-2">
+          {TOOL_SHORTCUT_ITEMS.map((item) => (
+            <div
+              key={item.key}
+              className="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50 px-3 py-2"
+            >
+              <span className="text-sm font-medium text-slate-700">
+                {item.label}
+              </span>
+              <kbd className="flex size-7 items-center justify-center rounded-md border border-slate-300 bg-white font-mono text-xs font-bold text-slate-700 shadow-sm">
+                {item.key}
+              </kbd>
+            </div>
+          ))}
+        </div>
+        <div className="rounded-xl border border-blue-100 bg-blue-50 p-4">
+          <p className="text-xs font-semibold uppercase tracking-wider text-blue-700">
+            Navigation and editing
+          </p>
+          <div className="mt-3 grid gap-3 text-sm sm:grid-cols-2">
+            {EDITOR_SHORTCUT_ITEMS.map(([shortcut, description]) => (
+              <div key={shortcut}>
+                <p className="font-semibold text-slate-800">{shortcut}</p>
+                <p className="mt-0.5 text-xs text-slate-500">
+                  {description}
+                </p>
+              </div>
+            ))}
+          </div>
+        </div>
+        <DialogFooter>
+          <Button
+            type="button"
+            onClick={() => onOpenChange(false)}
+          >
+            Done
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function SignatureDialog(props: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onUse: (strokes: Point[][]) => void;
+}) {
+  const { open, onOpenChange, onUse } = props;
+  const padRef = useRef<SVGSVGElement>(null);
+  const activeStrokeRef = useRef<Point[] | null>(null);
+  const [strokes, setStrokes] = useState<Point[][]>([]);
+
+  function pointFromSignatureEvent(event: React.PointerEvent<SVGSVGElement>) {
+    const rect = padRef.current?.getBoundingClientRect();
+    if (!rect) return { x: 0, y: 0 };
+    return {
+      x: Math.min(1, Math.max(0, (event.clientX - rect.left) / rect.width)),
+      y: Math.min(1, Math.max(0, (event.clientY - rect.top) / rect.height)),
+    };
+  }
+
+  function handleSignaturePointerDown(
+    event: React.PointerEvent<SVGSVGElement>,
+  ) {
+    const stroke = [pointFromSignatureEvent(event)];
+    activeStrokeRef.current = stroke;
+    setStrokes((current) => [...current, stroke]);
+    event.currentTarget.setPointerCapture(event.pointerId);
+  }
+
+  function handleSignaturePointerMove(
+    event: React.PointerEvent<SVGSVGElement>,
+  ) {
+    if (!activeStrokeRef.current) return;
+    const nextStroke = [
+      ...activeStrokeRef.current,
+      pointFromSignatureEvent(event),
+    ];
+    activeStrokeRef.current = nextStroke;
+    setStrokes((current) => [...current.slice(0, -1), nextStroke]);
+  }
+
+  function handleSignaturePointerUp() {
+    activeStrokeRef.current = null;
+  }
+
+  function handleOpenChange(nextOpen: boolean) {
+    if (!nextOpen) activeStrokeRef.current = null;
+    onOpenChange(nextOpen);
+  }
+
+  function useSignature() {
+    if (!strokes.length) return;
+    onUse(strokes);
+    setStrokes([]);
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={handleOpenChange}>
+      <DialogContent className="sm:max-w-xl">
+        <DialogHeader>
+          <DialogTitle>Create your signature</DialogTitle>
+          <DialogDescription>
+            Draw with your mouse, trackpad, finger, or stylus. It stays in this
+            browser and is only added to your PDF when you place it.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+          <svg
+            ref={padRef}
+            role="img"
+            aria-label="Signature drawing pad"
+            viewBox="0 0 1000 320"
+            preserveAspectRatio="none"
+            onPointerDown={handleSignaturePointerDown}
+            onPointerMove={handleSignaturePointerMove}
+            onPointerUp={handleSignaturePointerUp}
+            onPointerCancel={handleSignaturePointerUp}
+            className="h-48 w-full touch-none cursor-crosshair bg-[linear-gradient(to_bottom,transparent_78%,#cbd5e1_78%,#cbd5e1_79%,transparent_79%)]"
+          >
+            {strokes.map((stroke, index) => (
+              <polyline
+                key={index}
+                points={stroke
+                  .map((point) => `${point.x * 1000},${point.y * 320}`)
+                  .join(" ")}
+                fill="none"
+                stroke="#111827"
+                strokeWidth="3"
+                vectorEffect="non-scaling-stroke"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            ))}
+          </svg>
+        </div>
+        <DialogFooter className="sm:justify-between">
+          <Button
+            type="button"
+            variant="ghost"
+            disabled={!strokes.length}
+            onClick={() => setStrokes([])}
+          >
+            Clear
+          </Button>
+          <Button
+            type="button"
+            disabled={!strokes.length}
+            onClick={useSignature}
+          >
+            Use signature
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function PageThumbnail(props: {
+  document: PdfDocument;
+  entry: PageEntry;
+  displayNumber: number;
+  active: boolean;
+  onClick: () => void;
+  onMoveUp: () => void;
+  onMoveDown: () => void;
+  onRotate: () => void;
+  onDuplicate: () => void;
+  onDelete: () => void;
+  dragging: boolean;
+  dropPosition: "before" | "after" | null;
+  recentlyDropped: boolean;
+  onDragPageStart: () => void;
+  onDragPageOver: (position: "before" | "after") => void;
+  onDragPageEnd: () => void;
+  onDropPage: (draggedId: string, position: "before" | "after") => void;
+}) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    let renderTask: { promise: Promise<void>; cancel: () => void } | undefined;
+
+    async function renderPage() {
+      const page = await props.document.getPage(props.entry.sourcePage);
+      if (cancelled || !canvasRef.current) return;
+      const viewport = page.getViewport({
+        scale: 0.2,
+        rotation: (page.rotate + props.entry.rotation) % 360,
+      });
+      const canvas = canvasRef.current;
+      const context = canvas.getContext("2d");
+      if (!context) return;
+      canvas.width = viewport.width;
+      canvas.height = viewport.height;
+      renderTask = page.render({ canvas, canvasContext: context, viewport });
+      await renderTask.promise;
+    }
+
+    void renderPage();
+    return () => {
+      cancelled = true;
+      renderTask?.cancel();
+    };
+  }, [props.document, props.entry.sourcePage, props.entry.rotation]);
+
+  return (
+    <div
+      draggable
+      role="listitem"
+      data-page-thumbnail-id={props.entry.id}
+      aria-grabbed={props.dragging}
+      onDragStart={(event) => {
+        event.dataTransfer.effectAllowed = "move";
+        event.dataTransfer.setData("application/x-pdf-studio-page", props.entry.id);
+        event.dataTransfer.setData("text/plain", props.entry.id);
+        props.onDragPageStart();
+      }}
+      onDragOver={(event) => {
+        event.preventDefault();
+        event.dataTransfer.dropEffect = "move";
+        props.onDragPageOver(pageDropPosition(event));
+      }}
+      onDrop={(event) => {
+        event.preventDefault();
+        const draggedId = event.dataTransfer.getData(
+          "application/x-pdf-studio-page",
+        ) || event.dataTransfer.getData("text/plain");
+        if (draggedId) props.onDropPage(draggedId, pageDropPosition(event));
+        props.onDragPageEnd();
+      }}
+      onDragEnd={props.onDragPageEnd}
+      className={`group relative w-full cursor-grab rounded-xl border p-2 transition-[transform,opacity,border-color,background-color,box-shadow] duration-200 ease-out active:cursor-grabbing ${
+        props.active
+          ? "border-blue-500 bg-blue-50 shadow-sm"
+          : "border-transparent hover:border-slate-200 hover:bg-white"
+      } ${
+        props.dragging
+          ? "z-10 rotate-1 scale-[0.97] border-blue-400 bg-blue-50 opacity-55 shadow-xl"
+          : ""
+      } ${
+        props.dropPosition
+          ? "border-blue-300 bg-blue-50/70 shadow-md shadow-blue-200/40"
+          : ""
+      } ${props.recentlyDropped ? "page-thumbnail-settle" : ""}`}
+    >
+      <span
+        aria-hidden="true"
+        className={`pointer-events-none absolute right-1.5 top-1.5 z-10 flex size-6 items-center justify-center rounded-md border bg-white/90 shadow-sm backdrop-blur transition-[opacity,transform,color] duration-200 [&_svg]:size-3.5 ${
+          props.dragging
+            ? "scale-110 border-blue-300 text-blue-600 opacity-100"
+            : "border-slate-200 text-slate-400 opacity-0 group-hover:opacity-100"
+        }`}
+      >
+        <GripVertical />
+      </span>
+      {props.dropPosition && (
+        <span
+          aria-hidden="true"
+          className={`pointer-events-none absolute inset-x-1 z-20 h-0.5 rounded-full bg-blue-500 shadow-[0_0_0_3px_rgba(219,234,254,0.9)] ${
+            props.dropPosition === "before" ? "-top-1" : "-bottom-1"
+          }`}
+        >
+          <span className="absolute -left-0.5 top-1/2 size-2 -translate-y-1/2 rounded-full bg-blue-500" />
+        </span>
+      )}
+      <Button variant="ghost"
+        type="button"
+        onClick={props.onClick}
+        aria-label={`Open page ${props.displayNumber}`}
+        aria-current={props.active ? "page" : undefined}
+        className="h-auto w-full justify-start p-0 text-left hover:bg-transparent"
+      >
+        <div className="mx-auto overflow-hidden rounded-md bg-white shadow-sm ring-1 ring-slate-200">
+          <canvas ref={canvasRef} className="h-auto w-full" />
+        </div>
+        <span className={`mt-2 block text-center text-xs font-medium ${props.active ? "text-blue-700" : "text-slate-500"}`}>
+          Page {props.displayNumber}
+        </span>
+      </Button>
+      {props.active && (
+        <div className="mt-2 grid grid-cols-5 gap-1 border-t border-blue-100 pt-2">
+          {[
+            ["Move up", props.onMoveUp, <ArrowUp key="up" />],
+            ["Move down", props.onMoveDown, <ArrowDown key="down" />],
+            ["Rotate", props.onRotate, <RotateCw key="rotate" />],
+            ["Duplicate", props.onDuplicate, <Copy key="copy" />],
+            ["Delete", props.onDelete, <Trash2 key="delete" />],
+          ].map(([label, action, icon]) => (
+            <Tooltip key={label as string}>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon-xs"
+                  type="button"
+                  aria-label={`${label} page ${props.displayNumber}`}
+                  onClick={action as () => void}
+                  className="text-muted-foreground hover:text-primary"
+                >
+                  {icon as React.ReactNode}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>{label as string}</TooltipContent>
+            </Tooltip>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function pageDropPosition(
+  event: React.DragEvent<HTMLElement>,
+): "before" | "after" {
+  const bounds = event.currentTarget.getBoundingClientRect();
+  return event.clientY < bounds.top + bounds.height / 2 ? "before" : "after";
+}
+
+export function PdfEditor(props: { initialTemplateId?: string }) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const imageInputRef = useRef<HTMLInputElement>(null);
+  const imageTargetRef = useRef<string | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const surfaceRef = useRef<HTMLDivElement>(null);
+  const viewportRef = useRef<HTMLDivElement>(null);
+  const drawingRef = useRef<Annotation | null>(null);
+  const interactionRef = useRef<Interaction | null>(null);
+  const clipboardRef = useRef<AnnotationClipboard | null>(null);
+  const spacePressedRef = useRef(false);
+  const touchPointersRef = useRef<Map<number, Point>>(new Map());
+  const pinchRef = useRef<PinchGesture | null>(null);
+  const pageThumbnailPositionsRef = useRef<Map<string, DOMRect>>(new Map());
+  const pageListRef = useRef<HTMLDivElement>(null);
+  const pageDropTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const copyLinkTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const renderTaskRef = useRef<{
+    promise: Promise<void>;
+    cancel: () => void;
+  } | null>(null);
+  const [document, setDocument] = useState<PdfDocument | null>(null);
+  const [fileBytes, setFileBytes] =
+    useState<Uint8Array<ArrayBuffer> | null>(null);
+  const [fileName, setFileName] = useState("");
+  const [pageOrder, setPageOrder] = useState<PageEntry[]>([]);
+  const [editorMode, setEditorMode] = useState<EditorMode>("build");
+  const [availableDraft, setAvailableDraft] = useState<EditorDraft | null>(null);
+  const [draftStatus, setDraftStatus] = useState<"saving" | "saved">("saved");
+  const [invalidFieldIds, setInvalidFieldIds] = useState<string[]>([]);
+  const [pageNumber, setPageNumber] = useState(1);
+  const [pageSize, setPageSize] = useState<Pick<PdfViewport, "width" | "height">>({
+    width: 612,
+    height: 792,
+  });
+  const [basePageSize, setBasePageSize] = useState<
+    Pick<PdfViewport, "width" | "height">
+  >({
+    width: 612,
+    height: 792,
+  });
+  const [zoom, setZoom] = useState(DEFAULT_ZOOM);
+  const [pinchScale, setPinchScale] = useState(1);
+  const [fitMode, setFitMode] = useState(true);
+  const [tool, setTool] = useState<Tool>("select");
+  const [isSpacePressed, setIsSpacePressed] = useState(false);
+  const [color, setColor] = useState(DEFAULT_ELEMENT_TEXT_COLOR);
+  const [annotations, setAnnotations] = useState<Annotation[]>([]);
+  const [undoStack, setUndoStack] = useState<Annotation[][]>([]);
+  const [redoStack, setRedoStack] = useState<Annotation[][]>([]);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [labelBindingFieldId, setLabelBindingFieldId] = useState<string | null>(null);
+  const [pdfTextRuns, setPdfTextRuns] = useState<PdfTextRun[]>([]);
+  const [signatureOpen, setSignatureOpen] = useState(false);
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  const [templateOpen, setTemplateOpen] = useState(false);
+  const [templateName, setTemplateName] = useState("");
+  const [templateDescription, setTemplateDescription] = useState("");
+  const [editingTemplateId, setEditingTemplateId] = useState<string | null>(null);
+  const [editingVersionNumber, setEditingVersionNumber] = useState<number | null>(null);
+  const [recipientRoles, setRecipientRoles] = useState<RecipientRole[]>([
+    { id: createAnnotationId(), name: "Recipient", color: RECIPIENT_COLORS[0] },
+  ]);
+  const [createdShareLinks, setCreatedShareLinks] = useState<
+    Array<{ roleId: string; roleName: string; roleColor: string; url: string }>
+  >([]);
+  const [draggingPageId, setDraggingPageId] = useState<string | null>(null);
+  const [pageDropTarget, setPageDropTarget] = useState<{
+    id: string;
+    position: "before" | "after";
+  } | null>(null);
+  const [recentlyDroppedPageId, setRecentlyDroppedPageId] = useState<
+    string | null
+  >(null);
+  const [copiedShareLinkRoleId, setCopiedShareLinkRoleId] = useState<
+    string | null
+  >(null);
+  const [isSavingTemplate, setIsSavingTemplate] = useState(false);
+  const [pendingReplacement, setPendingReplacement] = useState<File | null>(
+    null,
+  );
+  const [pendingSignature, setPendingSignature] = useState<Point[][] | null>(
+    null,
+  );
+  const [isLoading, setIsLoading] = useState(false);
+  const [isAddingImage, setIsAddingImage] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
+  const [isConvertingHtml, setIsConvertingHtml] = useState(false);
+  const [htmlProgress, setHtmlProgress] = useState(0);
+  const [extractionOpen, setExtractionOpen] = useState(false);
+  const [extractionResult, setExtractionResult] =
+    useState<PdfExtractionResult | null>(null);
+  const [isExtracting, setIsExtracting] = useState(false);
+  const [extractionProgress, setExtractionProgress] = useState({
+    current: 0,
+    total: 0,
+  });
+  const [extractionError, setExtractionError] = useState("");
+  const [aiDetectionOpen, setAiDetectionOpen] = useState(false);
+  const [aiCandidates, setAiCandidates] = useState<DetectedFieldCandidate[]>([]);
+  const [isDetectingFields, setIsDetectingFields] = useState(false);
+  const [isApplyingDetectedFields, setIsApplyingDetectedFields] = useState(false);
+  const [aiDetectionRunId, setAiDetectionRunId] = useState<string | null>(null);
+  const [aiDetectionStatus, setAiDetectionStatus] =
+    useState<AiFieldDetectionRunStatus | null>(null);
+  const [aiDetectionError, setAiDetectionError] = useState("");
+  const [error, setError] = useState("");
+  const aiDetectionPollTokenRef = useRef(0);
+
+  const selectedId = selectedIds.at(-1) ?? null;
+
+  useLayoutEffect(() => {
+    const list = pageListRef.current;
+    if (!list) return;
+    const reducedMotion = window.matchMedia(
+      "(prefers-reduced-motion: reduce)",
+    ).matches;
+    const nextPositions = new Map<string, DOMRect>();
+    const thumbnails = list.querySelectorAll<HTMLElement>(
+      "[data-page-thumbnail-id]",
+    );
+    for (const thumbnail of thumbnails) {
+      const id = thumbnail.dataset.pageThumbnailId;
+      if (!id) continue;
+      const nextBounds = thumbnail.getBoundingClientRect();
+      nextPositions.set(id, nextBounds);
+      const previousBounds = pageThumbnailPositionsRef.current.get(id);
+      const offset = previousBounds ? previousBounds.top - nextBounds.top : 0;
+      if (!reducedMotion && Math.abs(offset) > 1) {
+        thumbnail.animate(
+          [
+            { transform: `translateY(${offset}px)` },
+            { transform: "translateY(0)" },
+          ],
+          {
+            duration: 280,
+            easing: "cubic-bezier(0.22, 1, 0.36, 1)",
+          },
+        );
+      }
+    }
+    pageThumbnailPositionsRef.current = nextPositions;
+  }, [pageOrder]);
+
+  useEffect(() => {
+    return () => {
+      if (pageDropTimerRef.current) clearTimeout(pageDropTimerRef.current);
+      if (copyLinkTimerRef.current) clearTimeout(copyLinkTimerRef.current);
+    };
+  }, []);
+
+  function setSelectedId(id: string | null) {
+    setSelectedIds(id ? [id] : []);
+  }
+
+  const selectedAnnotation =
+    annotations.find((annotation) => annotation.id === selectedId) ?? null;
+  const pageAnnotations = annotations.filter(
+    (annotation) => annotation.page === pageNumber,
+  );
+  const currentPageEntry = pageOrder[pageNumber - 1];
+
+  const commit = useCallback((next: Annotation[]) => {
+    setAnnotations((current) => {
+      setUndoStack((history) => [
+        ...history.slice(-39),
+        cloneAnnotations(current),
+      ]);
+      setRedoStack([]);
+      return next;
+    });
+  }, []);
+
+  function selectEditorTool(nextTool: Tool) {
+    if (nextTool !== "select" && nextTool !== "pan") {
+      setColor(getDefaultElementColor(nextTool));
+    }
+    setTool(nextTool);
+  }
+
+  const loadSavedTemplateRef = useRef(loadSavedTemplate);
+  loadSavedTemplateRef.current = loadSavedTemplate;
+
+  useEffect(() => {
+    void loadKhmerBrowserFont().catch(() => {
+        // The system font stack remains available if this optional load fails.
+    });
+    if (props.initialTemplateId) {
+      void loadSavedTemplateRef.current(props.initialTemplateId);
+    } else {
+      void readDraft().then(setAvailableDraft).catch(() => undefined);
+    }
+  }, [props.initialTemplateId]);
+
+  useEffect(() => {
+    if (!document || !fileBytes || pageOrder.length === 0) return;
+    const timer = window.setTimeout(() => {
+      setDraftStatus("saving");
+      const draft: EditorDraft = {
+        version: 1,
+        fileName,
+        fileBytes: fileBytes.slice().buffer,
+        annotations: cloneAnnotations(annotations),
+        pageOrder: pageOrder.map((entry) => ({ ...entry })),
+        savedAt: Date.now(),
+        templateId: editingTemplateId ?? undefined,
+        templateVersionNumber: editingVersionNumber ?? undefined,
+        templateName: templateName || undefined,
+        templateDescription: templateDescription || undefined,
+        recipientRoles: recipientRoles.map((role) => ({ ...role })),
+        aiFieldDetectionRunId: aiDetectionRunId ?? undefined,
+      };
+      void writeDraft(draft)
+        .then(() => {
+          setDraftStatus("saved");
+          setAvailableDraft(draft);
+        })
+        .catch(() => setDraftStatus("saved"));
+    }, 700);
+    return () => window.clearTimeout(timer);
+  }, [aiDetectionRunId, annotations, document, editingTemplateId, editingVersionNumber, fileBytes, fileName, pageOrder, recipientRoles, templateDescription, templateName]);
+
+  const fitToScreen = useCallback(() => {
+    const viewport = viewportRef.current;
+    const pageGap = window.matchMedia("(min-width: 640px)").matches ? 80 : 24;
+    const nextZoom =
+      viewport && basePageSize.width
+        ? clampZoom((viewport.clientWidth - pageGap) / basePageSize.width)
+        : DEFAULT_ZOOM;
+    setFitMode(true);
+    setPinchScale(1);
+    setZoom(nextZoom);
+    requestAnimationFrame(() => {
+      const currentViewport = viewportRef.current;
+      if (!currentViewport) return;
+      currentViewport.scrollLeft = 0;
+      currentViewport.scrollTop = 0;
+    });
+  }, [basePageSize.width]);
+
+  function setManualZoom(nextZoom: number) {
+    setFitMode(false);
+    setZoom(clampZoom(nextZoom));
+  }
+
+  useEffect(() => {
+    if (!document || !canvasRef.current) return;
+    let cancelled = false;
+
+    async function renderPage() {
+      if (!currentPageEntry) return;
+      const page = await document!.getPage(currentPageEntry.sourcePage);
+      if (cancelled || !canvasRef.current) return;
+      const rotation = (page.rotate + currentPageEntry.rotation) % 360;
+      const baseViewport = page.getViewport({
+        scale: 1,
+        rotation,
+      });
+      const viewport = page.getViewport({
+        scale: zoom,
+        rotation,
+      });
+      const textContent = await page.getTextContent();
+      if (cancelled) return;
+      setPdfTextRuns(createPdfTextRuns(textContent.items, viewport));
+      const canvas = canvasRef.current;
+      const context = canvas.getContext("2d");
+      if (!context) return;
+      renderTaskRef.current?.cancel();
+      canvas.width = viewport.width;
+      canvas.height = viewport.height;
+      setBasePageSize(baseViewport);
+      setPageSize(viewport);
+      renderTaskRef.current = page.render({
+        canvas,
+        canvasContext: context,
+        viewport,
+      });
+      try {
+        await renderTaskRef.current.promise;
+      } catch (cause) {
+        if (
+          !cancelled &&
+          cause instanceof Error &&
+          cause.name !== "RenderingCancelledException"
+        ) {
+          setError("This page could not be rendered.");
+        }
+      }
+    }
+
+    void renderPage();
+    return () => {
+      cancelled = true;
+      renderTaskRef.current?.cancel();
+    };
+  }, [currentPageEntry, document, zoom]);
+
+  useEffect(() => {
+    const viewport = viewportRef.current;
+    if (!document || !viewport || !fitMode) return;
+
+    function updateFit() {
+      const pageGap = window.matchMedia("(min-width: 640px)").matches ? 80 : 24;
+      setZoom(
+        clampZoom((viewport!.clientWidth - pageGap) / basePageSize.width),
+      );
+    }
+
+    updateFit();
+    const observer = new ResizeObserver(updateFit);
+    observer.observe(viewport);
+    return () => observer.disconnect();
+  }, [document, pageNumber, basePageSize.width, fitMode]);
+
+  useEffect(() => {
+    const viewport = viewportRef.current;
+    if (!document || !viewport) return;
+
+    function handleEditorWheel(event: WheelEvent) {
+      if (!event.ctrlKey && !event.metaKey) return;
+
+      event.preventDefault();
+      event.stopPropagation();
+
+      const targetZoom = clampZoom(
+        zoom * Math.exp(-event.deltaY * 0.001),
+      );
+      if (targetZoom === zoom) return;
+
+      const viewportRect = viewport!.getBoundingClientRect();
+      const offsetX = event.clientX - viewportRect.left;
+      const offsetY = event.clientY - viewportRect.top;
+      const contentX = viewport!.scrollLeft + offsetX;
+      const contentY = viewport!.scrollTop + offsetY;
+      const ratio = targetZoom / zoom;
+
+      setFitMode(false);
+      setZoom(targetZoom);
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          const currentViewport = viewportRef.current;
+          if (!currentViewport) return;
+          currentViewport.scrollLeft = contentX * ratio - offsetX;
+          currentViewport.scrollTop = contentY * ratio - offsetY;
+        });
+      });
+    }
+
+    viewport.addEventListener("wheel", handleEditorWheel, {
+      capture: true,
+      passive: false,
+    });
+    return () => {
+      viewport.removeEventListener("wheel", handleEditorWheel, {
+        capture: true,
+      });
+    };
+  }, [document, zoom]);
+
+  useEffect(() => {
+    return () => {
+      if (document && typeof document.destroy === "function") {
+        void document.destroy();
+      }
+    };
+  }, [document]);
+
+  useEffect(() => {
+    if (!document) return;
+
+    function warnBeforeLeaving(event: BeforeUnloadEvent) {
+      event.preventDefault();
+      event.returnValue = true;
+    }
+
+    window.addEventListener("beforeunload", warnBeforeLeaving);
+    return () => {
+      window.removeEventListener("beforeunload", warnBeforeLeaving);
+    };
+  }, [document]);
+
+  useEffect(() => {
+    function releaseSpace() {
+      spacePressedRef.current = false;
+      setIsSpacePressed(false);
+    }
+
+    function handleShortcutKeyDown(event: KeyboardEvent) {
+      if (
+        !document ||
+        signatureOpen ||
+        shortcutsOpen ||
+        isTypingTarget(event.target)
+      ) {
+        return;
+      }
+
+      if (event.code === "Space") {
+        event.preventDefault();
+        if (!spacePressedRef.current) {
+          spacePressedRef.current = true;
+          setIsSpacePressed(true);
+        }
+        return;
+      }
+
+      if (event.key === "Escape") {
+        if (labelBindingFieldId) {
+          setLabelBindingFieldId(null);
+          setError("");
+        } else if (tool !== "select") {
+          setPendingSignature(null);
+          selectEditorTool("select");
+        } else if (selectedIds.length > 0) {
+          setSelectedIds([]);
+        }
+        return;
+      }
+
+      if (event.key === "PageUp" || event.key === "PageDown") {
+        event.preventDefault();
+        const direction = event.key === "PageUp" ? -1 : 1;
+        setPageNumber((current) =>
+          Math.min(pageOrder.length, Math.max(1, current + direction)),
+        );
+        setSelectedIds([]);
+        return;
+      }
+
+      if (
+        (event.key === "Delete" || event.key === "Backspace") &&
+        selectedIds.length > 0 &&
+        editorMode === "build"
+      ) {
+        event.preventDefault();
+        const selected = new Set(selectedIds);
+        setAnnotations((current) => {
+          setUndoStack((history) => [
+            ...history.slice(-39),
+            cloneAnnotations(current),
+          ]);
+          setRedoStack([]);
+          return current.filter((annotation) => !selected.has(annotation.id));
+        });
+        setSelectedIds([]);
+        return;
+      }
+
+      if (
+        editorMode === "build" &&
+        selectedIds.length > 0 &&
+        !event.ctrlKey &&
+        !event.metaKey &&
+        !event.altKey &&
+        ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(
+          event.key,
+        )
+      ) {
+        event.preventDefault();
+        const distance = event.shiftKey ? 10 : 1;
+        const deltaX =
+          event.key === "ArrowLeft"
+            ? -distance / basePageSize.width
+            : event.key === "ArrowRight"
+              ? distance / basePageSize.width
+              : 0;
+        const deltaY =
+          event.key === "ArrowUp"
+            ? -distance / basePageSize.height
+            : event.key === "ArrowDown"
+              ? distance / basePageSize.height
+              : 0;
+        commit(
+          moveEditorAnnotations({
+            annotations,
+            selectedIds,
+            deltaX,
+            deltaY,
+            pageWidth: basePageSize.width,
+            pageHeight: basePageSize.height,
+          }),
+        );
+        return;
+      }
+
+      const commandKey = event.ctrlKey || event.metaKey;
+      const normalizedKey = event.key.toLowerCase();
+
+      if (commandKey && !event.altKey && normalizedKey === "z") {
+        event.preventDefault();
+        if (event.shiftKey) {
+          const next = redoStack.at(-1);
+          if (!next) return;
+          setUndoStack((history) => [
+            ...history,
+            cloneAnnotations(annotations),
+          ]);
+          setAnnotations(cloneAnnotations(next));
+          setRedoStack((history) => history.slice(0, -1));
+        } else {
+          const previous = undoStack.at(-1);
+          if (!previous) return;
+          setRedoStack((history) => [
+            ...history,
+            cloneAnnotations(annotations),
+          ]);
+          setAnnotations(cloneAnnotations(previous));
+          setUndoStack((history) => history.slice(0, -1));
+        }
+        setSelectedIds([]);
+        return;
+      }
+
+      if (commandKey && !event.altKey && normalizedKey === "y") {
+        event.preventDefault();
+        const next = redoStack.at(-1);
+        if (!next) return;
+        setUndoStack((history) => [
+          ...history,
+          cloneAnnotations(annotations),
+        ]);
+        setAnnotations(cloneAnnotations(next));
+        setRedoStack((history) => history.slice(0, -1));
+        setSelectedIds([]);
+        return;
+      }
+
+      if (
+        commandKey &&
+        !event.altKey &&
+        normalizedKey === "a" &&
+        editorMode === "build"
+      ) {
+        event.preventDefault();
+        setSelectedIds(
+          annotations
+            .filter((annotation) => annotation.page === pageNumber)
+            .map((annotation) => annotation.id),
+        );
+        return;
+      }
+
+      if (
+        commandKey &&
+        !event.altKey &&
+        normalizedKey === "c" &&
+        selectedIds.length > 0 &&
+        editorMode === "build"
+      ) {
+        event.preventDefault();
+        const selected = new Set(selectedIds);
+        clipboardRef.current = {
+          annotations: cloneAnnotations(
+            annotations.filter((annotation) => selected.has(annotation.id)),
+          ),
+          mode: "copy",
+          pasteCount: 0,
+        };
+        return;
+      }
+
+      if (
+        commandKey &&
+        !event.altKey &&
+        normalizedKey === "x" &&
+        selectedIds.length > 0 &&
+        editorMode === "build"
+      ) {
+        event.preventDefault();
+        const selected = new Set(selectedIds);
+        const cutAnnotations = annotations.filter((annotation) =>
+          selected.has(annotation.id),
+        );
+        if (cutAnnotations.length === 0) return;
+        clipboardRef.current = {
+          annotations: cloneAnnotations(cutAnnotations),
+          mode: "cut",
+          pasteCount: 0,
+        };
+        setUndoStack((history) => [
+          ...history.slice(-39),
+          cloneAnnotations(annotations),
+        ]);
+        setRedoStack([]);
+        setAnnotations((current) =>
+          current.filter((item) => !selected.has(item.id)),
+        );
+        setSelectedIds([]);
+        return;
+      }
+
+      if (
+        commandKey &&
+        !event.altKey &&
+        normalizedKey === "v" &&
+        clipboardRef.current &&
+        editorMode === "build"
+      ) {
+        event.preventDefault();
+        const clipboard = clipboardRef.current;
+        const firstCutPaste =
+          clipboard.mode === "cut" && clipboard.pasteCount === 0;
+        const pasted: Annotation[] = [];
+        for (const sourceAnnotation of clipboard.annotations) {
+          const workingAnnotations = [...annotations, ...pasted];
+          if (
+            firstCutPaste &&
+            !workingAnnotations.some((item) => item.id === sourceAnnotation.id)
+          ) {
+            const existingFields = workingAnnotations.filter((item) =>
+              isAssignableTemplateField(item.type),
+            );
+            pasted.push({
+              ...cloneAnnotations([sourceAnnotation])[0],
+              page: pageNumber,
+              fieldKey: isAssignableTemplateField(sourceAnnotation.type)
+                ? createUniqueFieldKey(
+                    annotationFieldKey(sourceAnnotation),
+                    existingFields,
+                  )
+                : sourceAnnotation.fieldKey,
+              labelBinding:
+                sourceAnnotation.page === pageNumber
+                  ? sourceAnnotation.labelBinding
+                  : undefined,
+            });
+          } else {
+            pasted.push(
+              createAnnotationDuplicate({
+                annotation: sourceAnnotation,
+                annotations: workingAnnotations,
+                page: pageNumber,
+              }),
+            );
+          }
+        }
+        const pastedIds = pasted.map((annotation) => annotation.id);
+        const offsetPixels = firstCutPaste
+          ? 0
+          : 8 * (clipboard.pasteCount + 1);
+        const withPasted = [...annotations, ...pasted];
+        const nextAnnotations = offsetPixels
+          ? moveEditorAnnotations({
+              annotations: withPasted,
+              selectedIds: pastedIds,
+              deltaX: offsetPixels / basePageSize.width,
+              deltaY: offsetPixels / basePageSize.height,
+              pageWidth: basePageSize.width,
+              pageHeight: basePageSize.height,
+            })
+          : withPasted;
+        commit(nextAnnotations);
+        setSelectedIds(pastedIds);
+        clipboardRef.current = {
+          ...clipboard,
+          mode: "copy",
+          pasteCount: clipboard.pasteCount + 1,
+        };
+        return;
+      }
+
+      if (
+        commandKey &&
+        !event.altKey &&
+        normalizedKey === "d" &&
+        selectedIds.length > 0 &&
+        editorMode === "build"
+      ) {
+        event.preventDefault();
+        const selected = new Set(selectedIds);
+        const duplicates: Annotation[] = [];
+        for (const sourceAnnotation of annotations.filter((annotation) =>
+          selected.has(annotation.id),
+        )) {
+          duplicates.push(
+            createAnnotationDuplicate({
+              annotation: sourceAnnotation,
+              annotations: [...annotations, ...duplicates],
+              page: sourceAnnotation.page,
+            }),
+          );
+        }
+        const duplicateIds = duplicates.map((annotation) => annotation.id);
+        commit(
+          moveEditorAnnotations({
+            annotations: [...annotations, ...duplicates],
+            selectedIds: duplicateIds,
+            deltaX: 8 / basePageSize.width,
+            deltaY: 8 / basePageSize.height,
+            pageWidth: basePageSize.width,
+            pageHeight: basePageSize.height,
+          }),
+        );
+        setSelectedIds(duplicateIds);
+        return;
+      }
+
+      if (
+        commandKey &&
+        !event.altKey &&
+        (event.code === "BracketLeft" || event.code === "BracketRight") &&
+        selectedIds.length > 0 &&
+        editorMode === "build"
+      ) {
+        event.preventDefault();
+        commit(
+          reorderEditorAnnotations({
+            annotations,
+            selectedIds,
+            page: pageNumber,
+            direction:
+              event.code === "BracketRight" ? "forward" : "backward",
+            toEdge: event.shiftKey,
+          }),
+        );
+        return;
+      }
+
+      if (commandKey && !event.altKey && normalizedKey === "0") {
+        event.preventDefault();
+        fitToScreen();
+        return;
+      }
+
+      if (
+        commandKey &&
+        !event.altKey &&
+        (normalizedKey === "+" || normalizedKey === "=" || normalizedKey === "-")
+      ) {
+        event.preventDefault();
+        setManualZoom(zoom + (normalizedKey === "-" ? -0.15 : 0.15));
+        return;
+      }
+
+      if (event.ctrlKey || event.metaKey || event.altKey) return;
+      const nextTool = TOOL_SHORTCUTS[event.key.toLowerCase()];
+      if (!nextTool) return;
+      if (editorMode === "fill" && nextTool !== "select" && nextTool !== "pan") {
+        return;
+      }
+
+      event.preventDefault();
+      setSelectedId(null);
+      if (nextTool === "image") {
+        chooseImage();
+        return;
+      }
+      if (nextTool === "signature" && !pendingSignature) {
+        setSignatureOpen(true);
+        return;
+      }
+      selectEditorTool(nextTool);
+    }
+
+    function handleShortcutKeyUp(event: KeyboardEvent) {
+      if (event.code === "Space") releaseSpace();
+    }
+
+    window.addEventListener("keydown", handleShortcutKeyDown);
+    window.addEventListener("keyup", handleShortcutKeyUp);
+    window.addEventListener("blur", releaseSpace);
+    return () => {
+      window.removeEventListener("keydown", handleShortcutKeyDown);
+      window.removeEventListener("keyup", handleShortcutKeyUp);
+      window.removeEventListener("blur", releaseSpace);
+      releaseSpace();
+    };
+  }, [
+    annotations,
+    basePageSize.height,
+    basePageSize.width,
+    commit,
+    document,
+    editorMode,
+    fitToScreen,
+    pendingSignature,
+    pageNumber,
+    pageOrder.length,
+    redoStack,
+    selectedId,
+    selectedIds,
+    shortcutsOpen,
+    signatureOpen,
+    labelBindingFieldId,
+    tool,
+    undoStack,
+    zoom,
+  ]);
+
+  async function loadEditorDocument(
+    bytes: Uint8Array<ArrayBuffer>,
+    nextFileName: string,
+    restoredAnnotations: Annotation[] = [],
+    restoredPageOrder?: PageEntry[],
+  ) {
+    const pdfjs = await import("pdfjs-dist");
+    const workerUrl = await import("pdfjs-dist/build/pdf.worker.min.mjs?url");
+    pdfjs.GlobalWorkerOptions.workerSrc = workerUrl.default;
+    const nextDocument = (await pdfjs.getDocument({ data: bytes.slice() })
+      .promise) as unknown as PdfDocument;
+    if (document && typeof document.destroy === "function") {
+      await document.destroy();
+    }
+    setDocument(nextDocument);
+    setFileBytes(bytes);
+    setFileName(nextFileName);
+    setPageOrder(
+      restoredPageOrder?.length
+        ? restoredPageOrder.map((entry) => ({ ...entry }))
+        : Array.from({ length: nextDocument.numPages }, (_, index) =>
+            createPageEntry(index + 1),
+          ),
+    );
+    setPageNumber(1);
+    setZoom(DEFAULT_ZOOM);
+    setFitMode(true);
+    setPinchScale(1);
+    touchPointersRef.current.clear();
+    pinchRef.current = null;
+    clipboardRef.current = null;
+    setAnnotations(cloneAnnotations(restoredAnnotations));
+    setUndoStack([]);
+    setRedoStack([]);
+    setSelectedId(null);
+    setInvalidFieldIds([]);
+    setTool("select");
+    setEditorMode("build");
+    setPendingSignature(null);
+    setSignatureOpen(false);
+    setExtractionResult(null);
+    setExtractionError("");
+    setExtractionProgress({ current: 0, total: 0 });
+    setAiCandidates([]);
+    setAiDetectionRunId(null);
+    setAiDetectionStatus(null);
+    setAiDetectionError("");
+    setAiDetectionOpen(false);
+    aiDetectionPollTokenRef.current += 1;
+  }
+
+  async function loadSavedTemplate(templateId: string) {
+    setIsLoading(true);
+    setError("");
+    try {
+      const [metadataResponse, pdfResponse] = await Promise.all([
+        fetch(`/api/templates/${encodeURIComponent(templateId)}`, {
+          cache: "no-store",
+        }),
+        fetch(`/api/templates/${encodeURIComponent(templateId)}/pdf`, {
+          cache: "no-store",
+        }),
+      ]);
+      const payload = (await metadataResponse.json()) as {
+        error?: string;
+        template?: {
+          id: string;
+          name: string;
+          description: string;
+          fileName: string;
+          versionNumber: number;
+          annotations: Annotation[];
+          pageOrder: PageEntry[];
+          roles: RecipientRole[];
+        };
+      };
+      if (!metadataResponse.ok || !payload.template) {
+        throw new Error(payload.error || "The saved template could not be loaded.");
+      }
+      if (!pdfResponse.ok) {
+        throw new Error("The saved template PDF could not be loaded.");
+      }
+      const saved = payload.template;
+      const bytes = new Uint8Array(
+        await pdfResponse.arrayBuffer(),
+      ) as Uint8Array<ArrayBuffer>;
+      await loadEditorDocument(
+        bytes,
+        saved.fileName,
+        saved.annotations,
+        saved.pageOrder,
+      );
+      setTemplateName(saved.name);
+      setTemplateDescription(saved.description);
+      setRecipientRoles(saved.roles.length ? saved.roles : recipientRoles);
+      setEditingTemplateId(saved.id);
+      setEditingVersionNumber(saved.versionNumber);
+      setCreatedShareLinks([]);
+      setAvailableDraft(null);
+    } catch (cause) {
+      setError(
+        cause instanceof Error
+          ? cause.message
+          : "The saved template could not be loaded.",
+      );
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
+  async function openFile(file: File) {
+    if (
+      file.type !== "application/pdf" &&
+      !file.name.toLowerCase().endsWith(".pdf")
+    ) {
+      setError("Choose a PDF file to continue.");
+      return;
+    }
+    if (file.size > 35 * 1024 * 1024) {
+      setError(
+        "This file is larger than 35 MB. Choose a smaller PDF for this browser editor.",
+      );
+      return;
+    }
+
+    setIsLoading(true);
+    setError("");
+    try {
+      const bytes = new Uint8Array(
+        await file.arrayBuffer(),
+      ) as Uint8Array<ArrayBuffer>;
+      await loadEditorDocument(bytes, file.name);
+      setAvailableDraft(null);
+    } catch (cause) {
+      console.error("Failed to open PDF", cause);
+      setError(
+        "We couldn’t open this PDF. It may be encrypted, damaged, or unsupported.",
+      );
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
+  async function restoreDraft() {
+    if (!availableDraft) return;
+    setIsLoading(true);
+    setError("");
+    try {
+      const bytes = new Uint8Array(
+        availableDraft.fileBytes.slice(0),
+      ) as Uint8Array<ArrayBuffer>;
+      await loadEditorDocument(
+        bytes,
+        availableDraft.fileName,
+        availableDraft.annotations,
+        availableDraft.pageOrder,
+      );
+      setEditingTemplateId(availableDraft.templateId ?? null);
+      setEditingVersionNumber(availableDraft.templateVersionNumber ?? null);
+      setTemplateName(availableDraft.templateName ?? "");
+      setTemplateDescription(availableDraft.templateDescription ?? "");
+      if (availableDraft.recipientRoles?.length) {
+        setRecipientRoles(
+          availableDraft.recipientRoles.map((role) => ({ ...role })),
+        );
+      }
+      if (availableDraft.aiFieldDetectionRunId) {
+        const runId = availableDraft.aiFieldDetectionRunId;
+        setAiDetectionRunId(runId);
+        setAiDetectionOpen(true);
+        void resumeAiFieldDetectionRun(runId);
+      }
+    } catch {
+      setError("This saved draft could not be restored.");
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
+  function remapAnnotationsForPageOrder(
+    previous: PageEntry[],
+    next: PageEntry[],
+    current: Annotation[],
+  ) {
+    const nextIndex = new Map(next.map((entry, index) => [entry.id, index + 1]));
+    return current.flatMap((annotation) => {
+      const entry = previous[annotation.page - 1];
+      const nextPage = entry ? nextIndex.get(entry.id) : undefined;
+      return nextPage ? [{ ...annotation, page: nextPage }] : [];
+    });
+  }
+
+  function moveCurrentPage(direction: -1 | 1) {
+    const index = pageNumber - 1;
+    const target = index + direction;
+    if (target < 0 || target >= pageOrder.length) return;
+    const next = [...pageOrder];
+    [next[index], next[target]] = [next[target], next[index]];
+    setAnnotations((current) =>
+      remapAnnotationsForPageOrder(pageOrder, next, current),
+    );
+    setPageOrder(next);
+    setPageNumber(target + 1);
+    setSelectedId(null);
+  }
+
+  function reorderPage(
+    draggedId: string,
+    targetId: string,
+    position: "before" | "after",
+  ) {
+    if (draggedId === targetId) return;
+    const fromIndex = pageOrder.findIndex((entry) => entry.id === draggedId);
+    if (fromIndex < 0) return;
+    const next = [...pageOrder];
+    const [dragged] = next.splice(fromIndex, 1);
+    const targetIndex = next.findIndex((entry) => entry.id === targetId);
+    if (targetIndex < 0) return;
+    const insertionIndex = targetIndex + (position === "after" ? 1 : 0);
+    next.splice(insertionIndex, 0, dragged);
+    const nextPageNumber = next.findIndex((entry) => entry.id === draggedId) + 1;
+    setAnnotations((current) =>
+      remapAnnotationsForPageOrder(pageOrder, next, current),
+    );
+    setPageOrder(next);
+    setPageNumber(nextPageNumber);
+    setSelectedId(null);
+    setRecentlyDroppedPageId(draggedId);
+    if (pageDropTimerRef.current) clearTimeout(pageDropTimerRef.current);
+    pageDropTimerRef.current = setTimeout(
+      () => setRecentlyDroppedPageId(null),
+      420,
+    );
+  }
+
+  function updatePageDropTarget(
+    id: string,
+    position: "before" | "after",
+  ) {
+    if (draggingPageId === id) {
+      setPageDropTarget(null);
+      return;
+    }
+    setPageDropTarget((current) =>
+      current?.id === id && current.position === position
+        ? current
+        : { id, position },
+    );
+  }
+
+  function finishPageDrag() {
+    setDraggingPageId(null);
+    setPageDropTarget(null);
+  }
+
+  async function copyShareLink(roleId: string, url: string) {
+    try {
+      await navigator.clipboard.writeText(url);
+      setError("");
+      setCopiedShareLinkRoleId(roleId);
+      if (copyLinkTimerRef.current) clearTimeout(copyLinkTimerRef.current);
+      copyLinkTimerRef.current = setTimeout(
+        () => setCopiedShareLinkRoleId(null),
+        1800,
+      );
+    } catch {
+      setError("Clipboard access was blocked. Select and copy the link manually.");
+    }
+  }
+
+  function rotateCurrentPage() {
+    setPageOrder((current) =>
+      current.map((entry, index) =>
+        index === pageNumber - 1
+          ? { ...entry, rotation: ((entry.rotation + 90) % 360) as PageEntry["rotation"] }
+          : entry,
+      ),
+    );
+  }
+
+  function duplicateCurrentPage() {
+    const index = pageNumber - 1;
+    const original = pageOrder[index];
+    if (!original) return;
+    const duplicate: PageEntry = { ...original, id: createAnnotationId() };
+    const next = [...pageOrder.slice(0, index + 1), duplicate, ...pageOrder.slice(index + 1)];
+    const remapped = remapAnnotationsForPageOrder(pageOrder, next, annotations);
+    const copies = annotations
+      .filter((annotation) => annotation.page === pageNumber)
+      .map((annotation) => ({
+        ...cloneAnnotations([annotation])[0],
+        id: createAnnotationId(),
+        page: index + 2,
+      }));
+    setAnnotations([...remapped, ...copies]);
+    setPageOrder(next);
+    setPageNumber(index + 2);
+    setSelectedId(null);
+  }
+
+  function deleteCurrentPage() {
+    if (pageOrder.length <= 1) return;
+    const next = pageOrder.filter((_, index) => index !== pageNumber - 1);
+    setAnnotations((current) =>
+      remapAnnotationsForPageOrder(pageOrder, next, current),
+    );
+    setPageOrder(next);
+    setPageNumber(Math.min(pageNumber, next.length));
+    setSelectedId(null);
+  }
+
+  function requestOpenFile(file: File) {
+    if (document) {
+      setPendingReplacement(file);
+      return;
+    }
+    void openFile(file);
+  }
+
+  async function prepareImage(file: File) {
+    if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) {
+      throw new Error('Choose a PNG, JPEG, or WebP image.');
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      throw new Error('Choose an image smaller than 10 MB.');
+    }
+
+    let bitmap: ImageBitmap | null = null;
+    try {
+      bitmap = await window.createImageBitmap(file);
+      const maximumDimension = 1800;
+      const scale = Math.min(
+        1,
+        maximumDimension / Math.max(bitmap.width, bitmap.height),
+      );
+      const canvas = window.document.createElement('canvas');
+      canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+      canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+      const context = canvas.getContext('2d');
+      if (!context) throw new Error('Canvas is unavailable');
+      context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+      return {
+        imageData: canvas.toDataURL('image/png'),
+        imageName: file.name,
+        pixelWidth: canvas.width,
+        pixelHeight: canvas.height,
+      };
+    } finally {
+      bitmap?.close();
+    }
+  }
+
+  async function addImage(file: File, targetId?: string | null) {
+    if (!document) return;
+    setIsAddingImage(true);
+    setError("");
+    try {
+      const prepared = await prepareImage(file);
+
+      if (targetId) {
+        const target = annotations.find((item) => item.id === targetId);
+        if (!target || target.type !== 'image-placeholder') return;
+        commit(
+          annotations.map((item) =>
+            item.id === targetId
+              ? {
+                  ...item,
+                  imageData: prepared.imageData,
+                  imageName: prepared.imageName,
+                }
+              : item,
+          ),
+        );
+        setSelectedId(targetId);
+        setTool('select');
+        return;
+      }
+
+      let width = 0.42;
+      let height =
+        width *
+        (prepared.pixelHeight / prepared.pixelWidth) *
+        (basePageSize.width / basePageSize.height);
+      if (height > 0.45) {
+        const ratio = 0.45 / height;
+        width *= ratio;
+        height = 0.45;
+      }
+
+      const annotation: Annotation = {
+        id: createAnnotationId(),
+        page: pageNumber,
+        type: "image",
+        x: (1 - width) / 2,
+        y: (1 - height) / 2,
+        width,
+        height,
+        color: "#111827",
+        imageData: prepared.imageData,
+        imageName: prepared.imageName,
+      };
+      commit([...annotations, annotation]);
+      setSelectedId(annotation.id);
+      setTool("select");
+    } catch (cause) {
+      console.error("Failed to add image", cause);
+      setError(
+        cause instanceof Error
+          ? cause.message
+          : "This image could not be added. Try another PNG or JPEG file.",
+      );
+    } finally {
+      setIsAddingImage(false);
+    }
+  }
+
+  function chooseImage(targetId?: string) {
+    imageTargetRef.current = targetId ?? null;
+    imageInputRef.current?.click();
+  }
+
+  function pointFromEvent(event: React.PointerEvent<HTMLDivElement>) {
+    const rect = surfaceRef.current?.getBoundingClientRect();
+    if (!rect) return { x: 0, y: 0 };
+    return {
+      x: Math.min(1, Math.max(0, (event.clientX - rect.left) / rect.width)),
+      y: Math.min(1, Math.max(0, (event.clientY - rect.top) / rect.height)),
+    };
+  }
+
+  function handleTouchPointerDown(
+    event: React.PointerEvent<HTMLDivElement>,
+  ) {
+    if (event.pointerType !== "touch") return;
+    touchPointersRef.current.set(event.pointerId, {
+      x: event.clientX,
+      y: event.clientY,
+    });
+    if (touchPointersRef.current.size !== 2) return;
+
+    const viewport = viewportRef.current;
+    if (!viewport) return;
+    const [first, second] = Array.from(touchPointersRef.current.values());
+    const centerX = (first.x + second.x) / 2;
+    const centerY = (first.y + second.y) / 2;
+    const viewportRect = viewport.getBoundingClientRect();
+    const centerOffsetX = centerX - viewportRect.left;
+    const centerOffsetY = centerY - viewportRect.top;
+
+    const interaction = interactionRef.current;
+    if (interaction && interaction.mode !== "pan") {
+      setAnnotations(cloneAnnotations(interaction.before));
+    }
+    interactionRef.current = null;
+    const drawing = drawingRef.current;
+    if (drawing) {
+      setAnnotations((current) =>
+        current.filter((annotation) => annotation.id !== drawing.id),
+      );
+      drawingRef.current = null;
+    }
+
+    pinchRef.current = {
+      startDistance: Math.max(1, pointDistance(first, second)),
+      startZoom: zoom,
+      targetZoom: zoom,
+      contentX: viewport.scrollLeft + centerOffsetX,
+      contentY: viewport.scrollTop + centerOffsetY,
+      centerOffsetX,
+      centerOffsetY,
+    };
+    surfaceRef.current?.setPointerCapture(event.pointerId);
+    event.preventDefault();
+    event.stopPropagation();
+  }
+
+  function handleTouchPointerMove(
+    event: React.PointerEvent<HTMLDivElement>,
+  ) {
+    if (
+      event.pointerType !== "touch" ||
+      !touchPointersRef.current.has(event.pointerId)
+    ) {
+      return;
+    }
+    touchPointersRef.current.set(event.pointerId, {
+      x: event.clientX,
+      y: event.clientY,
+    });
+    const pinch = pinchRef.current;
+    if (!pinch || touchPointersRef.current.size < 2) return;
+
+    const [first, second] = Array.from(touchPointersRef.current.values());
+    const distance = pointDistance(first, second);
+    const nextZoom = clampZoom(
+      pinch.startZoom * (distance / pinch.startDistance),
+    );
+    pinch.targetZoom = nextZoom;
+    setPinchScale(nextZoom / pinch.startZoom);
+    event.preventDefault();
+    event.stopPropagation();
+  }
+
+  function handleTouchPointerEnd(
+    event: React.PointerEvent<HTMLDivElement>,
+  ) {
+    if (event.pointerType !== "touch") return;
+    touchPointersRef.current.delete(event.pointerId);
+    const pinch = pinchRef.current;
+    if (!pinch || touchPointersRef.current.size >= 2) return;
+
+    pinchRef.current = null;
+    setPinchScale(1);
+    setFitMode(false);
+    setZoom(pinch.targetZoom);
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        const viewport = viewportRef.current;
+        if (!viewport) return;
+        const ratio = pinch.targetZoom / pinch.startZoom;
+        viewport.scrollLeft =
+          pinch.contentX * ratio - pinch.centerOffsetX;
+        viewport.scrollTop =
+          pinch.contentY * ratio - pinch.centerOffsetY;
+      });
+    });
+    event.preventDefault();
+    event.stopPropagation();
+  }
+
+  function handlePointerDown(event: React.PointerEvent<HTMLDivElement>) {
+    if (!document) return;
+
+    if (
+      tool === "pan" ||
+      spacePressedRef.current ||
+      (event.pointerType === "touch" &&
+        tool === "select" &&
+        event.target === surfaceRef.current)
+    ) {
+      const viewport = viewportRef.current;
+      if (!viewport) return;
+      interactionRef.current = {
+        mode: "pan",
+        clientX: event.clientX,
+        clientY: event.clientY,
+        scrollLeft: viewport.scrollLeft,
+        scrollTop: viewport.scrollTop,
+      };
+      surfaceRef.current?.setPointerCapture(event.pointerId);
+      return;
+    }
+
+    if (tool === "select") {
+      if (event.target === surfaceRef.current) setSelectedId(null);
+      return;
+    }
+    if (editorMode === "fill") return;
+    const point = pointFromEvent(event);
+    surfaceRef.current?.setPointerCapture(event.pointerId);
+
+    if (tool === "text" || tool === "date" || tool === "initials") {
+      const isDate = tool === "date";
+      const isInitials = tool === "initials";
+      const standardSize = isDate
+        ? getNormalizedStandardFieldDimensions("date", basePageSize)
+        : getNormalizedStandardFieldDimensions("initials", basePageSize);
+      const annotationWidth = isDate
+        ? standardSize.width
+        : isInitials
+          ? standardSize.width
+          : 0.28;
+      const annotationHeight = isDate
+        ? standardSize.height
+        : isInitials
+          ? standardSize.height
+          : 0.05;
+      const annotation: Annotation = {
+        id: createAnnotationId(),
+        page: pageNumber,
+        type: tool,
+        x: Math.min(1 - annotationWidth, point.x),
+        y: Math.min(1 - annotationHeight, point.y),
+        width: annotationWidth,
+        height: annotationHeight,
+        color,
+        borderColor: isDate ? DEFAULT_ELEMENT_BORDER_COLOR : undefined,
+        text: isDate
+          ? currentDateValue()
+          : isInitials
+            ? "AB"
+            : "Type your text",
+        fontSize: DEFAULT_ELEMENT_FONT_SIZE,
+        fieldName: isDate ? "Date" : isInitials ? "Initials" : undefined,
+        required: false,
+        tabIndex: annotations.length + 1,
+      };
+      commit([...annotations, annotation]);
+      setSelectedId(annotation.id);
+      setTool("select");
+      return;
+    }
+
+    if (tool === "input") {
+      const fieldSize = getNormalizedStandardFieldDimensions(
+        "input",
+        basePageSize,
+      );
+      const annotation: Annotation = {
+        id: createAnnotationId(),
+        page: pageNumber,
+        type: "input",
+        x: Math.min(1 - fieldSize.width, point.x),
+        y: Math.min(1 - fieldSize.height, point.y),
+        width: fieldSize.width,
+        height: fieldSize.height,
+        color,
+        borderColor: DEFAULT_ELEMENT_BORDER_COLOR,
+        text: "",
+        fontSize: DEFAULT_ELEMENT_FONT_SIZE,
+        fieldName: "Text field",
+        placeholder: "Enter value",
+        required: false,
+        validation: "none",
+        tabIndex: annotations.length + 1,
+      };
+      commit([...annotations, annotation]);
+      setSelectedId(annotation.id);
+      setTool("select");
+      return;
+    }
+
+    if (tool === "textarea") {
+      const fieldSize = getNormalizedStandardFieldDimensions(
+        "textarea",
+        basePageSize,
+      );
+      const annotation: Annotation = {
+        id: createAnnotationId(),
+        page: pageNumber,
+        type: "textarea",
+        x: Math.min(1 - fieldSize.width, point.x),
+        y: Math.min(1 - fieldSize.height, point.y),
+        width: fieldSize.width,
+        height: fieldSize.height,
+        color,
+        borderColor: DEFAULT_ELEMENT_BORDER_COLOR,
+        text: "",
+        fontSize: DEFAULT_ELEMENT_FONT_SIZE,
+        fieldName: "Paragraph",
+        placeholder: "Enter paragraph",
+        required: false,
+        validation: "none",
+        multiline: true,
+        tabIndex: annotations.length + 1,
+      };
+      commit([...annotations, annotation]);
+      setSelectedId(annotation.id);
+      setTool("select");
+      return;
+    }
+
+    if (tool === "checkbox" || tool === "radio") {
+      const fieldSize = getNormalizedStandardFieldDimensions(
+        tool,
+        basePageSize,
+      );
+      const annotation: Annotation = {
+        id: createAnnotationId(),
+        page: pageNumber,
+        type: tool,
+        x: Math.min(1 - fieldSize.width, point.x),
+        y: Math.min(1 - fieldSize.height, point.y),
+        width: fieldSize.width,
+        height: fieldSize.height,
+        color,
+        checked: true,
+        fieldName: tool === "radio" ? "Radio" : "Checkbox",
+        required: false,
+        tabIndex: annotations.length + 1,
+      };
+      commit([...annotations, annotation]);
+      setSelectedId(annotation.id);
+      setTool("select");
+      return;
+    }
+
+    if (tool === "checkbox-group" || tool === "radio-group") {
+      const groupSize = getNormalizedStandardFieldDimensions(
+        tool,
+        basePageSize,
+      );
+      const isRadioGroup = tool === "radio-group";
+      const annotation: Annotation = {
+        id: createAnnotationId(),
+        page: pageNumber,
+        type: tool,
+        x: Math.min(1 - groupSize.width, point.x),
+        y: Math.min(1 - groupSize.height, point.y),
+        width: groupSize.width,
+        height: groupSize.height,
+        color,
+        label: isRadioGroup ? "Choose one" : "Select all that apply",
+        options: ["Option 1", "Option 2", "Option 3"].map(
+          (label, index) => ({
+            id: createAnnotationId(),
+            label,
+            checked: isRadioGroup && index === 0,
+          }),
+        ),
+        fieldName: isRadioGroup ? "Radio group" : "Checkbox group",
+        fontSize: DEFAULT_ELEMENT_FONT_SIZE,
+        required: false,
+        tabIndex: annotations.length + 1,
+      };
+      commit([...annotations, annotation]);
+      setSelectedId(annotation.id);
+      setTool("select");
+      return;
+    }
+
+    if (tool === "dropdown") {
+      const fieldSize = getNormalizedStandardFieldDimensions(
+        "dropdown",
+        basePageSize,
+      );
+      const annotation: Annotation = {
+        id: createAnnotationId(),
+        page: pageNumber,
+        type: "dropdown",
+        x: Math.min(1 - fieldSize.width, point.x),
+        y: Math.min(1 - fieldSize.height, point.y),
+        width: fieldSize.width,
+        height: fieldSize.height,
+        color,
+        borderColor: DEFAULT_ELEMENT_BORDER_COLOR,
+        label: "Select an option",
+        options: ["Option 1", "Option 2", "Option 3"].map((label) => ({
+          id: createAnnotationId(),
+          label,
+          checked: false,
+        })),
+        fontSize: DEFAULT_ELEMENT_FONT_SIZE,
+        fieldName: "Dropdown",
+        required: false,
+        tabIndex: annotations.length + 1,
+      };
+      commit([...annotations, annotation]);
+      setSelectedId(annotation.id);
+      setTool("select");
+      return;
+    }
+
+    if (tool === "cambodia-address") {
+      const fieldSize = getNormalizedStandardFieldDimensions(
+        "cambodia-address",
+        basePageSize,
+      );
+      const annotation: Annotation = {
+        id: createAnnotationId(),
+        page: pageNumber,
+        type: "cambodia-address",
+        x: Math.min(1 - fieldSize.width, point.x),
+        y: Math.min(1 - fieldSize.height, point.y),
+        width: fieldSize.width,
+        height: fieldSize.height,
+        color,
+        borderColor: DEFAULT_ELEMENT_BORDER_COLOR,
+        label: "Cambodia address",
+        address: parseCambodiaAddress(null),
+        gazetteerLanguage: "bilingual",
+        gazetteerLevel: "village",
+        fontSize: DEFAULT_ELEMENT_FONT_SIZE,
+        fieldName: "Cambodia address",
+        required: false,
+        tabIndex: annotations.length + 1,
+      };
+      commit([...annotations, annotation]);
+      setSelectedId(annotation.id);
+      setTool("select");
+      return;
+    }
+
+    if (tool === "image-placeholder") {
+      const placeholderSize = getNormalizedStandardFieldDimensions(
+        "image-placeholder",
+        basePageSize,
+      );
+      const annotation: Annotation = {
+        id: createAnnotationId(),
+        page: pageNumber,
+        type: "image-placeholder",
+        x: Math.min(1 - placeholderSize.width, point.x),
+        y: Math.min(1 - placeholderSize.height, point.y),
+        width: placeholderSize.width,
+        height: placeholderSize.height,
+        color: DEFAULT_ELEMENT_TEXT_COLOR,
+        borderColor: DEFAULT_ELEMENT_BORDER_COLOR,
+        label: "Upload image",
+        fontSize: DEFAULT_ELEMENT_FONT_SIZE,
+      };
+      commit([...annotations, annotation]);
+      setSelectedId(annotation.id);
+      setTool("select");
+      return;
+    }
+
+    if (tool === "signature" && pendingSignature) {
+      const annotation: Annotation = {
+        id: createAnnotationId(),
+        page: pageNumber,
+        type: "signature",
+        x: point.x,
+        y: point.y,
+        width: 0.3,
+        height: 0.1,
+        color: DEFAULT_ELEMENT_TEXT_COLOR,
+        strokes: pendingSignature.map((stroke) =>
+          stroke.map((signaturePoint) => ({ ...signaturePoint })),
+        ),
+      };
+      commit([...annotations, annotation]);
+      setSelectedId(annotation.id);
+      setPendingSignature(null);
+      setTool("select");
+      return;
+    }
+    if (tool === "signature") return;
+
+    const annotation: Annotation = {
+      id: createAnnotationId(),
+      page: pageNumber,
+      type: tool === "pen" ? "drawing" : tool,
+      x: point.x,
+      y: point.y,
+      width: 0,
+      height: 0,
+      color,
+      strokeWidth: tool === "pen" ? 2.5 : 2,
+      points: [point],
+    };
+    drawingRef.current = annotation;
+    setAnnotations([...annotations, annotation]);
+    setSelectedId(annotation.id);
+  }
+
+  function handlePointerMove(event: React.PointerEvent<HTMLDivElement>) {
+    const interaction = interactionRef.current;
+    if (interaction?.mode === "pan") {
+      const viewport = viewportRef.current;
+      if (!viewport) return;
+      viewport.scrollLeft =
+        interaction.scrollLeft - (event.clientX - interaction.clientX);
+      viewport.scrollTop =
+        interaction.scrollTop - (event.clientY - interaction.clientY);
+      return;
+    }
+
+    if (interaction) {
+      const point = pointFromEvent(event);
+      const deltaX = point.x - interaction.start.x;
+      const deltaY = point.y - interaction.start.y;
+
+      if (interaction.mode === "move") {
+        interaction.changed = true;
+        setAnnotations((current) => {
+          const originsById = new Map(
+            interaction.origins.map((origin) => [origin.id, origin]),
+          );
+          const resetToOrigins = current.map(
+            (annotation) => originsById.get(annotation.id) ?? annotation,
+          );
+          return moveEditorAnnotations({
+            annotations: resetToOrigins,
+            selectedIds: interaction.ids,
+            deltaX,
+            deltaY,
+            pageWidth: basePageSize.width,
+            pageHeight: basePageSize.height,
+            constrainAxis: event.shiftKey,
+          });
+        });
+        return;
+      }
+
+      let next = interaction.origin;
+      interaction.changed = true;
+      if (interaction.mode === "resize") {
+        if (interaction.proportional) {
+          next = resizeEditorAnnotationProportionally({
+            annotation: next,
+            deltaX,
+            deltaY,
+            pageWidth: basePageSize.width,
+            pageHeight: basePageSize.height,
+          });
+        } else if (isSquareField(next.type)) {
+          const horizontalDelta = deltaX * basePageSize.width;
+          const verticalDelta = deltaY * basePageSize.height;
+          const dominantDelta =
+            Math.abs(horizontalDelta) >= Math.abs(verticalDelta)
+              ? horizontalDelta
+              : verticalDelta;
+          const originalSize = Math.max(
+            next.width * basePageSize.width,
+            next.height * basePageSize.height,
+          );
+          const maximumSize = Math.min(
+            (1 - next.x) * basePageSize.width,
+            (1 - next.y) * basePageSize.height,
+          );
+          const size = Math.min(
+            maximumSize,
+            Math.max(14, originalSize + dominantDelta),
+          );
+          next = {
+            ...next,
+            width: size / basePageSize.width,
+            height: size / basePageSize.height,
+          };
+        } else {
+          const minimumWidth = isInteractivePdfField(next.type)
+            ? 40 / basePageSize.width
+            : 24 / basePageSize.width;
+          const minimumHeight = isInteractivePdfField(next.type)
+            ? 18 / basePageSize.height
+            : 14 / basePageSize.height;
+          next = {
+            ...next,
+            width: Math.min(
+              1 - next.x,
+              Math.max(minimumWidth, next.width + deltaX),
+            ),
+            height: Math.min(
+              1 - next.y,
+              Math.max(minimumHeight, next.height + deltaY),
+            ),
+          };
+        }
+      }
+
+      setAnnotations((current) =>
+        current.map((annotation) =>
+          annotation.id === interaction.id ? next : annotation,
+        ),
+      );
+      return;
+    }
+
+    const active = drawingRef.current;
+    if (!active) return;
+    const point = pointFromEvent(event);
+    let next: Annotation;
+
+    if (active.type === "drawing") {
+      next = { ...active, points: [...(active.points ?? []), point] };
+    } else {
+      const start = active.points?.[0] ?? { x: active.x, y: active.y };
+      next = {
+        ...active,
+        x: Math.min(start.x, point.x),
+        y: Math.min(start.y, point.y),
+        width: Math.abs(point.x - start.x),
+        height: Math.abs(point.y - start.y),
+        lineDirection:
+          active.type === "line"
+            ? point.y >= start.y
+              ? "down"
+              : "up"
+            : active.lineDirection,
+      };
+    }
+    drawingRef.current = next;
+    setAnnotations((current) =>
+      current.map((annotation) =>
+        annotation.id === next.id ? next : annotation,
+      ),
+    );
+  }
+
+  function handlePointerUp() {
+    const interaction = interactionRef.current;
+    if (interaction) {
+      interactionRef.current = null;
+      if (interaction.mode !== "pan" && interaction.changed) {
+        setUndoStack((history) => [
+          ...history.slice(-39),
+          cloneAnnotations(interaction.before),
+        ]);
+        setRedoStack([]);
+      }
+      return;
+    }
+
+    const active = drawingRef.current;
+    if (!active) return;
+    drawingRef.current = null;
+    setUndoStack((history) => [
+      ...history.slice(-39),
+      annotations.filter((annotation) => annotation.id !== active.id),
+    ]);
+    setRedoStack([]);
+    setTool("select");
+  }
+
+  function startAnnotationInteraction(
+    event: React.PointerEvent<HTMLElement | SVGPolylineElement>,
+    annotation: Annotation,
+    mode: "move" | "resize",
+  ) {
+    if (spacePressedRef.current || editorMode === "fill") return;
+    if (tool !== "select") return;
+    const proportionalResize = event.button === 0 && event.shiftKey;
+    if (event.button !== 0) return;
+    event.stopPropagation();
+    const rect = surfaceRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const start = {
+      x: (event.clientX - rect.left) / rect.width,
+      y: (event.clientY - rect.top) / rect.height,
+    };
+
+    if (mode === "resize" || proportionalResize) {
+      if (mode === "move" && proportionalResize) {
+        if (!selectedIds.includes(annotation.id)) {
+          setSelectedIds([...selectedIds, annotation.id]);
+        }
+      } else {
+        setSelectedId(annotation.id);
+      }
+      interactionRef.current = {
+        mode: "resize",
+        id: annotation.id,
+        start,
+        origin: cloneAnnotations([annotation])[0],
+        before: cloneAnnotations(annotations),
+        changed: false,
+        proportional: proportionalResize,
+      };
+      surfaceRef.current?.setPointerCapture(event.pointerId);
+      return;
+    }
+
+    const selectedForMove = selectedIds.includes(annotation.id)
+      ? selectedIds
+      : event.shiftKey
+        ? [...selectedIds, annotation.id]
+        : [annotation.id];
+    const originals = annotations.filter((item) =>
+      selectedForMove.includes(item.id),
+    );
+    let interactionAnnotations = originals;
+    if (event.altKey) {
+      event.preventDefault();
+      const duplicates: Annotation[] = [];
+      for (const original of originals) {
+        duplicates.push(
+          createAnnotationDuplicate({
+            annotation: original,
+            annotations: [...annotations, ...duplicates],
+            page: original.page,
+          }),
+        );
+      }
+      interactionAnnotations = duplicates;
+      setAnnotations([...annotations, ...duplicates]);
+    }
+    const interactionIds = interactionAnnotations.map((item) => item.id);
+    setSelectedIds(interactionIds);
+    interactionRef.current = {
+      mode: "move",
+      ids: interactionIds,
+      start,
+      origins: cloneAnnotations(interactionAnnotations),
+      before: cloneAnnotations(annotations),
+      changed: event.altKey,
+    };
+    surfaceRef.current?.setPointerCapture(event.pointerId);
+  }
+
+  function activateAnnotation(annotation: Annotation) {
+    if (
+      annotation.type === "text" ||
+      annotation.type === "input" ||
+      annotation.type === "textarea" ||
+      annotation.type === "initials"
+    ) {
+      const nextText = window.prompt(
+        annotation.type === "input"
+          ? "Input value"
+          : annotation.type === "textarea"
+            ? "Paragraph text"
+          : annotation.type === "initials"
+              ? "Edit initials"
+              : "Edit text",
+        annotation.text ?? "",
+      );
+      if (nextText === null) return;
+      setSelectedId(annotation.id);
+      commit(
+        annotations.map((item) =>
+          item.id === annotation.id ? { ...item, text: nextText } : item,
+        ),
+      );
+      return;
+    }
+    if (annotation.type === "checkbox" || annotation.type === "radio") {
+      setSelectedId(annotation.id);
+      commit(
+        annotations.map((item) =>
+          item.id === annotation.id
+            ? { ...item, checked: !item.checked }
+            : item,
+        ),
+      );
+    }
+  }
+
+  function updateSelected(changes: Partial<Annotation>) {
+    if (!selectedId) return;
+    const changeKeys = Object.keys(changes);
+    const appliesToSelection =
+      selectedIds.length > 1 &&
+      changeKeys.length > 0 &&
+      changeKeys.every((key) => BATCH_STYLE_KEYS.has(key));
+    const targetIds = new Set(appliesToSelection ? selectedIds : [selectedId]);
+    commit(
+      annotations.map((annotation) =>
+        targetIds.has(annotation.id)
+          ? { ...annotation, ...changes }
+          : annotation,
+      ),
+    );
+  }
+
+  function resetSelectedToStandardSize() {
+    const targetIds = new Set(selectedIds);
+    const hasResizableSelection = annotations.some(
+      (annotation) =>
+        targetIds.has(annotation.id) && isStandardFieldType(annotation.type),
+    );
+    if (!hasResizableSelection) return;
+    commit(
+      annotations.map((annotation) => {
+        if (
+          !targetIds.has(annotation.id) ||
+          !isStandardFieldType(annotation.type)
+        ) {
+          return annotation;
+        }
+        const size = getNormalizedStandardFieldDimensions(
+          annotation.type,
+          basePageSize,
+        );
+        return {
+          ...annotation,
+          x: Math.min(annotation.x, 1 - size.width),
+          y: Math.min(annotation.y, 1 - size.height),
+          width: size.width,
+          height: size.height,
+        };
+      }),
+    );
+  }
+
+  function startLabelBinding() {
+    if (!selectedAnnotation) return;
+    setLabelBindingFieldId(selectedAnnotation.id);
+    setError("Click the existing PDF text that labels this field.");
+  }
+
+  function bindPdfLabel(run: PdfTextRun) {
+    if (!labelBindingFieldId) return;
+    const fieldKey = createFieldKey(run.text, `field_${labelBindingFieldId.slice(-8)}`);
+    commit(
+      annotations.map((annotation) =>
+        annotation.id === labelBindingFieldId
+          ? {
+              ...annotation,
+              fieldName: run.text,
+              fieldKey,
+              labelBinding: {
+                text: run.text,
+                sourceText: run.text,
+                page: pageNumber,
+                rect: run.rect,
+                source: "pdf-text" as const,
+              },
+            }
+          : annotation,
+      ),
+    );
+    setSelectedId(labelBindingFieldId);
+    setLabelBindingFieldId(null);
+    setError("");
+  }
+
+  function updateAnnotationValue(id: string, changes: Partial<Annotation>) {
+    setAnnotations((current) =>
+      current.map((annotation) =>
+        annotation.id === id ? { ...annotation, ...changes } : annotation,
+      ),
+    );
+    setInvalidFieldIds((current) => current.filter((fieldId) => fieldId !== id));
+  }
+
+  function duplicateSelectedAcrossPages() {
+    if (selectedIds.length === 0 || pageOrder.length < 2) return;
+    const targetIds = new Set(selectedIds);
+    const sources = annotations.filter((annotation) =>
+      targetIds.has(annotation.id),
+    );
+    const copies: Annotation[] = [];
+    for (const source of sources) {
+      for (let page = 1; page <= pageOrder.length; page += 1) {
+        if (page === source.page) continue;
+        copies.push(
+          createAnnotationDuplicate({
+            annotation: source,
+            annotations: [...annotations, ...copies],
+            page,
+            fieldNameSuffix: String(page),
+          }),
+        );
+      }
+    }
+    commit([...annotations, ...copies]);
+  }
+
+  function addRecipientRole() {
+    if (recipientRoles.length >= 10) return;
+    setRecipientRoles((current) => [
+      ...current,
+      {
+        id: createAnnotationId(),
+        name: `Recipient ${current.length + 1}`,
+        color: RECIPIENT_COLORS[current.length % RECIPIENT_COLORS.length],
+      },
+    ]);
+  }
+
+  function updateRecipientRole(id: string, changes: Partial<RecipientRole>) {
+    setRecipientRoles((current) =>
+      current.map((role) => (role.id === id ? { ...role, ...changes } : role)),
+    );
+  }
+
+  function removeRecipientRole(id: string) {
+    if (recipientRoles.length <= 1) return;
+    const fallbackId = recipientRoles.find((role) => role.id !== id)?.id;
+    setRecipientRoles((current) => current.filter((role) => role.id !== id));
+    setAnnotations((current) =>
+      current.map((annotation) =>
+        annotation.recipientRoleId === id
+          ? { ...annotation, recipientRoleId: fallbackId }
+          : annotation,
+      ),
+    );
+  }
+
+  async function saveTemplate() {
+    if (!fileBytes || !templateName.trim() || recipientRoles.length === 0) return;
+    setIsSavingTemplate(true);
+    setError("");
+    try {
+      const defaultRoleId = recipientRoles[0].id;
+      const templateAnnotations = annotations.map((annotation) =>
+        isAssignableTemplateField(annotation.type) && !annotation.recipientRoleId
+          ? { ...annotation, recipientRoleId: defaultRoleId }
+          : annotation,
+      );
+      const duplicateKeys = duplicateFieldKeys(
+        templateAnnotations.filter((annotation) => isAssignableTemplateField(annotation.type)),
+      );
+      if (duplicateKeys.size > 0) {
+        setInvalidFieldIds(
+          templateAnnotations
+            .filter((annotation) => duplicateKeys.has(createFieldKey(annotation.fieldKey || annotation.fieldName || annotation.label || annotation.type)))
+            .map((annotation) => annotation.id),
+        );
+        throw new Error(`Field keys must be unique: ${[...duplicateKeys].join(", ")}`);
+      }
+      const formData = new FormData();
+      formData.set(
+        "pdf",
+        new File([fileBytes.slice()], fileName || "template.pdf", {
+          type: "application/pdf",
+        }),
+      );
+      formData.set("name", templateName.trim());
+      formData.set("description", templateDescription.trim());
+      formData.set("annotations", JSON.stringify(templateAnnotations));
+      formData.set("pageOrder", JSON.stringify(pageOrder));
+      formData.set("roles", JSON.stringify(recipientRoles));
+
+      const endpoint = editingTemplateId
+        ? `/api/templates/${encodeURIComponent(editingTemplateId)}`
+        : "/api/templates";
+      const response = await fetch(endpoint, {
+        method: editingTemplateId ? "PUT" : "POST",
+        body: formData,
+      });
+      const payload = (await response.json()) as {
+        error?: string;
+        template?: {
+          id?: string;
+          versionNumber?: number;
+          shareLinks?: Array<{
+            roleId: string;
+            roleName: string;
+            roleColor: string;
+            url: string;
+          }>;
+        };
+      };
+      if (!response.ok) throw new Error(payload.error || "Template could not be saved.");
+      setAnnotations(templateAnnotations);
+      if (payload.template?.id) setEditingTemplateId(payload.template.id);
+      if (payload.template?.versionNumber) {
+        setEditingVersionNumber(payload.template.versionNumber);
+      } else if (!editingTemplateId) {
+        setEditingVersionNumber(1);
+      }
+      setCreatedShareLinks(payload.template?.shareLinks ?? []);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Template could not be saved.");
+    } finally {
+      setIsSavingTemplate(false);
+    }
+  }
+
+  function deleteSelected() {
+    if (selectedIds.length === 0) return;
+    const targetIds = new Set(selectedIds);
+    commit(
+      annotations.filter((annotation) => !targetIds.has(annotation.id)),
+    );
+    setSelectedIds([]);
+  }
+
+  function undo() {
+    const previous = undoStack.at(-1);
+    if (!previous) return;
+    setRedoStack((history) => [...history, cloneAnnotations(annotations)]);
+    setAnnotations(cloneAnnotations(previous));
+    setUndoStack((history) => history.slice(0, -1));
+    setSelectedId(null);
+  }
+
+  function redo() {
+    const next = redoStack.at(-1);
+    if (!next) return;
+    setUndoStack((history) => [...history, cloneAnnotations(annotations)]);
+    setAnnotations(cloneAnnotations(next));
+    setRedoStack((history) => history.slice(0, -1));
+    setSelectedId(null);
+  }
+
+  async function exportPdf() {
+    if (!fileBytes) return;
+    const invalidFields = annotations.filter(
+      (annotation) =>
+        (isInteractivePdfField(annotation.type) ||
+          annotation.type === "checkbox-group" ||
+          annotation.type === "radio-group") &&
+        !fieldValueIsValid(annotation),
+    );
+    if (invalidFields.length > 0) {
+      setInvalidFieldIds(invalidFields.map((annotation) => annotation.id));
+      setPageNumber(invalidFields[0].page);
+      setEditorMode("fill");
+      setError(`Complete ${invalidFields.length} required or invalid field${invalidFields.length === 1 ? "" : "s"} before saving.`);
+      return;
+    }
+    setIsExporting(true);
+    setError("");
+    try {
+      const {
+        PDFDocument,
+        PDFHexString,
+        PDFName,
+        degrees,
+        rgb,
+      } = await import("pdf-lib");
+      await import("regenerator-runtime/runtime");
+      const fontkitModule = await import("@pdf-lib/fontkit");
+      const sourcePdf = await PDFDocument.load(fileBytes.slice());
+      const pdf = await PDFDocument.create();
+      const copiedPages = await pdf.copyPages(
+        sourcePdf,
+        pageOrder.map((entry) => entry.sourcePage - 1),
+      );
+      copiedPages.forEach((page, index) => {
+        const baseRotation = page.getRotation().angle;
+        page.setRotation(
+          degrees((baseRotation + (pageOrder[index]?.rotation ?? 0)) % 360),
+        );
+        pdf.addPage(page);
+      });
+      pdf.registerFontkit(fontkitModule.default);
+      const font = await pdf.embedFont(await loadKhmerFontBytes(), {
+        subset: false,
+        customName: "NotoSansKhmer",
+      });
+      const form = pdf.getForm();
+      const pages = pdf.getPages();
+
+      function configureField<T extends {
+        enableRequired: () => void;
+        acroField: {
+          dict: {
+            set: (
+              key: ReturnType<typeof PDFName.of>,
+              value: ReturnType<typeof PDFHexString.fromText>,
+            ) => void;
+          };
+        };
+      }>(
+        field: T,
+        annotation: Annotation,
+      ) {
+        if (annotation.required) field.enableRequired();
+        const description = annotation.placeholder || annotation.fieldName;
+        if (description) {
+          field.acroField.dict.set(
+            PDFName.of("TU"),
+            PDFHexString.fromText(description),
+          );
+        }
+      }
+
+      async function drawTextWithKhmerSupport(options: {
+        page: (typeof pages)[number];
+        text: string;
+        x: number;
+        topY: number;
+        size: number;
+        maxWidth: number;
+        color: string;
+      }) {
+        const { page, text, x, topY, size, maxWidth, color } = options;
+        if (!containsKhmer(text)) {
+          const parsedColor = hexToRgb(color);
+          page.drawText(text, {
+            x,
+            y: topY - size,
+            size,
+            font,
+            color: rgb(parsedColor.r, parsedColor.g, parsedColor.b),
+            maxWidth,
+          });
+          return;
+        }
+        const rendered = await renderKhmerTextImage({
+          text,
+          fontSize: size,
+          color,
+          maxWidth,
+        });
+        const image = await pdf.embedPng(dataUrlToBytes(rendered.dataUrl));
+        page.drawImage(image, {
+          x,
+          y: topY - rendered.height,
+          width: rendered.width,
+          height: rendered.height,
+        });
+      }
+
+      function enableImageImport(button: ReturnType<typeof form.createButton>) {
+        const script = [
+          "try {",
+          "  var imported = event.target.buttonImportIcon();",
+          "  if (imported === 0) {",
+          "    event.target.buttonPosition = position.iconOnly;",
+          "    event.target.buttonScaleHow = scaleHow.proportional;",
+          "    event.target.buttonScaleWhen = scaleWhen.always;",
+          "    event.target.buttonFitBounds = true;",
+          "  }",
+          "} catch (error) {",
+          '  app.alert("Open this PDF in Adobe Acrobat to upload an image. Browser PDF viewers and Acrobat Reader do not support this field action.");',
+          "}",
+        ].join("\n");
+        const action = pdf.context.obj({
+          S: "JavaScript",
+          JS: PDFHexString.fromText(script),
+        });
+        const actionRef = pdf.context.register(action);
+        button.acroField.dict.set(
+          PDFName.of("TU"),
+          PDFHexString.fromText(
+            "Click to upload or replace this image in Adobe Acrobat",
+          ),
+        );
+        for (const widget of button.acroField.getWidgets()) {
+          widget.dict.set(PDFName.of("A"), actionRef);
+        }
+      }
+
+      for (const annotation of [...annotations].sort(
+        (left, right) =>
+          left.page - right.page ||
+          (left.tabIndex ?? Number.MAX_SAFE_INTEGER) -
+            (right.tabIndex ?? Number.MAX_SAFE_INTEGER),
+      )) {
+        const page = pages[annotation.page - 1];
+        if (!page) continue;
+        const cropBox = page.getCropBox();
+        const rotation = page.getRotation().angle;
+        const annotationBox = normalizedRectToPdfBox(
+          annotation,
+          cropBox,
+          rotation,
+        );
+        const parsed = hexToRgb(annotation.color);
+        const ink = rgb(parsed.r, parsed.g, parsed.b);
+
+        if (
+          annotation.type === "checkbox-group" ||
+          annotation.type === "radio-group"
+        ) {
+          const options = annotation.options ?? [];
+          const left = annotationBox.x;
+          const top = annotationBox.y + annotationBox.height;
+          const groupHeight = annotationBox.height;
+          const labelSize = 12;
+          const rowHeight = Math.max(
+            18,
+            (groupHeight - labelSize - 8) / Math.max(1, options.length),
+          );
+          const controlSize = Math.min(14, rowHeight * 0.65);
+          await drawTextWithKhmerSupport({
+            page,
+            text: annotation.label ?? "Options",
+            x: left + 4,
+            topY: top,
+            size: labelSize,
+            color: "#0f172a",
+            maxWidth: Math.max(20, annotationBox.width - 8),
+          });
+
+          const radioField =
+            annotation.type === "radio-group"
+              ? form.createRadioGroup(createPdfFieldName(annotation))
+              : null;
+          if (radioField) configureField(radioField, annotation);
+          let selectedOption: string | null = null;
+          for (let index = 0; index < options.length; index += 1) {
+            const option = options[index];
+            const controlX = left + 5;
+            const controlY =
+              top - labelSize - 8 - rowHeight * (index + 1) +
+              (rowHeight - controlSize) / 2;
+            const optionValue = `option_${index + 1}_${option.id.replaceAll(/[^a-zA-Z0-9]/g, "")}`;
+            const appearance = {
+              x: controlX,
+              y: controlY,
+              width: controlSize,
+              height: controlSize,
+              backgroundColor: rgb(1, 1, 1),
+              borderColor: ink,
+              borderWidth: 1,
+            };
+            if (radioField) {
+              radioField.addOptionToPage(optionValue, page, appearance);
+              if (option.checked) selectedOption = optionValue;
+            } else {
+              const checkBox = form.createCheckBox(
+                `${createPdfFieldName(annotation)}_${index + 1}`,
+              );
+              configureField(checkBox, annotation);
+              checkBox.addToPage(page, appearance);
+              if (option.checked) checkBox.check();
+              checkBox.defaultUpdateAppearances();
+            }
+            await drawTextWithKhmerSupport({
+              page,
+              text: option.label || `Option ${index + 1}`,
+              x: controlX + controlSize + 7,
+              topY: controlY + controlSize,
+              size: 10,
+              color: "#1e293b",
+              maxWidth: Math.max(20, annotationBox.width - controlSize - 16),
+            });
+          }
+          if (radioField && selectedOption) radioField.select(selectedOption);
+          radioField?.defaultUpdateAppearances();
+          continue;
+        }
+
+        if (isInteractivePdfField(annotation.type)) {
+          const fieldName = createPdfFieldName(annotation);
+          const fieldX = annotationBox.x;
+          const fieldY = annotationBox.y;
+          let fieldWidth = annotationBox.width;
+          let fieldHeight = annotationBox.height;
+          if (isSquareField(annotation.type)) {
+            const size = Math.min(fieldWidth, fieldHeight);
+            fieldWidth = size;
+            fieldHeight = size;
+          }
+          const fieldBorder =
+            annotation.type === "checkbox" || annotation.type === "radio"
+              ? parsed
+              : hexToRgb(
+                  annotation.borderColor ?? DEFAULT_ELEMENT_BORDER_COLOR,
+                );
+          const appearance = {
+            x: fieldX,
+            y: fieldY,
+            width: fieldWidth,
+            height: fieldHeight,
+            textColor: ink,
+            backgroundColor: rgb(1, 1, 1),
+            borderColor: rgb(
+              fieldBorder.r,
+              fieldBorder.g,
+              fieldBorder.b,
+            ),
+            borderWidth: 1,
+            font,
+          };
+
+          if (
+            annotation.type === "input" ||
+            annotation.type === "textarea" ||
+            annotation.type === "date" ||
+            annotation.type === "initials" ||
+            annotation.type === "cambodia-address"
+          ) {
+            const field = form.createTextField(fieldName);
+            configureField(field, annotation);
+            if (
+              annotation.multiline ||
+              annotation.type === "textarea" ||
+              annotation.type === "cambodia-address"
+            ) {
+              field.enableMultiline();
+            }
+            const value =
+              annotation.type === "cambodia-address"
+                ? formatCambodiaAddress(
+                    annotation.address,
+                    annotation.gazetteerLanguage ?? "bilingual",
+                  )
+                : annotation.type === "input" &&
+                    annotation.text === "Text input"
+                  ? ""
+                  : annotation.text ?? "";
+            const fieldFontSize =
+              annotation.fontSize ?? DEFAULT_ELEMENT_FONT_SIZE;
+            if (containsKhmer(value)) {
+              field.addToPage(page, {
+                ...appearance,
+                backgroundColor: undefined,
+              });
+              field.setFontSize(fieldFontSize);
+              field.setText(value);
+              const rendered = await renderKhmerTextImage({
+                text: value,
+                fontSize: fieldFontSize,
+                color: annotation.color,
+                maxWidth: Math.max(1, fieldWidth - 10),
+              });
+              const image = await pdf.embedPng(
+                dataUrlToBytes(rendered.dataUrl),
+              );
+              page.drawImage(image, {
+                x: fieldX + 5,
+                y: fieldY + Math.max(0, (fieldHeight - rendered.height) / 2),
+                width: rendered.width,
+                height: rendered.height,
+              });
+            } else {
+              field.setText(value);
+              field.addToPage(page, appearance);
+              field.setFontSize(fieldFontSize);
+              field.updateAppearances(font);
+            }
+          }
+
+          if (annotation.type === "checkbox") {
+            const field = form.createCheckBox(fieldName);
+            configureField(field, annotation);
+            field.addToPage(page, appearance);
+            if (annotation.checked) field.check();
+            field.defaultUpdateAppearances();
+          }
+
+          if (annotation.type === "radio") {
+            const field = form.createRadioGroup(fieldName);
+            configureField(field, annotation);
+            const option = "selected";
+            field.addOptionToPage(option, page, appearance);
+            if (annotation.checked) field.select(option);
+            field.defaultUpdateAppearances();
+          }
+          if (annotation.type === "dropdown") {
+            const field = form.createDropdown(fieldName);
+            configureField(field, annotation);
+            const options = (annotation.options ?? [])
+              .map((option) => option.label.trim())
+              .filter(Boolean);
+            if (options.length > 0) field.addOptions(options);
+            field.addToPage(page, appearance);
+            const selectedOption = annotation.options?.find(
+              (option) => option.checked,
+            )?.label;
+            if (selectedOption) field.select(selectedOption);
+            field.setFontSize(
+              annotation.fontSize ?? DEFAULT_ELEMENT_FONT_SIZE,
+            );
+            field.updateAppearances(font);
+          }
+          continue;
+        }
+
+        if (annotation.type === "image-placeholder") {
+          const button = form.createButton(createPdfFieldName(annotation));
+          const fieldX = annotationBox.x;
+          const fieldY = annotationBox.y;
+          const fieldWidth = annotationBox.width;
+          const fieldHeight = annotationBox.height;
+          const fieldBorder = hexToRgb(
+            annotation.borderColor ?? DEFAULT_ELEMENT_BORDER_COLOR,
+          );
+          button.addToPage(
+            annotation.imageData
+              ? ""
+              : annotation.label && annotation.label !== "Upload image"
+                ? annotation.label
+                : "Upload image in Adobe Acrobat",
+            page,
+            {
+              x: fieldX,
+              y: fieldY,
+              width: fieldWidth,
+              height: fieldHeight,
+              textColor: ink,
+              backgroundColor: rgb(0.97, 0.98, 0.99),
+              borderColor: rgb(
+                fieldBorder.r,
+                fieldBorder.g,
+                fieldBorder.b,
+              ),
+              borderWidth: 1.5,
+              font,
+            },
+          );
+          button.setFontSize(
+            annotation.fontSize ?? DEFAULT_ELEMENT_FONT_SIZE,
+          );
+          if (annotation.imageData) {
+            const embeddedImage = await pdf.embedPng(
+              dataUrlToBytes(annotation.imageData),
+            );
+            button.setImage(embeddedImage);
+          } else {
+            button.defaultUpdateAppearances(font);
+          }
+          enableImageImport(button);
+          continue;
+        }
+
+        if (annotation.type === "image" && annotation.imageData) {
+          const embeddedImage = await pdf.embedPng(
+            dataUrlToBytes(annotation.imageData),
+          );
+          page.drawImage(embeddedImage, {
+            x: annotationBox.x,
+            y: annotationBox.y,
+            width: annotationBox.width,
+            height: annotationBox.height,
+          });
+          continue;
+        }
+
+        if (annotation.type === "text") {
+          const size = annotation.fontSize ?? DEFAULT_ELEMENT_FONT_SIZE;
+          await drawTextWithKhmerSupport({
+            page,
+            text: annotation.text || "",
+            x: annotationBox.x,
+            topY: annotationBox.y + annotationBox.height,
+            size,
+            color: annotation.color,
+            maxWidth: Math.max(10, annotationBox.width),
+          });
+        }
+        if (annotation.type === "highlight") {
+          page.drawRectangle({
+            x: annotationBox.x,
+            y: annotationBox.y,
+            width: annotationBox.width,
+            height: annotationBox.height,
+            color: ink,
+            opacity: 0.35,
+          });
+        }
+        if (annotation.type === "rectangle") {
+          page.drawRectangle({
+            x: annotationBox.x,
+            y: annotationBox.y,
+            width: annotationBox.width,
+            height: annotationBox.height,
+            borderColor: ink,
+            borderWidth: annotation.strokeWidth ?? 2,
+            opacity: 0,
+          });
+        }
+        if (annotation.type === "ellipse") {
+          const ellipseWidth = annotationBox.width;
+          const ellipseHeight = annotationBox.height;
+          page.drawEllipse({
+            x: annotationBox.x + ellipseWidth / 2,
+            y: annotationBox.y + ellipseHeight / 2,
+            xScale: ellipseWidth / 2,
+            yScale: ellipseHeight / 2,
+            borderColor: ink,
+            borderWidth: annotation.strokeWidth ?? 2,
+          });
+        }
+        if (annotation.type === "line") {
+          const topLeft = normalizedPointToPdf(
+            { x: annotation.x, y: annotation.y },
+            cropBox,
+            rotation,
+          );
+          const topRight = normalizedPointToPdf(
+            { x: annotation.x + annotation.width, y: annotation.y },
+            cropBox,
+            rotation,
+          );
+          const bottomLeft = normalizedPointToPdf(
+            { x: annotation.x, y: annotation.y + annotation.height },
+            cropBox,
+            rotation,
+          );
+          const bottomRight = normalizedPointToPdf(
+            {
+              x: annotation.x + annotation.width,
+              y: annotation.y + annotation.height,
+            },
+            cropBox,
+            rotation,
+          );
+          page.drawLine({
+            start:
+              annotation.lineDirection === "up"
+                ? bottomLeft
+                : topLeft,
+            end:
+              annotation.lineDirection === "up"
+                ? topRight
+                : bottomRight,
+            thickness: annotation.strokeWidth ?? 2,
+            color: ink,
+            lineCap: 1,
+          });
+        }
+        if (annotation.type === "drawing" && annotation.points) {
+          for (let index = 1; index < annotation.points.length; index += 1) {
+            const start = annotation.points[index - 1];
+            const end = annotation.points[index];
+            page.drawLine({
+              start: normalizedPointToPdf(start, cropBox, rotation),
+              end: normalizedPointToPdf(end, cropBox, rotation),
+              thickness: annotation.strokeWidth ?? 2.5,
+              color: ink,
+              lineCap: 1,
+            });
+          }
+        }
+        if (annotation.type === "signature" && annotation.strokes) {
+          for (const stroke of annotation.strokes) {
+            for (let index = 1; index < stroke.length; index += 1) {
+              const start = stroke[index - 1];
+              const end = stroke[index];
+              page.drawLine({
+                start: normalizedPointToPdf({ x: annotation.x + start.x * annotation.width, y: annotation.y + start.y * annotation.height }, cropBox, rotation),
+                end: normalizedPointToPdf({ x: annotation.x + end.x * annotation.width, y: annotation.y + end.y * annotation.height }, cropBox, rotation),
+                thickness: 1.8,
+                color: ink,
+                lineCap: 1,
+              });
+            }
+          }
+        }
+      }
+
+      const output = (await pdf.save({
+        updateFieldAppearances: false,
+      })) as Uint8Array<ArrayBuffer>;
+      const blob = new Blob([output], { type: "application/pdf" });
+      const url = URL.createObjectURL(blob);
+      const anchor = window.document.createElement("a");
+      anchor.href = url;
+      anchor.download = `${fileName.replace(/\.pdf$/i, "")}-edited.pdf`;
+      anchor.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      setError(
+        "The edited PDF could not be exported. Your browser changes are still here.",
+      );
+    } finally {
+      setIsExporting(false);
+    }
+  }
+
+  async function convertToHtml() {
+    if (!document) return;
+    setIsConvertingHtml(true);
+    setHtmlProgress(0);
+    setError("");
+    try {
+      const embeddedFontUrl = await bytesToDataUrl(
+        await loadKhmerFontBytes(),
+        "font/ttf",
+      );
+      const pages: string[] = [];
+      for (let pageIndex = 1; pageIndex <= pageOrder.length; pageIndex += 1) {
+        setHtmlProgress(pageIndex);
+        const entry = pageOrder[pageIndex - 1];
+        const page = await document.getPage(entry.sourcePage);
+        const rotation = (page.rotate + entry.rotation) % 360;
+        const baseViewport = page.getViewport({
+          scale: 1,
+          rotation,
+        });
+        const renderScale = Math.min(
+          1.6,
+          Math.max(1, 1200 / baseViewport.width),
+        );
+        const renderViewport = page.getViewport({
+          scale: renderScale,
+          rotation,
+        });
+        const canvas = window.document.createElement("canvas");
+        const context = canvas.getContext("2d");
+        if (!context) throw new Error("Canvas is unavailable");
+        canvas.width = Math.ceil(renderViewport.width);
+        canvas.height = Math.ceil(renderViewport.height);
+        await page.render({
+          canvas,
+          canvasContext: context,
+          viewport: renderViewport,
+        }).promise;
+
+        const pageImage = canvas.toDataURL("image/webp", 0.92);
+        const textContent = await page.getTextContent();
+        const accessibleText = textContent.items
+          .map((item) => item.str ?? "")
+          .filter(Boolean)
+          .join(" ");
+        const overlay = annotations
+          .filter((annotation) => annotation.page === pageIndex)
+          .map((annotation) =>
+            annotationToSvg(
+              annotation,
+              baseViewport.width,
+              baseViewport.height,
+            ),
+          )
+          .join("");
+
+        pages.push(`<section class="page" aria-label="Page ${pageIndex}">
+  <div class="paper" style="aspect-ratio:${baseViewport.width}/${baseViewport.height}">
+    <img src="${pageImage}" alt="Page ${pageIndex}"/>
+    <svg viewBox="0 0 ${baseViewport.width} ${baseViewport.height}" aria-hidden="true">${overlay}</svg>
+  </div>
+  <p class="page-number">Page ${pageIndex}</p>
+  <p class="sr-only">${escapeHtml(accessibleText)}</p>
+</section>`);
+      }
+
+      const title = fileName.replace(/\.pdf$/i, "") || "Converted PDF";
+      const html = `<!doctype html>
+<html lang="${annotations.some(annotationContainsKhmer) ? "km" : "en"}">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>${escapeHtml(title)}</title>
+  <style>
+    @font-face{font-family:"PDF Studio Khmer";src:url("${embeddedFontUrl}") format("truetype");font-style:normal;font-weight:400;font-display:block}*{box-sizing:border-box}body{margin:0;background:#e2e8f0;color:#0f172a;font-family:"PDF Studio Khmer",Arial,sans-serif;font-variant-ligatures:common-ligatures contextual;text-rendering:optimizeLegibility}.document{display:grid;gap:32px;padding:32px 16px}.page{width:min(100%,900px);margin:auto}.paper{position:relative;overflow:hidden;background:#fff;box-shadow:0 18px 50px rgba(15,23,42,.18)}.paper img,.paper svg{position:absolute;inset:0;width:100%;height:100%}.paper img{display:block}.page-number{text-align:center;color:#64748b;font-size:12px}.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}@media(max-width:640px){.document{gap:20px;padding:16px 8px}}@media print{body{background:#fff}.document{display:block;padding:0}.page{width:100%;page-break-after:always}.paper{box-shadow:none}.page-number{display:none}}
+  </style>
+</head>
+<body><main class="document">${pages.join("\n")}</main></body>
+</html>`;
+      const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const anchor = window.document.createElement("a");
+      anchor.href = url;
+      anchor.download = `${title}-converted.html`;
+      anchor.click();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (cause) {
+      console.error("Failed to convert PDF to HTML", cause);
+      setError(
+        "The HTML file could not be created. Your PDF and browser changes are still here.",
+      );
+    } finally {
+      setIsConvertingHtml(false);
+      setHtmlProgress(0);
+    }
+  }
+
+  async function detectFieldsWithAi() {
+    if (!fileBytes) return;
+    const pollToken = aiDetectionPollTokenRef.current + 1;
+    aiDetectionPollTokenRef.current = pollToken;
+    setIsDetectingFields(true);
+    setAiCandidates([]);
+    setAiDetectionStatus("queued");
+    setAiDetectionError("");
+    try {
+      const formData = new FormData();
+      formData.set(
+        "pdf",
+        new File([fileBytes.slice()], fileName || "document.pdf", {
+          type: "application/pdf",
+        }),
+      );
+      const response = await fetch("/api/ai-field-detection/runs", {
+        method: "POST",
+        body: formData,
+      });
+      const payload = (await response.json()) as {
+        error?: string;
+        run?: AiFieldDetectionRun;
+      };
+      if (!response.ok || !payload.run) {
+        throw new Error(payload.error || "AI analysis could not be started.");
+      }
+      setAiDetectionRunId(payload.run.id);
+      setAiDetectionStatus(payload.run.status);
+      const detection = await pollAiFieldDetectionRun(payload.run.id, pollToken);
+      if (detection && aiDetectionPollTokenRef.current === pollToken) {
+        setAiCandidates(detection.candidates);
+      }
+    } catch (cause) {
+      if (aiDetectionPollTokenRef.current === pollToken) {
+        setAiDetectionError(
+          cause instanceof Error
+            ? cause.message
+            : "The PDF could not be analyzed.",
+        );
+      }
+    } finally {
+      if (aiDetectionPollTokenRef.current === pollToken) {
+        setIsDetectingFields(false);
+      }
+    }
+  }
+
+  async function resumeAiFieldDetectionRun(runId: string) {
+    const pollToken = aiDetectionPollTokenRef.current + 1;
+    aiDetectionPollTokenRef.current = pollToken;
+    setIsDetectingFields(true);
+    setAiDetectionError("");
+    try {
+      const detection = await pollAiFieldDetectionRun(runId, pollToken);
+      if (detection && aiDetectionPollTokenRef.current === pollToken) {
+        setAiCandidates(detection.candidates);
+      }
+    } catch (cause) {
+      if (aiDetectionPollTokenRef.current === pollToken) {
+        setAiDetectionError(
+          cause instanceof Error
+            ? cause.message
+            : "The PDF analysis could not be resumed.",
+        );
+      }
+    } finally {
+      if (aiDetectionPollTokenRef.current === pollToken) {
+        setIsDetectingFields(false);
+      }
+    }
+  }
+
+  async function pollAiFieldDetectionRun(
+    runId: string,
+    pollToken: number,
+  ): Promise<FieldDetectionResult | null> {
+    for (let pollCount = 0; pollCount < 150; pollCount += 1) {
+      if (aiDetectionPollTokenRef.current !== pollToken) return null;
+      const response = await fetch(
+        `/api/ai-field-detection/runs/${encodeURIComponent(runId)}`,
+        { cache: "no-store" },
+      );
+      const payload = (await response.json()) as {
+        error?: string;
+        run?: AiFieldDetectionRun;
+      };
+      if (!response.ok || !payload.run) {
+        throw new Error(payload.error || "The AI analysis could not be loaded.");
+      }
+      setAiDetectionStatus(payload.run.status);
+      if (payload.run.status === "ready_for_review" && payload.run.detection) {
+        return payload.run.detection;
+      }
+      if (payload.run.status === "reviewed" && payload.run.detection) {
+        return payload.run.detection;
+      }
+      if (payload.run.status === "failed") {
+        throw new Error(payload.run.errorMessage || "The PDF could not be analyzed.");
+      }
+      if (payload.run.status === "cancelled") {
+        throw new Error("The AI analysis was cancelled.");
+      }
+      await new Promise((resolve) => window.setTimeout(resolve, 2_000));
+    }
+    throw new Error("The AI analysis is taking longer than expected. Reopen this draft to resume it.");
+  }
+
+  async function applyDetectedFields(candidates: DetectedFieldCandidate[]) {
+    setIsApplyingDetectedFields(true);
+    setAiDetectionError("");
+    let acceptedCandidates = candidates;
+    try {
+      if (aiDetectionRunId) {
+        const response = await fetch(
+          `/api/ai-field-detection/runs/${encodeURIComponent(aiDetectionRunId)}`,
+          {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ acceptedCandidates: candidates }),
+          },
+        );
+        const payload = (await response.json()) as {
+          error?: string;
+          acceptedCandidates?: DetectedFieldCandidate[];
+        };
+        if (!response.ok || !payload.acceptedCandidates) {
+          throw new Error(payload.error || "The field review could not be saved.");
+        }
+        acceptedCandidates = payload.acceptedCandidates;
+      }
+    } catch (cause) {
+      setAiDetectionError(
+        cause instanceof Error
+          ? cause.message
+          : "The field review could not be saved.",
+      );
+      setIsApplyingDetectedFields(false);
+      return;
+    }
+
+    const result = buildDetectedAnnotations({
+      candidates: acceptedCandidates,
+      annotations,
+      pageOrder,
+      recipientRoleId: recipientRoles[0]?.id,
+      idFactory: createAnnotationId,
+    });
+    const nextAnnotations = result.annotations as unknown as Annotation[];
+    commit(nextAnnotations);
+    setSelectedIds(result.addedIds);
+    const firstAdded = nextAnnotations.find((annotation) =>
+      result.addedIds.includes(annotation.id),
+    );
+    if (firstAdded) setPageNumber(firstAdded.page);
+    setAiDetectionRunId(null);
+    setAiDetectionStatus("reviewed");
+    setAiDetectionOpen(false);
+    setIsApplyingDetectedFields(false);
+    if (result.skippedCount > 0) {
+      setError(
+        `${result.skippedCount} detected field${result.skippedCount === 1 ? "" : "s"} could not be mapped to the current page order.`,
+      );
+    }
+  }
+
+  async function extractContent() {
+    if (!document) return;
+    setIsExtracting(true);
+    setExtractionError("");
+    setExtractionProgress({ current: 0, total: pageOrder.length });
+    try {
+      const result = await extractPdfContent({
+        document: document as unknown as PdfDocumentForExtraction,
+        fileName,
+        pageOrder,
+        editorAnnotations: annotations,
+        onProgress(current, total) {
+          setExtractionProgress({ current, total });
+        },
+      });
+      setExtractionResult(result);
+    } catch (cause) {
+      console.error("Failed to extract PDF content", cause);
+      setExtractionError(
+        "This PDF could not be read completely. It may be encrypted, damaged, or use an unsupported content format.",
+      );
+    } finally {
+      setIsExtracting(false);
+    }
+  }
+
+  if (!document) {
+    return (
+      <main className="upload-shell min-h-screen text-slate-950">
+        <style>{`@font-face{font-family:"${KHMER_FONT_FAMILY}";src:url("${khmerFontUrl}") format("truetype");font-style:normal;font-weight:400;font-display:block}`}</style>
+        <header className="mx-auto flex w-full max-w-6xl items-center justify-between px-5 py-6 sm:px-8">
+          <Brand />
+          <div className="flex items-center gap-2 text-xs font-medium text-slate-500">
+            <LockKeyhole className="size-3.5 text-emerald-600" />
+            Files stay on your device
+          </div>
+        </header>
+        <section className="mx-auto flex min-h-[calc(100vh-88px)] w-full max-w-6xl items-center justify-center px-5 pb-20 sm:px-8">
+          <div className="grid w-full items-center gap-12 lg:grid-cols-[0.85fr_1.15fr]">
+            <div className="max-w-xl">
+              <div className="mb-5 inline-flex items-center gap-2 rounded-full border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700">
+                <Check className="size-3.5" /> No sign-up. No upload to a
+                server.
+              </div>
+              <h1 className="text-balance text-5xl font-semibold leading-[1.04] tracking-[-0.045em] text-slate-950 sm:text-6xl">
+                Make changes to a PDF, right where it opens.
+              </h1>
+              <p className="mt-6 max-w-lg text-lg leading-8 text-slate-600">
+                Add text, fill fields, sign, highlight details, draw notes, and
+                export a clean copy—all inside your browser.
+              </p>
+              <div className="mt-8 flex flex-wrap gap-x-6 gap-y-3 text-sm font-medium text-slate-500">
+                <span className="flex items-center gap-2">
+                  <Check className="size-4 text-emerald-600" /> Private by
+                  default
+                </span>
+                <span className="flex items-center gap-2">
+                  <Check className="size-4 text-emerald-600" /> Works on every
+                  page
+                </span>
+                <span className="flex items-center gap-2">
+                  <Check className="size-4 text-emerald-600" /> Export in one
+                  click
+                </span>
+              </div>
+            </div>
+
+            <div
+              className="upload-card relative overflow-hidden rounded-[2rem] border border-white/80 bg-white/80 p-4 shadow-2xl shadow-blue-950/10 backdrop-blur sm:p-6"
+              onDragOver={(event) => event.preventDefault()}
+              onDrop={(event) => {
+                event.preventDefault();
+                const file = event.dataTransfer.files[0];
+                if (file) requestOpenFile(file);
+              }}
+            >
+              <Empty className="min-h-[390px] rounded-[1.5rem] border-2 border-dashed border-blue-200 bg-gradient-to-b from-blue-50/80 to-white px-6">
+                <EmptyHeader>
+                  <EmptyMedia
+                    className="size-16 rounded-2xl bg-primary text-primary-foreground shadow-lg shadow-primary/20"
+                    variant="icon"
+                  >
+                    {isLoading ? (
+                      <Spinner className="size-7" />
+                    ) : (
+                      <UploadCloud className="size-7" />
+                    )}
+                  </EmptyMedia>
+                  <EmptyTitle className="mt-3 text-2xl font-semibold text-slate-900">
+                    {isLoading ? "Opening your PDF…" : "Drop your PDF here"}
+                  </EmptyTitle>
+                  <EmptyDescription className="max-w-xs text-slate-500">
+                    Or choose a file from your device. PDF files up to 35 MB are
+                    supported.
+                  </EmptyDescription>
+                </EmptyHeader>
+                <EmptyContent>
+                  {availableDraft && (
+                    <div className="mb-3 w-full max-w-sm rounded-xl border border-blue-200 bg-blue-50 p-3 text-left">
+                      <p className="truncate text-sm font-semibold text-slate-800">
+                        Continue {availableDraft.fileName}
+                      </p>
+                      <p className="mt-0.5 text-xs text-slate-500">
+                        Saved {formatLocalDateTime(availableDraft.savedAt)}
+                      </p>
+                      <div className="mt-3 flex gap-2">
+                        <Button type="button" size="sm" disabled={isLoading} onClick={() => void restoreDraft()}>
+                          Restore draft
+                        </Button>
+                        <Button type="button" size="sm" variant="ghost" onClick={() => {
+                          void removeDraft();
+                          setAvailableDraft(null);
+                        }}>
+                          Discard
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                  <Button
+                    type="button"
+                    size="lg"
+                    disabled={isLoading}
+                    onClick={() => inputRef.current?.click()}
+                    className="h-12 rounded-xl px-6 text-base shadow-lg shadow-primary/20"
+                  >
+                    <Plus className="size-4" /> Choose PDF
+                  </Button>
+                  <input
+                    ref={inputRef}
+                    type="file"
+                    accept="application/pdf,.pdf"
+                    className="sr-only"
+                    onChange={(event) => {
+                      const file = event.target.files?.[0];
+                      if (file) requestOpenFile(file);
+                    }}
+                  />
+                  {error && (
+                    <Alert variant="destructive" className="mt-2 max-w-md text-left">
+                      <TriangleAlert />
+                      <AlertDescription>{error}</AlertDescription>
+                    </Alert>
+                  )}
+                </EmptyContent>
+              </Empty>
+              <div className="pointer-events-none absolute -right-10 -top-10 size-32 rounded-full bg-primary/15 blur-3xl" />
+            </div>
+          </div>
+        </section>
+      </main>
+    );
+  }
+
+  return (
+    <TooltipProvider>
+      <main className="flex h-[100dvh] min-h-0 flex-col overflow-hidden bg-slate-100 text-slate-950">
+        <style>{`@font-face{font-family:"${KHMER_FONT_FAMILY}";src:url("${khmerFontUrl}") format("truetype");font-style:normal;font-weight:400;font-display:block}`}</style>
+        <header className="z-20 flex min-h-14 shrink-0 items-center justify-between border-b border-slate-200 bg-white px-3 py-2 sm:h-16 sm:px-5 sm:py-0">
+          <div className="flex min-w-0 items-center gap-3">
+            <Brand compact />
+            <div className="hidden h-7 w-px bg-slate-200 sm:block" />
+            <div className="min-w-0">
+              <p className="max-w-[180px] truncate text-sm font-semibold text-slate-800 sm:max-w-[320px]">
+                {fileName}
+              </p>
+              <p className="flex items-center gap-1 text-[11px] font-medium text-slate-400">
+                {draftStatus === "saving" ? (
+                  <Spinner className="size-3 text-primary" />
+                ) : (
+                  <Check className="size-3 text-emerald-600" />
+                )}
+                {draftStatus === "saving" ? "Saving draft…" : "Draft saved locally"}
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <Tabs
+              value={editorMode}
+              onValueChange={(nextMode) => {
+                const mode = nextMode as EditorMode;
+                setEditorMode(mode);
+                if (mode === "fill") {
+                  setTool("select");
+                  setSelectedId(null);
+                }
+              }}
+            >
+              <TabsList className="h-9">
+              <TabsTrigger value="build" className="h-7 px-2">
+                <Wrench className="size-3.5" />
+                <span className="hidden md:inline">Build</span>
+              </TabsTrigger>
+              <TabsTrigger value="fill" className="h-7 px-2">
+                <Eye className="size-3.5" />
+                <span className="hidden md:inline">Fill</span>
+              </TabsTrigger>
+              </TabsList>
+            </Tabs>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  aria-label="Open keyboard shortcuts"
+                  onClick={() => setShortcutsOpen(true)}
+                  className="px-2 text-muted-foreground sm:px-3"
+                >
+                  <Keyboard className="size-4" />
+                  <span className="hidden lg:inline">Shortcuts</span>
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">Keyboard shortcuts</TooltipContent>
+            </Tooltip>
+            <Button asChild type="button" variant="ghost" size="sm" className="hidden text-slate-600 lg:flex">
+              <a href="/templates">
+                <FolderOpen className="size-4" /> Templates
+              </a>
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                if (!templateName) {
+                  setTemplateName(fileName.replace(/\.pdf$/iu, "") || "Untitled template");
+                }
+                setCreatedShareLinks([]);
+                setTemplateOpen(true);
+              }}
+              className="px-2 sm:px-3"
+            >
+              <Save className="size-4" />
+              <span className="hidden lg:inline">{editingTemplateId ? "Save new version" : "Save template"}</span>
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="hidden text-slate-600 sm:flex"
+              onClick={() => inputRef.current?.click()}
+            >
+              <RotateCcw className="size-4" /> Replace
+            </Button>
+            <input
+              ref={inputRef}
+              type="file"
+              accept="application/pdf,.pdf"
+              className="sr-only"
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                if (file) requestOpenFile(file);
+                event.currentTarget.value = "";
+              }}
+            />
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  aria-label="Detect fields with AI"
+                  disabled={
+                    isDetectingFields ||
+                    isExtracting ||
+                    isConvertingHtml ||
+                    isExporting ||
+                    editorMode !== "build"
+                  }
+                  onClick={() => {
+                    setAiDetectionOpen(true);
+                    if (aiCandidates.length === 0) void detectFieldsWithAi();
+                  }}
+                  className="px-2 sm:px-3"
+                >
+                  {isDetectingFields ? <Spinner /> : <Sparkles className="size-4" />}
+                  <span className="hidden xl:inline">AI fields</span>
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">Detect fields with AI</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  aria-label="Extract PDF content"
+                  disabled={isExtracting || isConvertingHtml || isExporting}
+                  onClick={() => {
+                    setExtractionOpen(true);
+                    if (!extractionResult) void extractContent();
+                  }}
+                  className="px-2 sm:px-3"
+                >
+                  {isExtracting ? <Spinner /> : <FileSearch className="size-4" />}
+                  <span className="hidden xl:inline">Extract</span>
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">Extract PDF content</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  aria-label="Convert PDF to HTML"
+                  disabled={isConvertingHtml || isExporting || isExtracting}
+                  onClick={() => void convertToHtml()}
+                  className="px-2 sm:px-3"
+                >
+                  {isConvertingHtml ? <Spinner /> : <FileCode2 className="size-4" />}
+                  <span className="hidden md:inline">
+                    {isConvertingHtml && htmlProgress
+                      ? `HTML ${htmlProgress}/${pageOrder.length}`
+                      : "Convert to HTML"}
+                  </span>
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">Convert PDF to HTML</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  type="button"
+                  size="sm"
+                  aria-label="Save fillable PDF"
+                  disabled={isExporting || isConvertingHtml || isExtracting}
+                  onClick={() => void exportPdf()}
+                  className="shadow-sm"
+                >
+                  {isExporting ? <Spinner /> : <Download className="size-4" />}
+                  <span className="hidden sm:inline">Save PDF</span>
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">Save fillable PDF</TooltipContent>
+            </Tooltip>
+          </div>
+        </header>
+
+        <div className="flex min-h-0 flex-1">
+          <aside className="hidden w-40 shrink-0 flex-col border-r border-slate-200 bg-slate-50/90 md:flex">
+            <div className="flex h-12 items-center justify-between border-b border-slate-200 px-4">
+              <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+                Pages
+              </span>
+              <span className="rounded-md bg-slate-200 px-1.5 py-0.5 text-[10px] font-bold text-slate-500">
+                {pageOrder.length}
+              </span>
+            </div>
+            <div ref={pageListRef} role="list" aria-label="PDF pages" className="scrollbar-thin flex-1 space-y-2 overflow-y-auto p-3">
+              {pageOrder.map((entry, index) => (
+                <PageThumbnail
+                  key={entry.id}
+                  document={document}
+                  entry={entry}
+                  displayNumber={index + 1}
+                  active={pageNumber === index + 1}
+                  onClick={() => {
+                    setPageNumber(index + 1);
+                    setSelectedId(null);
+                  }}
+                  onMoveUp={() => moveCurrentPage(-1)}
+                  onMoveDown={() => moveCurrentPage(1)}
+                  onRotate={rotateCurrentPage}
+                  onDuplicate={duplicateCurrentPage}
+                  onDelete={deleteCurrentPage}
+                  dragging={draggingPageId === entry.id}
+                  dropPosition={pageDropTarget?.id === entry.id ? pageDropTarget.position : null}
+                  recentlyDropped={recentlyDroppedPageId === entry.id}
+                  onDragPageStart={() => {
+                    setDraggingPageId(entry.id);
+                    setPageDropTarget(null);
+                  }}
+                  onDragPageOver={(position) => updatePageDropTarget(entry.id, position)}
+                  onDragPageEnd={finishPageDrag}
+                  onDropPage={(draggedId, position) => reorderPage(draggedId, entry.id, position)}
+                />
+              ))}
+            </div>
+          </aside>
+
+          <section className="flex min-w-0 flex-1 flex-col">
+            <div className="z-10 flex shrink-0 flex-col gap-2 border-b border-slate-200 bg-white px-2 py-2 shadow-sm sm:min-h-14 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:px-4">
+              <div className={`scrollbar-none flex w-full items-center gap-1 overflow-x-auto rounded-xl border border-slate-200 bg-slate-50 p-1 sm:w-auto sm:max-w-full sm:rounded-lg ${editorMode === "fill" ? "pointer-events-none opacity-45" : ""}`}>
+                <ToolButton
+                  label="Select"
+                  shortcut="A"
+                  active={tool === "select"}
+                  onClick={() => selectEditorTool("select")}
+                >
+                  <MousePointer2 />
+                </ToolButton>
+                <ToolButton
+                  label="Pan document"
+                  shortcut="H"
+                  active={tool === "pan"}
+                  onClick={() => selectEditorTool("pan")}
+                >
+                  <Hand />
+                </ToolButton>
+                <ToolButton
+                  label="Add text"
+                  shortcut="T"
+                  active={tool === "text"}
+                  onClick={() => selectEditorTool("text")}
+                >
+                  <Type />
+                </ToolButton>
+                <ToolButton
+                  label="Highlight"
+                  shortcut="G"
+                  active={tool === "highlight"}
+                  onClick={() => selectEditorTool("highlight")}
+                >
+                  <Highlighter />
+                </ToolButton>
+                <ToolButton
+                  label="Draw"
+                  shortcut="P"
+                  active={tool === "pen"}
+                  onClick={() => selectEditorTool("pen")}
+                >
+                  <PenLine />
+                </ToolButton>
+                <ToolButton
+                  label="Rectangle"
+                  shortcut="R"
+                  active={tool === "rectangle"}
+                  onClick={() => selectEditorTool("rectangle")}
+                >
+                  <Square />
+                </ToolButton>
+                <ToolButton
+                  label="Text input"
+                  shortcut="I"
+                  active={tool === "input"}
+                  onClick={() => selectEditorTool("input")}
+                >
+                  <TextCursorInput />
+                </ToolButton>
+                <ToolButton
+                  label="Textarea"
+                  shortcut="X"
+                  active={tool === "textarea"}
+                  onClick={() => selectEditorTool("textarea")}
+                >
+                  <AlignLeft />
+                </ToolButton>
+                <ToolButton
+                  label="Dropdown"
+                  shortcut="V"
+                  active={tool === "dropdown"}
+                  onClick={() => selectEditorTool("dropdown")}
+                >
+                  <ListFilter />
+                </ToolButton>
+                <ToolButton
+                  label="Cambodia address"
+                  shortcut="K"
+                  active={tool === "cambodia-address"}
+                  onClick={() => selectEditorTool("cambodia-address")}
+                >
+                  <MapPinned />
+                </ToolButton>
+                <ToolButton
+                  label="Checkbox"
+                  shortcut="C"
+                  active={tool === "checkbox"}
+                  onClick={() => selectEditorTool("checkbox")}
+                >
+                  <CheckSquare2 />
+                </ToolButton>
+                <ToolButton
+                  label="Radio button"
+                  shortcut="O"
+                  active={tool === "radio"}
+                  onClick={() => selectEditorTool("radio")}
+                >
+                  <CircleDot />
+                </ToolButton>
+                <ToolButton
+                  label="Checkbox group"
+                  shortcut="B"
+                  active={tool === "checkbox-group"}
+                  onClick={() => selectEditorTool("checkbox-group")}
+                >
+                  <CheckSquare2 />
+                </ToolButton>
+                <ToolButton
+                  label="Radio group"
+                  shortcut="Q"
+                  active={tool === "radio-group"}
+                  onClick={() => selectEditorTool("radio-group")}
+                >
+                  <CircleDot />
+                </ToolButton>
+                <ToolButton
+                  label={
+                    pendingSignature ? "Place signature" : "Add signature"
+                  }
+                  shortcut="S"
+                  active={tool === "signature"}
+                  onClick={() => setSignatureOpen(true)}
+                >
+                  <Signature />
+                </ToolButton>
+                <ToolButton
+                  label="Add date"
+                  shortcut="D"
+                  active={tool === "date"}
+                  onClick={() => selectEditorTool("date")}
+                >
+                  <CalendarDays />
+                </ToolButton>
+                <ToolButton
+                  label="Add initials"
+                  shortcut="N"
+                  active={tool === "initials"}
+                  onClick={() => selectEditorTool("initials")}
+                >
+                  <Type />
+                </ToolButton>
+                <ToolButton
+                  label="Ellipse"
+                  shortcut="E"
+                  active={tool === "ellipse"}
+                  onClick={() => selectEditorTool("ellipse")}
+                >
+                  <Circle />
+                </ToolButton>
+                <ToolButton
+                  label="Line"
+                  shortcut="L"
+                  active={tool === "line"}
+                  onClick={() => selectEditorTool("line")}
+                >
+                  <Minus />
+                </ToolButton>
+                <ToolButton
+                  label="Upload image"
+                  shortcut="U"
+                  disabled={isAddingImage}
+                  onClick={() => chooseImage()}
+                >
+                  {isAddingImage ? (
+                    <Spinner />
+                  ) : (
+                    <ImagePlus />
+                  )}
+                </ToolButton>
+                <ToolButton
+                  label="Image placeholder"
+                  shortcut="M"
+                  active={tool === "image-placeholder"}
+                  onClick={() => selectEditorTool("image-placeholder")}
+                >
+                  <UploadCloud />
+                </ToolButton>
+                <input
+                  ref={imageInputRef}
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp"
+                  className="sr-only"
+                  onChange={(event) => {
+                    const file = event.target.files?.[0];
+                    const targetId = imageTargetRef.current;
+                    imageTargetRef.current = null;
+                    if (file) void addImage(file, targetId);
+                    event.currentTarget.value = "";
+                  }}
+                />
+              </div>
+              <div className="flex w-full items-center justify-between gap-1 sm:w-auto sm:justify-start">
+                <ToolButton
+                  label="Undo"
+                  shortcut="Ctrl+Z"
+                  disabled={!undoStack.length}
+                  onClick={undo}
+                >
+                  <Undo2 />
+                </ToolButton>
+                <ToolButton
+                  label="Redo"
+                  shortcut="Ctrl+Shift+Z"
+                  disabled={!redoStack.length}
+                  onClick={redo}
+                >
+                  <Redo2 />
+                </ToolButton>
+                <div className="mx-1 h-6 w-px bg-slate-200" />
+                <ToolButton
+                  label="Fit page to screen"
+                  active={fitMode}
+                  onClick={fitToScreen}
+                >
+                  <Maximize2 />
+                </ToolButton>
+                <ToolButton
+                  label="Zoom out"
+                  disabled={zoom <= MIN_ZOOM}
+                  onClick={() => setManualZoom(zoom - 0.15)}
+                >
+                  <ZoomOut />
+                </ToolButton>
+                <Slider
+                  aria-label="Zoom level"
+                  min={MIN_ZOOM * 100}
+                  max={MAX_ZOOM * 100}
+                  step={5}
+                  value={[Math.round(zoom * 100)]}
+                  onValueChange={(values) =>
+                    setManualZoom((values[0] ?? Math.round(zoom * 100)) / 100)
+                  }
+                  className="hidden w-24 cursor-ew-resize sm:flex"
+                />
+                <span className="w-11 text-center text-xs font-semibold tabular-nums text-slate-500">
+                  {Math.round(zoom * 100)}%
+                </span>
+                <ToolButton
+                  label="Zoom in"
+                  disabled={zoom >= MAX_ZOOM}
+                  onClick={() => setManualZoom(zoom + 0.15)}
+                >
+                  <ZoomIn />
+                </ToolButton>
+              </div>
+              <div className="hidden items-center gap-2 lg:flex">
+                <span className="text-xs font-medium text-slate-400">Ink</span>
+                <ColorControl
+                  compact
+                  value={color}
+                  onChange={setColor}
+                />
+              </div>
+            </div>
+
+            {editorMode === "fill" && (
+              <div className="flex shrink-0 items-center justify-center gap-2 border-b border-blue-200 bg-blue-50 px-4 py-2 text-xs font-medium text-blue-800">
+                <Eye className="size-3.5" /> Fill fields directly, then save the completed PDF. Switch to Build to move or add tools.
+              </div>
+            )}
+
+            {error && (
+              <div className="border-b border-border bg-background px-4 py-2">
+                <Alert variant="destructive" className="mx-auto max-w-3xl">
+                  <TriangleAlert />
+                  <AlertDescription>{error}</AlertDescription>
+                </Alert>
+              </div>
+            )}
+
+            {selectedAnnotation && (
+              <div className="flex shrink-0 items-center gap-2 overflow-x-auto border-b border-slate-200 bg-white px-3 py-2 xl:hidden">
+                <span className="shrink-0 text-xs font-semibold capitalize text-slate-500">
+                  {selectedIds.length > 1
+                    ? `${selectedIds.length} selected`
+                    : selectedAnnotation.type}
+                </span>
+                {(selectedAnnotation.type === "text" ||
+                  selectedAnnotation.type === "input" ||
+                  selectedAnnotation.type === "textarea" ||
+                  selectedAnnotation.type === "dropdown" ||
+                  selectedAnnotation.type === "checkbox-group" ||
+                  selectedAnnotation.type === "radio-group" ||
+                  selectedAnnotation.type === "image-placeholder" ||
+                  selectedAnnotation.type === "date" ||
+                  selectedAnnotation.type === "initials") && (
+                  selectedAnnotation.type === "textarea" ? (
+                    <Textarea
+                      aria-label="Textarea value"
+                      value={selectedAnnotation.text}
+                      onChange={(event) =>
+                        updateSelected({ text: event.target.value })
+                      }
+                      rows={2}
+                      className="h-14 min-w-56 flex-1 resize-none rounded-md border border-slate-200 bg-slate-50 px-2 py-1.5 text-sm outline-none focus:border-blue-500"
+                    />
+                  ) : (
+                    <Input
+                      type={selectedAnnotation.type === "date" ? "date" : "text"}
+                      aria-label={
+                        selectedAnnotation.type === "input"
+                          ? "Input value"
+                          : selectedAnnotation.type === "date"
+                            ? "Date value"
+                            : selectedAnnotation.type === "initials"
+                              ? "Initials value"
+                              : "Annotation text"
+                      }
+                      value={selectedAnnotation.text}
+                      onChange={(event) =>
+                        updateSelected({ text: event.target.value })
+                      }
+                      className="h-8 min-w-40 flex-1 rounded-md border border-slate-200 bg-slate-50 px-2 text-sm outline-none focus:border-blue-500"
+                    />
+                  )
+                )}
+                {(selectedAnnotation.type === "text" ||
+                  selectedAnnotation.type === "input" ||
+                  selectedAnnotation.type === "textarea" ||
+                  selectedAnnotation.type === "date" ||
+                  selectedAnnotation.type === "initials" ||
+                  selectedAnnotation.type === "cambodia-address") && (
+                  <FontSizeControl
+                    compact
+                    value={
+                      selectedAnnotation.fontSize ?? DEFAULT_ELEMENT_FONT_SIZE
+                    }
+                    onChange={(fontSize) => updateSelected({ fontSize })}
+                  />
+                )}
+                {(selectedAnnotation.type === "checkbox" ||
+                  selectedAnnotation.type === "radio") && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() =>
+                      updateSelected({ checked: !selectedAnnotation.checked })
+                    }
+                  >
+                    {selectedAnnotation.checked ? "Selected" : "Unselected"}
+                  </Button>
+                )}
+                {(selectedAnnotation.type === "checkbox-group" ||
+                  selectedAnnotation.type === "radio-group" ||
+                  selectedAnnotation.type === "dropdown") && (
+                  <GroupFieldEditor
+                    compact
+                    annotation={selectedAnnotation}
+                    onChange={updateSelected}
+                  />
+                )}
+                {selectedAnnotation.type === "cambodia-address" && (
+                  <GazetteerFieldEditor
+                    compact
+                    annotation={selectedAnnotation}
+                    onChange={updateSelected}
+                  />
+                )}
+                {selectedAnnotation.type === "image-placeholder" && (
+                  <>
+                    <Input
+                      aria-label="Image placeholder label"
+                      value={selectedAnnotation.label ?? ""}
+                      onChange={(event) =>
+                        updateSelected({ label: event.target.value })
+                      }
+                      className="h-8 w-36 rounded-md border border-slate-200 bg-slate-50 px-2 text-sm outline-none focus:border-blue-500"
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => chooseImage(selectedAnnotation.id)}
+                    >
+                      <ImagePlus className="size-3.5" />
+                      {selectedAnnotation.imageData ? "Replace" : "Choose"}
+                    </Button>
+                  </>
+                )}
+                {selectedAnnotation.type !== "image" && (
+                  <ColorControl
+                    compact
+                    value={selectedAnnotation.color}
+                    onChange={(selectedColor) =>
+                      updateSelected({ color: selectedColor })
+                    }
+                  />
+                )}
+                {(selectedAnnotation.type === "input" ||
+                  selectedAnnotation.type === "textarea" ||
+                  selectedAnnotation.type === "dropdown" ||
+                  selectedAnnotation.type === "date" ||
+                  selectedAnnotation.type === "image-placeholder" ||
+                  selectedAnnotation.type === "cambodia-address") && (
+                  <div className="flex shrink-0 items-center gap-2">
+                    <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                      Border
+                    </span>
+                    <ColorControl
+                      compact
+                      value={
+                        selectedAnnotation.borderColor ??
+                        DEFAULT_ELEMENT_BORDER_COLOR
+                      }
+                      onChange={(borderColor) =>
+                        updateSelected({ borderColor })
+                      }
+                    />
+                  </div>
+                )}
+                {(isInteractivePdfField(selectedAnnotation.type) ||
+                  selectedAnnotation.type === "checkbox-group" ||
+                  selectedAnnotation.type === "radio-group" ||
+                  selectedAnnotation.type === "image-placeholder") && (
+                  <>
+                    {isStandardFieldType(selectedAnnotation.type) && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={resetSelectedToStandardSize}
+                      >
+                        <Maximize2 className="size-3.5" /> Standard size
+                      </Button>
+                    )}
+                    <label className="flex shrink-0 items-center gap-1.5 text-xs font-semibold text-slate-600">
+                      <Checkbox checked={selectedAnnotation.required ?? false} onCheckedChange={(checked) => updateSelected({ required: checked === true })} />
+                      Required
+                    </label>
+                    <Button type="button" variant="outline" size="sm" onClick={duplicateSelectedAcrossPages} disabled={pageOrder.length < 2}>
+                      <Copy className="size-3.5" /> All pages
+                    </Button>
+                  </>
+                )}
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-sm"
+                  onClick={deleteSelected}
+                  aria-label="Delete annotation"
+                  className="ml-auto shrink-0 text-rose-600 hover:bg-rose-50 hover:text-rose-700"
+                >
+                  <Trash2 />
+                </Button>
+              </div>
+            )}
+
+            <div
+              ref={viewportRef}
+              className="scrollbar-thin relative flex flex-1 overscroll-contain overflow-auto bg-[radial-gradient(circle_at_1px_1px,#cbd5e1_1px,transparent_0)] bg-[size:18px_18px] p-3 sm:p-10"
+            >
+              <div className="m-auto">
+                <div
+                  ref={surfaceRef}
+                  onPointerDownCapture={handleTouchPointerDown}
+                  onPointerMoveCapture={handleTouchPointerMove}
+                  onPointerUpCapture={handleTouchPointerEnd}
+                  onPointerCancelCapture={handleTouchPointerEnd}
+                  onPointerDown={handlePointerDown}
+                  onPointerMove={handlePointerMove}
+                  onPointerUp={handlePointerUp}
+                  onPointerCancel={handlePointerUp}
+                  className={`pdf-surface relative overflow-hidden bg-white shadow-2xl shadow-slate-900/15 ${
+                    tool === "pan" || isSpacePressed
+                      ? "cursor-grab active:cursor-grabbing"
+                      : tool !== "select"
+                        ? "cursor-crosshair"
+                        : "cursor-default"
+                  }`}
+                  style={{
+                    width: pageSize.width,
+                    height: pageSize.height,
+                    transform:
+                      pinchScale === 1 ? undefined : `scale(${pinchScale})`,
+                    transformOrigin: "top left",
+                  }}
+                >
+                  <canvas
+                    ref={canvasRef}
+                    className="pointer-events-none absolute inset-0 size-full"
+                  />
+                  {labelBindingFieldId && annotations.some((annotation) => annotation.id === labelBindingFieldId && annotation.page === pageNumber) && pdfTextRuns.map((run) => (
+                    <button
+                      key={run.id}
+                      type="button"
+                      title={`Bind label: ${run.text}`}
+                      aria-label={`Bind PDF label ${run.text}`}
+                      onPointerDown={(event) => event.stopPropagation()}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        bindPdfLabel(run);
+                      }}
+                      className="absolute z-30 cursor-pointer rounded-sm border border-blue-500 bg-blue-300/25 transition hover:bg-amber-300/60 focus-visible:outline-2 focus-visible:outline-blue-700"
+                      style={getCanvasFieldRectStyle(run.rect)}
+                    />
+                  ))}
+                  {pageAnnotations.map((annotation) => {
+                    const selected = selectedIds.includes(annotation.id);
+                    const primarySelected = annotation.id === selectedId;
+                    const fieldIconSize = getScaledFieldIconSize(zoom);
+                    const mediaIconSize = getScaledFieldIconSize(zoom, "media");
+                    const annotationFontSize =
+                      annotation.fontSize ?? DEFAULT_ELEMENT_FONT_SIZE;
+                    if (annotation.type === "drawing") {
+                      const points = annotation.points ?? [];
+                      return (
+                        <svg
+                          key={annotation.id}
+                          className="pointer-events-none absolute inset-0 size-full overflow-visible"
+                          viewBox="0 0 1000 1000"
+                          preserveAspectRatio="none"
+                        >
+                          <polyline
+                            points={points
+                              .map(
+                                (point) =>
+                                  `${point.x * 1000},${point.y * 1000}`,
+                              )
+                              .join(" ")}
+                            fill="none"
+                            stroke={annotation.color}
+                            strokeWidth={
+                              (annotation.strokeWidth ?? 2.5) * 1.3 * zoom
+                            }
+                            vectorEffect="non-scaling-stroke"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            onPointerDown={(event) =>
+                              startAnnotationInteraction(
+                                event,
+                                annotation,
+                                "move",
+                              )
+                            }
+                            className={`pointer-events-auto cursor-move ${
+                              selected
+                                ? "drop-shadow-[0_0_2px_rgba(37,99,235,.7)]"
+                                : ""
+                            }`}
+                          />
+                        </svg>
+                      );
+                    }
+                    return (
+                      <div
+                        key={annotation.id}
+                        role="button"
+                        tabIndex={0}
+                        aria-label={`Select ${annotation.type} annotation`}
+                        onPointerDown={(event) =>
+                          startAnnotationInteraction(event, annotation, "move")
+                        }
+                        onDoubleClick={() => activateAnnotation(annotation)}
+                        className={`absolute block text-left ${
+                          editorMode === "build" ? "cursor-move" : "cursor-default"
+                        } ${selected ? "annotation-selected" : ""} ${
+                          invalidFieldIds.includes(annotation.id)
+                            ? "ring-2 ring-rose-500 ring-offset-1"
+                            : ""
+                        }`}
+                        style={getCanvasFieldRectStyle(annotation)}
+                      >
+                        {(annotation.type === "text" ||
+                          annotation.type === "initials") && (
+                          annotation.type === "initials" && editorMode === "fill" ? (
+                            <input
+                              value={annotation.text ?? ""}
+                              placeholder={annotation.placeholder ?? "Initials"}
+                              required={annotation.required}
+                              onPointerDown={(event) => event.stopPropagation()}
+                              onChange={(event) => updateAnnotationValue(annotation.id, { text: event.target.value })}
+                              className="size-full border-0 bg-transparent outline-none"
+                              style={{ color: annotation.color, fontSize: annotationFontSize * zoom }}
+                            />
+                          ) : (
+                          <span
+                            lang={
+                              containsKhmer(annotation.text) ? "km" : undefined
+                            }
+                            className="block whitespace-pre-wrap leading-tight"
+                            style={{
+                              color: annotation.color,
+                              fontSize: annotationFontSize * zoom,
+                              lineHeight: containsKhmer(annotation.text)
+                                ? 1.55
+                                : 1.25,
+                            }}
+                          >
+                            {annotation.text}
+                          </span>
+                          )
+                        )}
+                        {annotation.type === "date" && (
+                          editorMode === "fill" ? (
+                            <span className="relative block size-full">
+                              <input
+                                type="date"
+                                value={annotation.text ?? ""}
+                                required={annotation.required}
+                                onPointerDown={(event) => event.stopPropagation()}
+                                onChange={(event) =>
+                                  updateAnnotationValue(annotation.id, {
+                                    text: event.target.value,
+                                  })
+                                }
+                                className="pdf-native-date-field size-full rounded-md border border-slate-400 bg-white px-2 pr-9"
+                                style={{
+                                  color: annotation.color,
+                                  borderColor:
+                                    annotation.borderColor ??
+                                    DEFAULT_ELEMENT_BORDER_COLOR,
+                                  fontSize: annotationFontSize * zoom,
+                                  paddingRight: fieldIconSize + 12,
+                                }}
+                              />
+                              <CalendarDays
+                                aria-hidden="true"
+                                className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-slate-500"
+                                style={{ width: fieldIconSize, height: fieldIconSize }}
+                                strokeWidth={2.25}
+                              />
+                            </span>
+                          ) : (
+                            <span className="flex size-full items-center gap-2 overflow-hidden rounded-md border bg-white px-2 leading-none shadow-sm" style={{ color: annotation.color, borderColor: annotation.borderColor ?? DEFAULT_ELEMENT_BORDER_COLOR, fontSize: annotationFontSize * zoom, borderWidth: Math.max(0.75, zoom) }}>
+                              <span className="min-w-0 flex-1 truncate">{formatDateValue(annotation.text)}</span>
+                              <CalendarDays
+                                className="shrink-0 text-slate-500"
+                                style={{ width: fieldIconSize, height: fieldIconSize }}
+                                strokeWidth={2.25}
+                              />
+                            </span>
+                          )
+                        )}
+                        {annotation.type === "highlight" && (
+                          <span
+                            className="block size-full"
+                            style={{
+                              backgroundColor: annotation.color,
+                              opacity: 0.35,
+                            }}
+                          />
+                        )}
+                        {annotation.type === "rectangle" && (
+                          <span
+                            className="block size-full"
+                            style={{
+                              border: `${(annotation.strokeWidth ?? 2) * zoom}px solid ${annotation.color}`,
+                            }}
+                          />
+                        )}
+                        {annotation.type === "ellipse" && (
+                          <span
+                            className="block size-full rounded-full"
+                            style={{
+                              border: `${(annotation.strokeWidth ?? 2) * zoom}px solid ${annotation.color}`,
+                            }}
+                          />
+                        )}
+                        {annotation.type === "line" && (
+                          <svg
+                            viewBox="0 0 1000 1000"
+                            preserveAspectRatio="none"
+                            className="size-full overflow-visible"
+                            aria-hidden="true"
+                          >
+                            <line
+                              x1="0"
+                              y1={
+                                annotation.lineDirection === "up" ? 1000 : 0
+                              }
+                              x2="1000"
+                              y2={
+                                annotation.lineDirection === "up" ? 0 : 1000
+                              }
+                              stroke={annotation.color}
+                              strokeWidth={(annotation.strokeWidth ?? 2) * zoom}
+                              vectorEffect="non-scaling-stroke"
+                              strokeLinecap="round"
+                            />
+                          </svg>
+                        )}
+                        {annotation.type === "input" && (
+                          editorMode === "fill" ? (
+                            annotation.multiline ? (
+                              <textarea
+                                value={annotation.text ?? ""}
+                                placeholder={annotation.placeholder}
+                                required={annotation.required}
+                                onPointerDown={(event) => event.stopPropagation()}
+                                onChange={(event) => updateAnnotationValue(annotation.id, { text: event.target.value })}
+                                className="size-full resize-none rounded-sm border bg-white px-1.5 py-1 outline-none"
+                                style={{ color: annotation.color, fontSize: annotationFontSize * zoom, borderColor: annotation.borderColor ?? DEFAULT_ELEMENT_BORDER_COLOR }}
+                              />
+                            ) : (
+                              <input
+                                type={annotation.validation === "email" ? "email" : annotation.validation === "number" ? "number" : "text"}
+                                value={annotation.text ?? ""}
+                                placeholder={annotation.placeholder}
+                                required={annotation.required}
+                                onPointerDown={(event) => event.stopPropagation()}
+                                onChange={(event) => updateAnnotationValue(annotation.id, { text: event.target.value })}
+                                className="size-full rounded-sm border bg-white px-1.5 outline-none"
+                                style={{ color: annotation.color, fontSize: annotationFontSize * zoom, borderColor: annotation.borderColor ?? DEFAULT_ELEMENT_BORDER_COLOR }}
+                              />
+                            )
+                          ) : (
+                          <span
+                            lang={
+                              containsKhmer(annotation.text) ? "km" : undefined
+                            }
+                            className="flex size-full items-center overflow-hidden rounded-sm border border-slate-400 bg-white px-1.5 leading-none"
+                            style={{
+                              color: annotation.color,
+                              fontSize: annotationFontSize * zoom,
+                              borderColor:
+                                annotation.borderColor ?? DEFAULT_ELEMENT_BORDER_COLOR,
+                              borderWidth: Math.max(0.75, zoom),
+                              lineHeight: containsKhmer(annotation.text)
+                                ? 1.55
+                                : 1,
+                            }}
+                          >
+                            <span className="truncate">
+                              {annotation.text || "Text input"}
+                            </span>
+                          </span>
+                          )
+                        )}
+                        {annotation.type === "textarea" && (
+                          editorMode === "fill" ? (
+                            <textarea
+                              value={annotation.text ?? ""}
+                              placeholder={annotation.placeholder}
+                              required={annotation.required}
+                              onPointerDown={(event) => event.stopPropagation()}
+                              onChange={(event) =>
+                                updateAnnotationValue(annotation.id, {
+                                  text: event.target.value,
+                                })
+                              }
+                              className="size-full resize-none rounded-sm border bg-white px-2 py-1.5 outline-none"
+                              style={{
+                                color: annotation.color,
+                                fontSize: annotationFontSize * zoom,
+                                borderColor:
+                                  annotation.borderColor ?? DEFAULT_ELEMENT_BORDER_COLOR,
+                              }}
+                            />
+                          ) : (
+                            <span
+                              lang={
+                                containsKhmer(annotation.text)
+                                  ? "km"
+                                  : undefined
+                              }
+                              className="block size-full overflow-hidden whitespace-pre-wrap rounded-sm border bg-white px-2 py-1.5"
+                              style={{
+                                color: annotation.color,
+                                fontSize: annotationFontSize * zoom,
+                                borderColor:
+                                  annotation.borderColor ?? DEFAULT_ELEMENT_BORDER_COLOR,
+                                borderWidth: Math.max(0.75, zoom),
+                                lineHeight: containsKhmer(annotation.text)
+                                  ? 1.55
+                                  : 1.35,
+                              }}
+                            >
+                              {annotation.text ||
+                                annotation.placeholder ||
+                                "Enter paragraph"}
+                            </span>
+                          )
+                        )}
+                        {annotation.type === "dropdown" && (
+                          editorMode === "fill" ? (
+                            <span className="relative block size-full">
+                              <select
+                                value={annotation.options?.find((option) => option.checked)?.id ?? ""}
+                                required={annotation.required}
+                                onPointerDown={(event) => event.stopPropagation()}
+                                onChange={(event) =>
+                                  updateAnnotationValue(annotation.id, {
+                                    options: (annotation.options ?? []).map((option) => ({ ...option, checked: option.id === event.target.value })),
+                                  })
+                                }
+                                className="size-full appearance-none rounded-md border bg-white px-2 pr-9 outline-none"
+                                style={{
+                                  color: annotation.color,
+                                  borderColor: annotation.borderColor ?? DEFAULT_ELEMENT_BORDER_COLOR,
+                                  fontSize: annotationFontSize * zoom,
+                                  paddingRight: fieldIconSize + 12,
+                                }}
+                              >
+                                <option value="">{annotation.label || "Select an option"}</option>
+                                {(annotation.options ?? []).map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}
+                              </select>
+                              <ChevronDown
+                                aria-hidden="true"
+                                className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-slate-500"
+                                style={{ width: fieldIconSize, height: fieldIconSize }}
+                                strokeWidth={2.25}
+                              />
+                            </span>
+                          ) : (
+                            <span className="flex size-full items-center justify-between rounded-md border bg-white px-2" style={{ color: annotation.color, borderColor: annotation.borderColor ?? DEFAULT_ELEMENT_BORDER_COLOR, fontSize: annotationFontSize * zoom }}>
+                              <span className="truncate">{annotation.options?.find((option) => option.checked)?.label ?? annotation.label ?? "Select an option"}</span>
+                              <ChevronDown
+                                className="shrink-0 text-slate-500"
+                                style={{ width: fieldIconSize, height: fieldIconSize }}
+                                strokeWidth={2.25}
+                              />
+                            </span>
+                          )
+                        )}
+                        {annotation.type === "cambodia-address" && (
+                          <div
+                            className="size-full"
+                            onPointerDown={
+                              editorMode === "fill"
+                                ? (event) => event.stopPropagation()
+                                : undefined
+                            }
+                          >
+                            <CambodiaAddressField
+                              value={annotation.address}
+                              language={annotation.gazetteerLanguage ?? "bilingual"}
+                              deepestLevel={annotation.gazetteerLevel ?? "village"}
+                              disabled={editorMode !== "fill"}
+                              required={annotation.required}
+                              label={annotation.label}
+                              onChange={(address) =>
+                                updateAnnotationValue(annotation.id, {
+                                  address,
+                                  text: formatCambodiaAddress(
+                                    address,
+                                    annotation.gazetteerLanguage ?? "bilingual",
+                                  ),
+                                })
+                              }
+                              style={{
+                                color: annotation.color,
+                                borderColor:
+                                  annotation.borderColor ?? DEFAULT_ELEMENT_BORDER_COLOR,
+                                fontSize: annotationFontSize * zoom,
+                              }}
+                              iconSize={fieldIconSize}
+                            />
+                          </div>
+                        )}
+                        {annotation.type === "checkbox" && (
+                          <button
+                            type="button"
+                            disabled={editorMode !== "fill"}
+                            onPointerDown={
+                              editorMode === "fill"
+                                ? (event) => event.stopPropagation()
+                                : undefined
+                            }
+                            onClick={() => updateAnnotationValue(annotation.id, { checked: !annotation.checked })}
+                            className={`flex size-full items-center justify-center rounded-[2px] bg-white ${editorMode === "build" ? "pointer-events-none" : ""}`}
+                            style={{
+                              borderColor: annotation.color,
+                              borderWidth: Math.max(1, 1.5 * zoom),
+                              borderStyle: "solid",
+                            }}
+                          >
+                            {annotation.checked && (
+                              <Check
+                                className="size-full"
+                                style={{ color: annotation.color }}
+                                strokeWidth={3}
+                              />
+                            )}
+                          </button>
+                        )}
+                        {annotation.type === "radio" && (
+                          <button
+                            type="button"
+                            disabled={editorMode !== "fill"}
+                            onPointerDown={
+                              editorMode === "fill"
+                                ? (event) => event.stopPropagation()
+                                : undefined
+                            }
+                            onClick={() => updateAnnotationValue(annotation.id, { checked: !annotation.checked })}
+                            className={`flex size-full items-center justify-center rounded-full bg-white ${editorMode === "build" ? "pointer-events-none" : ""}`}
+                            style={{
+                              borderColor: annotation.color,
+                              borderWidth: Math.max(1, 1.5 * zoom),
+                              borderStyle: "solid",
+                            }}
+                          >
+                            {annotation.checked && (
+                              <span
+                                className="size-1/2 rounded-full"
+                                style={{ backgroundColor: annotation.color }}
+                              />
+                            )}
+                          </button>
+                        )}
+                        {(annotation.type === "checkbox-group" ||
+                          annotation.type === "radio-group") && (
+                          <span
+                            className="flex size-full flex-col overflow-hidden rounded-md bg-white/95"
+                            style={{
+                              color: annotation.color,
+                              padding: 6 * zoom,
+                            }}
+                          >
+                            <span
+                              lang={
+                                containsKhmer(annotation.label)
+                                  ? "km"
+                                  : undefined
+                              }
+                              className="truncate font-semibold leading-tight"
+                              style={{
+                                fontSize: annotationFontSize * zoom,
+                                lineHeight: containsKhmer(annotation.label)
+                                  ? 1.55
+                                  : 1.25,
+                              }}
+                            >
+                              {annotation.label || "Options"}
+                            </span>
+                            <span
+                              className="flex min-h-0 flex-1 flex-col justify-around"
+                              style={{ marginTop: 4 * zoom, gap: 2 * zoom }}
+                            >
+                              {(annotation.options ?? []).map((option) => (
+                                <button
+                                  type="button"
+                                  disabled={editorMode !== "fill"}
+                                  onPointerDown={
+                                    editorMode === "fill"
+                                      ? (event) => event.stopPropagation()
+                                      : undefined
+                                  }
+                                  onClick={() => updateAnnotationValue(annotation.id, {
+                                    options: (annotation.options ?? []).map((item) => ({
+                                      ...item,
+                                      checked: item.id === option.id
+                                        ? annotation.type === "radio-group" ? true : !item.checked
+                                        : annotation.type === "radio-group" ? false : item.checked,
+                                    })),
+                                  })}
+                                  key={option.id}
+                                  lang={
+                                    containsKhmer(option.label)
+                                      ? "km"
+                                      : undefined
+                                  }
+                                  className={`flex min-w-0 items-center leading-none ${editorMode === "build" ? "pointer-events-none" : ""}`}
+                                  style={{
+                                    gap: 6 * zoom,
+                                    fontSize: annotationFontSize * zoom,
+                                    lineHeight: containsKhmer(option.label)
+                                      ? 1.55
+                                      : 1,
+                                  }}
+                                >
+                                  <span
+                                    className={`flex shrink-0 items-center justify-center bg-white ${annotation.type === "radio-group" ? "rounded-full" : "rounded-[3px]"}`}
+                                    style={{
+                                      width: 16 * zoom,
+                                      height: 16 * zoom,
+                                      borderColor: annotation.color,
+                                      borderWidth: Math.max(1, 2 * zoom),
+                                      borderStyle: "solid",
+                                    }}
+                                  >
+                                    {option.checked &&
+                                      (annotation.type === "radio-group" ? (
+                                        <span
+                                          className="rounded-full"
+                                          style={{
+                                            backgroundColor: annotation.color,
+                                            width: 8 * zoom,
+                                            height: 8 * zoom,
+                                          }}
+                                        />
+                                      ) : (
+                                        <Check
+                                          className="size-full"
+                                          style={{ color: annotation.color }}
+                                          strokeWidth={3}
+                                        />
+                                      ))}
+                                  </span>
+                                  <span className="truncate">
+                                    {option.label}
+                                  </span>
+                                </button>
+                              ))}
+                            </span>
+                          </span>
+                        )}
+                        {annotation.type === "signature" && (
+                          <svg
+                            viewBox="0 0 1000 320"
+                            preserveAspectRatio="none"
+                            className="size-full overflow-visible"
+                            aria-hidden="true"
+                          >
+                            {(annotation.strokes ?? []).map(
+                              (stroke, index) => (
+                                <polyline
+                                  key={index}
+                                  points={stroke
+                                    .map(
+                                      (point) =>
+                                        `${point.x * 1000},${point.y * 320}`,
+                                    )
+                                    .join(" ")}
+                                  fill="none"
+                                  stroke={annotation.color}
+                                  strokeWidth={2.5 * zoom}
+                                  vectorEffect="non-scaling-stroke"
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                />
+                              ),
+                            )}
+                          </svg>
+                        )}
+                        {annotation.type === "image" &&
+                          annotation.imageData && (
+                            <Image
+                              src={annotation.imageData}
+                              alt={annotation.imageName || "Uploaded image"}
+                              fill
+                              unoptimized
+                              draggable={false}
+                              className="pointer-events-none size-full select-none object-fill"
+                            />
+                          )}
+                        {annotation.type === "image-placeholder" && (
+                          <span
+                            className="relative flex size-full items-center justify-center overflow-hidden rounded-lg border-2 border-dashed bg-slate-50"
+                            style={{
+                              color: annotation.color,
+                              borderColor:
+                                annotation.borderColor ??
+                                DEFAULT_ELEMENT_BORDER_COLOR,
+                            }}
+                          >
+                            {annotation.imageData ? (
+                              <Image
+                                src={annotation.imageData}
+                                alt={annotation.imageName || "Uploaded image"}
+                                fill
+                                unoptimized
+                                draggable={false}
+                                className="pointer-events-none size-full select-none object-fill"
+                              />
+                            ) : (
+                              <span className="flex flex-col items-center gap-1 px-3 text-center">
+                                <UploadCloud
+                                  style={{ width: mediaIconSize, height: mediaIconSize }}
+                                  strokeWidth={2.1}
+                                />
+                                <span
+                                  className="font-semibold"
+                                  style={{ fontSize: annotationFontSize * zoom }}
+                                >
+                                  {annotation.label || "Upload image"}
+                                </span>
+                              </span>
+                            )}
+                            {(primarySelected || editorMode === "fill") && (
+                              <button
+                                type="button"
+                                onPointerDown={(event) => {
+                                  if (!(editorMode === "build" && event.altKey)) {
+                                    event.stopPropagation();
+                                  }
+                                }}
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  if (editorMode === "build" && event.altKey) {
+                                    return;
+                                  }
+                                  chooseImage(annotation.id);
+                                }}
+                                className="absolute bottom-2 left-1/2 -translate-x-1/2 rounded-md bg-slate-900/90 px-2.5 py-1 text-[11px] font-semibold text-white shadow hover:bg-slate-900"
+                              >
+                                {annotation.imageData ? "Replace" : "Choose image"}
+                              </button>
+                            )}
+                          </span>
+                        )}
+                        {primarySelected && editorMode === "build" && (
+                          <span
+                            role="button"
+                            aria-label={`Resize ${annotation.type} annotation`}
+                            onPointerDown={(event) =>
+                              startAnnotationInteraction(
+                                event,
+                                annotation,
+                                "resize",
+                              )
+                            }
+                            className="absolute -bottom-2 -right-2 size-4 cursor-nwse-resize rounded-full border-2 border-white bg-primary shadow"
+                          />
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+                <div className="mt-4 flex items-center justify-center gap-3 text-xs font-medium text-slate-500 md:hidden">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon-sm"
+                    disabled={pageNumber === 1}
+                    onClick={() => setPageNumber((value) => value - 1)}
+                  >
+                    <ChevronLeft />
+                  </Button>
+                  Page {pageNumber} of {pageOrder.length}
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon-sm"
+                    disabled={pageNumber === pageOrder.length}
+                    onClick={() => setPageNumber((value) => value + 1)}
+                  >
+                    <ChevronRight />
+                  </Button>
+                </div>
+                {editorMode === "build" && (
+                  <div className="mt-2 flex items-center justify-center gap-1 md:hidden">
+                    <Button type="button" variant="ghost" size="sm" onClick={() => moveCurrentPage(-1)} disabled={pageNumber === 1}><ArrowUp className="size-3.5" /> Move</Button>
+                    <Button type="button" variant="ghost" size="sm" onClick={rotateCurrentPage}><RotateCw className="size-3.5" /> Rotate</Button>
+                    <Button type="button" variant="ghost" size="sm" onClick={duplicateCurrentPage}><Copy className="size-3.5" /> Copy</Button>
+                    <Button type="button" variant="ghost" size="sm" onClick={deleteCurrentPage} disabled={pageOrder.length <= 1} className="text-rose-600"><Trash2 className="size-3.5" /></Button>
+                  </div>
+                )}
+              </div>
+            </div>
+          </section>
+
+          <aside className="scrollbar-thin hidden w-80 shrink-0 overflow-y-auto border-l border-slate-200 bg-white xl:block">
+            <div className="sticky top-0 z-10 flex h-12 items-center border-b border-slate-200 bg-white/95 px-4 backdrop-blur">
+              <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+                Properties
+              </span>
+            </div>
+            {selectedAnnotation ? (
+              <div className="space-y-4 p-4">
+                <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                  <p className="text-sm font-semibold text-slate-800">
+                    {selectedIds.length > 1
+                      ? `${selectedIds.length} elements selected`
+                      : formatAnnotationTypeLabel(selectedAnnotation.type)}
+                  </p>
+                  <p className="mt-1 text-xs leading-5 text-slate-400">
+                    Page {selectedAnnotation.page} · {selectedIds.length > 1
+                      ? "Style, move, duplicate, or delete them together."
+                      : "Select another tool to add more."}
+                  </p>
+                </div>
+                {(selectedAnnotation.type === "text" ||
+                  selectedAnnotation.type === "input" ||
+                  selectedAnnotation.type === "textarea" ||
+                  selectedAnnotation.type === "initials") && (
+                  <label className="block rounded-xl border border-slate-200 bg-slate-50/70 p-3 text-xs font-semibold text-slate-600">
+                    {selectedAnnotation.type === "input"
+                      ? "Value"
+                      : selectedAnnotation.type === "textarea"
+                        ? "Paragraph"
+                      : selectedAnnotation.type === "initials"
+                          ? "Initials"
+                          : "Text"}
+                    <Textarea
+                      value={selectedAnnotation.text}
+                      onChange={(event) =>
+                        updateSelected({ text: event.target.value })
+                      }
+                      rows={selectedAnnotation.type === "textarea" ? 6 : 4}
+                      className="mt-2 w-full resize-none rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-normal text-slate-800 shadow-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                    />
+                  </label>
+                )}
+                {selectedAnnotation.type === "date" && (
+                  <label className="block rounded-xl border border-slate-200 bg-slate-50/70 p-3 text-xs font-semibold text-slate-600">
+                    Date
+                    <DatePicker
+                      value={selectedAnnotation.text ?? ""}
+                      onValueChange={(text) => updateSelected({ text })}
+                      placeholder="Pick a date"
+                      aria-label="Field date"
+                      className="mt-2 h-9"
+                    />
+                    <span className="mt-1.5 block font-normal text-slate-400">
+                      {formatDateValue(selectedAnnotation.text)}
+                    </span>
+                  </label>
+                )}
+                {(selectedAnnotation.type === "text" ||
+                  selectedAnnotation.type === "input" ||
+                  selectedAnnotation.type === "textarea" ||
+                  selectedAnnotation.type === "dropdown" ||
+                  selectedAnnotation.type === "checkbox-group" ||
+                  selectedAnnotation.type === "radio-group" ||
+                  selectedAnnotation.type === "image-placeholder" ||
+                  selectedAnnotation.type === "date" ||
+                  selectedAnnotation.type === "initials" ||
+                  selectedAnnotation.type === "cambodia-address") && (
+                  <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3">
+                    <p className="mb-3 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                      Font size
+                    </p>
+                    <FontSizeControl
+                      value={
+                        selectedAnnotation.fontSize ?? DEFAULT_ELEMENT_FONT_SIZE
+                      }
+                      onChange={(fontSize) => updateSelected({ fontSize })}
+                    />
+                  </div>
+                )}
+                {(selectedAnnotation.type === "checkbox" ||
+                  selectedAnnotation.type === "radio") && (
+                  <label className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50/70 p-3 text-xs font-semibold text-slate-600">
+                    Selected
+                    <Checkbox
+                      aria-label={`Toggle ${selectedAnnotation.type}`}
+                      checked={selectedAnnotation.checked ?? false}
+                      onCheckedChange={(checked) =>
+                        updateSelected({ checked: checked === true })
+                      }
+                    />
+                  </label>
+                )}
+                {(selectedAnnotation.type === "checkbox-group" ||
+                  selectedAnnotation.type === "radio-group" ||
+                  selectedAnnotation.type === "dropdown") && (
+                  <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3">
+                    <p className="mb-3 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                      {selectedAnnotation.type === "dropdown"
+                        ? "Placeholder and options"
+                        : "Group label and options"}
+                    </p>
+                    <GroupFieldEditor
+                      annotation={selectedAnnotation}
+                      onChange={updateSelected}
+                    />
+                  </div>
+                )}
+                {selectedAnnotation.type === "cambodia-address" && (
+                  <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3">
+                    <p className="mb-3 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                      Cambodia address
+                    </p>
+                    <GazetteerFieldEditor
+                      annotation={selectedAnnotation}
+                      onChange={updateSelected}
+                    />
+                  </div>
+                )}
+                {(isInteractivePdfField(selectedAnnotation.type) ||
+                  selectedAnnotation.type === "checkbox-group" ||
+                  selectedAnnotation.type === "radio-group" ||
+                  selectedAnnotation.type === "image-placeholder") && (
+                  <div className="space-y-3 rounded-xl border border-slate-200 bg-slate-50/70 p-3">
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Field settings</p>
+                    {isStandardFieldType(selectedAnnotation.type) && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={resetSelectedToStandardSize}
+                        className="w-full"
+                      >
+                        <Maximize2 className="size-3.5" /> Reset to standard size
+                      </Button>
+                    )}
+                    <label className="block text-xs font-semibold text-slate-600">
+                      Recipient
+                      <Select
+                        value={selectedAnnotation.recipientRoleId ?? recipientRoles[0]?.id ?? ""}
+                        onValueChange={(recipientRoleId) =>
+                          updateSelected({ recipientRoleId })
+                        }
+                      >
+                        <SelectTrigger className="mt-1.5 h-9 w-full">
+                          <SelectValue placeholder="Choose recipient" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {recipientRoles.map((role) => (
+                            <SelectItem key={role.id} value={role.id}>
+                              {role.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </label>
+                    <label className="block text-xs font-semibold text-slate-600">
+                      Field name
+                      <Input
+                        value={selectedAnnotation.fieldName ?? ""}
+                        onChange={(event) => updateSelected({ fieldName: event.target.value })}
+                        placeholder="Customer name"
+                        className="mt-1.5 h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm font-normal text-slate-800 shadow-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                      />
+                    </label>
+                    <label className="block text-xs font-semibold text-slate-600">
+                      Field key
+                      <Input
+                        value={selectedAnnotation.fieldKey ?? createFieldKey(selectedAnnotation.fieldName || selectedAnnotation.label || selectedAnnotation.type)}
+                        onChange={(event) => updateSelected({ fieldKey: createFieldKey(event.target.value) })}
+                        placeholder="customer_name"
+                        className="mt-1.5 h-9 w-full rounded-lg border border-slate-200 bg-white px-3 font-mono text-xs font-normal text-slate-800 shadow-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                      />
+                    </label>
+                    <label className="block text-xs font-semibold text-slate-600">
+                      Candidate auto-fill
+                      <CandidatePrefillCombobox
+                        value={selectedAnnotation.prefillKey}
+                        onValueChange={(prefillKey) => updateSelected({ prefillKey })}
+                        className="mt-1.5 text-xs"
+                      />
+                      <span className="mt-1 block text-[10px] font-normal leading-4 text-slate-400">
+                        Search extracted resume fields. The selected value is copied as an immutable snapshot when the form is assigned.
+                      </span>
+                    </label>
+                    <div className="rounded-lg border border-slate-200 bg-white p-3 shadow-sm">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="text-xs font-semibold text-slate-600">PDF label</p>
+                          <p className="mt-0.5 truncate text-[11px] text-slate-400">
+                            {selectedAnnotation.labelBinding?.text || "No label bound"}
+                          </p>
+                        </div>
+                        <Button type="button" variant="outline" size="sm" onClick={startLabelBinding} className="shrink-0">
+                          <MousePointer2 className="size-3.5" />
+                          {selectedAnnotation.labelBinding ? "Change" : "Bind"}
+                        </Button>
+                      </div>
+                      {selectedAnnotation.labelBinding && (
+                        <Button type="button" variant="ghost" size="sm" className="mt-1 h-7 px-2 text-rose-600" onClick={() => updateSelected({ labelBinding: undefined })}>
+                          Remove binding
+                        </Button>
+                      )}
+                    </div>
+                    {(selectedAnnotation.type === "input" ||
+                      selectedAnnotation.type === "textarea" ||
+                      selectedAnnotation.type === "initials") && (
+                      <label className="block text-xs font-semibold text-slate-600">
+                        Placeholder
+                        <Input
+                          value={selectedAnnotation.placeholder ?? ""}
+                          onChange={(event) => updateSelected({ placeholder: event.target.value })}
+                          className="mt-1.5 h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm font-normal text-slate-800 shadow-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                        />
+                      </label>
+                    )}
+                    <div className="grid grid-cols-2 items-end gap-3">
+                      <label className="flex h-9 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-xs font-medium text-slate-600 shadow-sm">
+                        <Checkbox checked={selectedAnnotation.required ?? false} onCheckedChange={(checked) => updateSelected({ required: checked === true })} />
+                        Required
+                      </label>
+                      <label className="text-xs font-semibold text-slate-600">
+                        Tab order
+                        <Input type="number" min="1" value={selectedAnnotation.tabIndex ?? 1} onChange={(event) => updateSelected({ tabIndex: Math.max(1, Number(event.target.value)) })} className="mt-1.5 h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm font-normal text-slate-800 shadow-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100" />
+                      </label>
+                    </div>
+                    {selectedAnnotation.type === "input" && (
+                      <>
+                        <label className="block text-xs font-semibold text-slate-600">
+                          Validation
+                          <Select
+                            value={selectedAnnotation.validation ?? "none"}
+                            onValueChange={(value) =>
+                              updateSelected({
+                                validation: value as Annotation["validation"],
+                              })
+                            }
+                          >
+                            <SelectTrigger className="mt-1.5 h-9 w-full">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="none">Any text</SelectItem>
+                              <SelectItem value="email">Email</SelectItem>
+                              <SelectItem value="number">Number</SelectItem>
+                              <SelectItem value="phone">Phone</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </label>
+                        <label className="flex items-center gap-2 text-xs font-medium text-slate-600">
+                          <Checkbox checked={selectedAnnotation.multiline ?? false} onCheckedChange={(checked) => updateSelected({ multiline: checked === true })} />
+                          Multiple lines
+                        </label>
+                      </>
+                    )}
+                    <Button type="button" variant="outline" size="sm" onClick={duplicateSelectedAcrossPages} disabled={pageOrder.length < 2} className="w-full min-w-0 px-2 text-xs">
+                      <Copy className="size-3.5" /> <span className="truncate">Duplicate on every page</span>
+                    </Button>
+                  </div>
+                )}
+                {selectedAnnotation.type === "image-placeholder" && (
+                  <div className="space-y-3 rounded-xl border border-slate-200 bg-slate-50/70 p-3">
+                    <label className="block text-xs font-semibold text-slate-600">
+                      Placeholder label
+                      <Input
+                        value={selectedAnnotation.label ?? ""}
+                        onChange={(event) =>
+                          updateSelected({ label: event.target.value })
+                        }
+                        className="mt-1.5 h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm font-normal text-slate-800 shadow-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                      />
+                    </label>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => chooseImage(selectedAnnotation.id)}
+                      className="w-full"
+                    >
+                      <ImagePlus className="size-4" />
+                      {selectedAnnotation.imageData
+                        ? "Replace image"
+                        : "Choose image"}
+                    </Button>
+                  </div>
+                )}
+                {selectedAnnotation.type !== "image" && (
+                  <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3">
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                      {selectedAnnotation.type === "input" ||
+                      selectedAnnotation.type === "textarea"
+                        ? "Text color"
+                        : "Color"}
+                    </p>
+                    <div className="mt-3">
+                      <ColorControl
+                        value={selectedAnnotation.color}
+                        onChange={(selectedColor) =>
+                          updateSelected({ color: selectedColor })
+                        }
+                      />
+                    </div>
+                  </div>
+                )}
+                {(selectedAnnotation.type === "input" ||
+                  selectedAnnotation.type === "textarea" ||
+                  selectedAnnotation.type === "dropdown" ||
+                  selectedAnnotation.type === "date" ||
+                  selectedAnnotation.type === "image-placeholder" ||
+                  selectedAnnotation.type === "cambodia-address") && (
+                  <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3">
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                      Border color
+                    </p>
+                    <div className="mt-3">
+                      <ColorControl
+                        value={
+                          selectedAnnotation.borderColor ??
+                          DEFAULT_ELEMENT_BORDER_COLOR
+                        }
+                        onChange={(borderColor) =>
+                          updateSelected({ borderColor })
+                        }
+                      />
+                    </div>
+                  </div>
+                )}
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={deleteSelected}
+                  className="w-full border-rose-200 text-rose-600 hover:bg-rose-50 hover:text-rose-700"
+                >
+                  <Trash2 className="size-4" /> Delete {selectedIds.length > 1
+                    ? "selected elements"
+                    : "annotation"}
+                </Button>
+              </div>
+            ) : (
+              <div className="flex h-[calc(100%-3rem)] flex-col items-center justify-center px-7 text-center">
+                <div className="flex size-11 items-center justify-center rounded-xl bg-slate-100 text-slate-400">
+                  <MousePointer2 className="size-5" />
+                </div>
+                <p className="mt-4 text-sm font-semibold text-slate-700">
+                  Nothing selected
+                </p>
+                <p className="mt-1 text-xs leading-5 text-slate-400">
+                  Select an annotation on the page to change its style or
+                  content.
+                </p>
+              </div>
+            )}
+          </aside>
+        </div>
+      </main>
+      <SignatureDialog
+        open={signatureOpen}
+        onOpenChange={setSignatureOpen}
+        onUse={(strokes) => {
+          setPendingSignature(
+            strokes.map((stroke) =>
+              stroke.map((point) => ({ ...point })),
+            ),
+          );
+          setSignatureOpen(false);
+          selectEditorTool("signature");
+        }}
+      />
+      <ShortcutsDialog
+        open={shortcutsOpen}
+        onOpenChange={setShortcutsOpen}
+      />
+      <AiFieldDetectionDialog
+        key={aiCandidates.map((candidate) => candidate.candidateId).join(",")}
+        open={aiDetectionOpen}
+        onOpenChange={setAiDetectionOpen}
+        candidates={aiCandidates}
+        isDetecting={isDetectingFields}
+        isApplying={isApplyingDetectedFields}
+        status={aiDetectionStatus}
+        error={aiDetectionError}
+        onDetect={() => void detectFieldsWithAi()}
+        onApply={applyDetectedFields}
+      />
+      <PdfExtractionDialog
+        open={extractionOpen}
+        onOpenChange={setExtractionOpen}
+        result={extractionResult}
+        isExtracting={isExtracting}
+        progress={extractionProgress}
+        error={extractionError}
+        onExtract={() => void extractContent()}
+      />
+      <Dialog open={templateOpen} onOpenChange={setTemplateOpen}>
+        <DialogContent className="max-h-[90dvh] min-w-0 max-w-[calc(100dvw-1rem)] overflow-x-hidden overflow-y-auto p-4 sm:max-w-xl sm:p-6 md:max-w-2xl">
+          <DialogHeader className="min-w-0 pr-6">
+            <DialogTitle className="leading-6">{editingTemplateId ? `Save template version ${editingVersionNumber ? editingVersionNumber + 1 : ""}` : "Save reusable template"}</DialogTitle>
+            <DialogDescription className="break-words leading-5">
+              {editingTemplateId ? "Your previous version and its submissions stay unchanged. Saving rotates fresh recipient links for this version." : "Name this document, define its recipients, then assign fields from the Properties panel before sharing."}
+            </DialogDescription>
+          </DialogHeader>
+          {createdShareLinks.length > 0 ? (
+            <div className="min-w-0 space-y-4">
+              <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4">
+                <p className="flex items-center gap-2 text-sm font-semibold text-emerald-800">
+                  <Check className="size-4 shrink-0" /> {editingVersionNumber && editingVersionNumber > 1 ? `Version ${editingVersionNumber} saved` : "Template saved"}
+                </p>
+                <p className="mt-1 text-xs leading-5 text-emerald-700">
+                  Copy each private link now. For security, the full token is shown only when a link is created or regenerated.
+                </p>
+              </div>
+              <div className="space-y-2">
+                {createdShareLinks.map((link) => {
+                  const copied = copiedShareLinkRoleId === link.roleId;
+                  return (
+                  <div key={link.roleId} className={`min-w-0 rounded-xl border p-3 transition-[border-color,background-color,box-shadow] duration-300 ${copied ? "border-emerald-300 bg-emerald-50/60 shadow-sm shadow-emerald-100" : "border-slate-200"}`}>
+                    <div className="flex min-w-0 items-center gap-2">
+                      <span className="size-3 shrink-0 rounded-full" style={{ backgroundColor: link.roleColor }} />
+                      <p className="min-w-0 truncate text-sm font-semibold text-slate-800">{link.roleName}</p>
+                    </div>
+                    <div className="mt-2 flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center">
+                      <p title={link.url} className={`min-w-0 flex-1 select-all truncate rounded-lg px-3 py-2 font-mono text-xs transition-colors duration-300 ${copied ? "bg-white text-emerald-700" : "bg-slate-50 text-slate-500"}`}>
+                        {link.url}
+                      </p>
+                      <Button type="button" variant="outline" size="sm" className={`w-full shrink-0 transition-all duration-200 sm:w-auto ${copied ? "copy-link-success border-emerald-300 bg-emerald-100 text-emerald-700 hover:bg-emerald-100 hover:text-emerald-700" : ""}`} aria-label={copied ? `Copied private link for ${link.roleName}` : `Copy private link for ${link.roleName}`} onClick={() => void copyShareLink(link.roleId, link.url)}>
+                        {copied ? <Check className="size-3.5" /> : <Link2 className="size-3.5" />} <span aria-live="polite">{copied ? "Copied!" : "Copy link"}</span>
+                      </Button>
+                    </div>
+                  </div>
+                  );
+                })}
+              </div>
+              <Button asChild type="button" className="w-full">
+                <a href="/templates"><FolderOpen className="size-4" /> Open template library</a>
+              </Button>
+            </div>
+          ) : (
+            <div className="space-y-5">
+              <div className="grid gap-3 sm:grid-cols-2">
+                <label className="text-xs font-semibold text-slate-600">
+                  Template name
+                  <Input value={templateName} maxLength={120} onChange={(event) => setTemplateName(event.target.value)} className="mt-1.5 h-10 w-full rounded-lg border border-slate-200 px-3 text-sm font-normal outline-none focus:border-blue-500" />
+                </label>
+                <label className="text-xs font-semibold text-slate-600">
+                  Description
+                  <Input value={templateDescription} maxLength={500} onChange={(event) => setTemplateDescription(event.target.value)} placeholder="Optional instructions" className="mt-1.5 h-10 w-full rounded-lg border border-slate-200 px-3 text-sm font-normal outline-none focus:border-blue-500" />
+                </label>
+              </div>
+              <div>
+                <div className="mb-2 flex items-center justify-between">
+                  <div>
+                    <p className="flex items-center gap-2 text-sm font-semibold text-slate-800"><Users className="size-4" /> Recipient roles</p>
+                    <p className="mt-0.5 text-xs text-slate-400">Fields without an assignment use the first recipient.</p>
+                  </div>
+                  <Button type="button" variant="outline" size="sm" onClick={addRecipientRole} disabled={recipientRoles.length >= 10}>
+                    <Plus className="size-3.5" /> Add recipient
+                  </Button>
+                </div>
+                <div className="space-y-2">
+                  {recipientRoles.map((role) => (
+                    <div key={role.id} className="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 p-2">
+                      <input type="color" aria-label={`${role.name} color`} value={role.color} onChange={(event) => updateRecipientRole(role.id, { color: event.target.value })} className="size-8 shrink-0 cursor-pointer rounded border-0 bg-transparent p-0" />
+                      <Input value={role.name} maxLength={80} onChange={(event) => updateRecipientRole(role.id, { name: event.target.value })} className="h-9 min-w-0 flex-1 rounded-lg border border-slate-200 bg-white px-3 text-sm outline-none focus:border-blue-500" />
+                      <Button type="button" variant="ghost" size="icon-sm" disabled={recipientRoles.length <= 1} onClick={() => removeRecipientRole(role.id)} className="text-rose-600 hover:bg-rose-50"><Trash2 /></Button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+          {createdShareLinks.length === 0 && (
+            <DialogFooter>
+              <Button type="button" variant="ghost" onClick={() => setTemplateOpen(false)}>Cancel</Button>
+              <Button type="button" disabled={!templateName.trim() || recipientRoles.some((role) => !role.name.trim()) || isSavingTemplate} onClick={() => void saveTemplate()}>
+                {isSavingTemplate ? <Spinner /> : <Save className="size-4" />}
+                {editingTemplateId ? "Save new version" : "Save and create links"}
+              </Button>
+            </DialogFooter>
+          )}
+        </DialogContent>
+      </Dialog>
+      <AlertDialog
+        open={pendingReplacement !== null}
+        onOpenChange={(open) => {
+          if (!open) setPendingReplacement(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogMedia className="bg-amber-100 text-amber-700">
+              <TriangleAlert />
+            </AlertDialogMedia>
+            <AlertDialogTitle>Replace this PDF?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Your current PDF and all unsaved editor changes will be removed
+              from this browser session. Save a copy first if you need them.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Keep editing</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              onClick={() => {
+                const file = pendingReplacement;
+                setPendingReplacement(null);
+                if (file) void openFile(file);
+              }}
+            >
+              Replace PDF
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </TooltipProvider>
+  );
+}
+
+function Brand(props: { compact?: boolean }) {
+  return (
+    <div
+      className="flex shrink-0 items-center gap-2.5"
+      aria-label="PDF Studio"
+    >
+      <div className="flex size-9 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-md shadow-primary/20">
+        <FileText className="size-5" />
+      </div>
+      <span
+        className={`font-semibold tracking-[-0.02em] text-slate-900 ${
+          props.compact ? "hidden text-base lg:block" : "text-lg"
+        }`}
+      >
+        PDF Studio
+      </span>
+    </div>
+  );
+}

@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "cases": [
+    {
+      "id": "english-digital-form-01",
+      "expected": [
+        {
+          "page": 1,
+          "label": "Date of Birth",
+          "tool": "date",
+          "fieldBox": { "x": 0.35, "y": 0.2, "width": 0.25, "height": 0.05 }
+        }
+      ],
+      "predicted": [
+        {
+          "page": 1,
+          "label": "Date of Birth",
+          "tool": "date",
+          "fieldBox": { "x": 0.35, "y": 0.2, "width": 0.25, "height": 0.05 }
+        }
+      ]
+    }
+  ]
+}
+
