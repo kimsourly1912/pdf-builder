@@ -25,14 +25,15 @@ CREATE INDEX workflow_review_decisions_run_idx ON workflow_review_decisions(run_
 -- A stale review aborts the entire D1 batch before changing candidate data.
 CREATE TRIGGER workflow_review_revision_guard
 BEFORE INSERT ON workflow_review_decisions
+WHEN NOT EXISTS (
+  SELECT 1 FROM workflow_runs w
+  JOIN resumes r ON r.id = w.resume_id AND r.owner_email = w.owner_email
+  JOIN candidates c ON c.id = r.candidate_id AND c.owner_email = w.owner_email
+  WHERE w.id = NEW.run_id AND w.owner_email = NEW.owner_email
+    AND w.status = 'running' AND w.lock_token = NEW.run_lock_token
+    AND c.id = NEW.candidate_id AND r.updated_at = NEW.resume_revision
+    AND c.updated_at = NEW.candidate_revision
+)
 BEGIN
-  SELECT CASE WHEN NOT EXISTS (
-    SELECT 1 FROM workflow_runs w
-    JOIN resumes r ON r.id = w.resume_id AND r.owner_email = w.owner_email
-    JOIN candidates c ON c.id = r.candidate_id AND c.owner_email = w.owner_email
-    WHERE w.id = NEW.run_id AND w.owner_email = NEW.owner_email
-      AND w.status = 'running' AND w.lock_token = NEW.run_lock_token
-      AND c.id = NEW.candidate_id AND r.updated_at = NEW.resume_revision
-      AND c.updated_at = NEW.candidate_revision
-  ) THEN RAISE(ABORT, 'WORKFLOW_REVIEW_CHANGED') END;
+  SELECT RAISE(ABORT, 'WORKFLOW_REVIEW_CHANGED');
 END;
