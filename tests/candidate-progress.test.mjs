@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { candidateNextAction } from "../features/candidate-progress/submission-progress.ts";
 import {
   automaticStage,
   transitionRequirement,
@@ -14,6 +15,31 @@ const facts = {
   invitationRequired: true,
   invitationSent: true,
 };
+test("next action opens the selected CV, contact confirmation or active preparation directly", () => {
+  const item = {
+    id: "candidate-1",
+    selectedCv: { id: "cv-2", intakeId: "intake-2" },
+    facts: { ...facts, verified: false },
+    contactConfirmed: false,
+    attention: [],
+    run: null,
+  };
+  assert.equal(candidateNextAction(item).href, "/resumes/cv-2");
+  item.facts = { ...facts, preparationCurrent: false };
+  assert.equal(candidateNextAction(item).href, "/intake/intake-2#contact");
+  item.contactConfirmed = true;
+  assert.equal(candidateNextAction(item).href, "/intake/intake-2#preparation");
+  item.run = { id: "run-1", workflowId: "workflow-1", status: "failed" };
+  assert.deepEqual(candidateNextAction(item), {
+    next: "Resolve issue",
+    href: "/workflows/workflow-1?tab=runs&run=run-1",
+  });
+  item.run.status = "running";
+  assert.equal(candidateNextAction(item).next, "View progress");
+  // New, unapproved CVs still require review despite an older preparation run.
+  item.facts.verified = false;
+  assert.equal(candidateNextAction(item).href, "/resumes/cv-2");
+});
 test("completed preparation and sent invitation do not claim the candidate has submitted forms", () => {
   assert.equal(automaticStage(facts), "awaiting_forms");
   assert.equal(transitionRequirement(facts, "ready").kind, "forms");

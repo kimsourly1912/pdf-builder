@@ -16,6 +16,7 @@ import {
   Archive,
   UserCheck,
 } from "lucide-react";
+import { useUnsavedChanges, DISCARD_EDITS } from "./use-unsaved-changes";
 import { Checkbox } from "@/components/ui/checkbox";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
@@ -72,6 +73,15 @@ export function ResumeDetailView(props: { resumeId: string }) {
     [confirmTelegram, setConfirmTelegram] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+
+  const dirty =
+    !!draft &&
+    !!resume?.candidate &&
+    (JSON.stringify(draft) !==
+      JSON.stringify(candidateDraft(resume.candidate)) ||
+      confirmTelegram !== (resume.telegramContact?.confirmed ?? false));
+  useUnsavedChanges(dirty);
+  const discardEdits = () => !dirty || window.confirm(DISCARD_EDITS);
 
   const loadResume = useCallback(async () => {
     setLoading(true);
@@ -158,7 +168,7 @@ export function ResumeDetailView(props: { resumeId: string }) {
   }
 
   async function linkDuplicate() {
-    if (!resume?.duplicateCandidate) return;
+    if (!resume?.duplicateCandidate || !discardEdits()) return;
 
     setBusy(true);
     setError("");
@@ -194,7 +204,7 @@ export function ResumeDetailView(props: { resumeId: string }) {
   }
 
   async function retryExtraction() {
-    if (!resume) return;
+    if (!resume || !discardEdits()) return;
     setAiOpen(false);
 
     setBusy(true);
@@ -232,7 +242,7 @@ export function ResumeDetailView(props: { resumeId: string }) {
   }
 
   async function deleteResume() {
-    if (!resume) return;
+    if (!resume || !discardEdits()) return;
 
     setBusy(true);
     setError("");
@@ -427,7 +437,7 @@ export function ResumeDetailView(props: { resumeId: string }) {
                   </div>
                   {resume.verificationStatus === "verified" ? (
                     <Badge className="bg-success/10 text-success">
-                      <CheckCircle2 /> Verified
+                      <CheckCircle2 /> CV approved
                     </Badge>
                   ) : (
                     <Badge variant="secondary">
@@ -442,159 +452,168 @@ export function ResumeDetailView(props: { resumeId: string }) {
                       void saveCandidate();
                     }}
                   >
-                    <div className="grid gap-4 sm:grid-cols-2">
-                      <TextField
-                        label="Full name"
-                        value={draft.fullName}
-                        onChange={(value) =>
-                          setDraft({ ...draft, fullName: value })
-                        }
-                        meta={fields?.fullName}
-                      />
-                      <TextField
-                        label="Current title"
-                        value={draft.currentTitle}
-                        onChange={(value) =>
-                          setDraft({ ...draft, currentTitle: value })
-                        }
-                        meta={fields?.currentTitle}
-                      />
-                      <TextField
-                        label="Email"
-                        type="email"
-                        value={draft.email}
-                        onChange={(value) =>
-                          setDraft({ ...draft, email: value })
-                        }
-                        meta={fields?.emails}
-                      />
-                      <TextField
-                        label="Phone"
-                        value={draft.phone}
-                        onChange={(value) =>
-                          setDraft({ ...draft, phone: value })
-                        }
-                        meta={fields?.phones}
-                      />
-                      <TextField
-                        label="Date of birth"
-                        date
-                        value={draft.dateOfBirth ?? ""}
-                        onChange={(value) =>
-                          setDraft({ ...draft, dateOfBirth: value || null })
-                        }
-                        meta={fields?.dateOfBirth}
-                      />
-                      <TextField
-                        label="Gender"
-                        value={draft.gender}
-                        onChange={(value) =>
-                          setDraft({ ...draft, gender: value })
-                        }
-                        meta={fields?.gender}
-                      />
-                      <TextField
-                        label="Nationality"
-                        value={draft.nationality}
-                        onChange={(value) =>
-                          setDraft({ ...draft, nationality: value })
-                        }
-                        meta={fields?.nationality}
-                      />
-                      <div className="sm:col-span-2">
+                    <fieldset disabled={busy}>
+                      <p
+                        role="status"
+                        className="mb-4 text-sm text-muted-foreground"
+                      >
+                        {dirty ? "Unsaved changes" : "Saved"}
+                      </p>
+                      <div className="grid gap-4 sm:grid-cols-2">
                         <TextField
-                          label="Address"
-                          value={draft.address}
+                          label="Full name"
+                          value={draft.fullName}
                           onChange={(value) =>
-                            setDraft({ ...draft, address: value })
+                            setDraft({ ...draft, fullName: value })
                           }
-                          meta={fields?.address}
+                          meta={fields?.fullName}
                         />
+                        <TextField
+                          label="Current title"
+                          value={draft.currentTitle}
+                          onChange={(value) =>
+                            setDraft({ ...draft, currentTitle: value })
+                          }
+                          meta={fields?.currentTitle}
+                        />
+                        <TextField
+                          label="Email"
+                          type="email"
+                          value={draft.email}
+                          onChange={(value) =>
+                            setDraft({ ...draft, email: value })
+                          }
+                          meta={fields?.emails}
+                        />
+                        <TextField
+                          label="Phone"
+                          value={draft.phone}
+                          onChange={(value) =>
+                            setDraft({ ...draft, phone: value })
+                          }
+                          meta={fields?.phones}
+                        />
+                        <TextField
+                          label="Date of birth"
+                          date
+                          value={draft.dateOfBirth ?? ""}
+                          onChange={(value) =>
+                            setDraft({ ...draft, dateOfBirth: value || null })
+                          }
+                          meta={fields?.dateOfBirth}
+                        />
+                        <TextField
+                          label="Gender"
+                          value={draft.gender}
+                          onChange={(value) =>
+                            setDraft({ ...draft, gender: value })
+                          }
+                          meta={fields?.gender}
+                        />
+                        <TextField
+                          label="Nationality"
+                          value={draft.nationality}
+                          onChange={(value) =>
+                            setDraft({ ...draft, nationality: value })
+                          }
+                          meta={fields?.nationality}
+                        />
+                        <div className="sm:col-span-2">
+                          <TextField
+                            label="Address"
+                            value={draft.address}
+                            onChange={(value) =>
+                              setDraft({ ...draft, address: value })
+                            }
+                            meta={fields?.address}
+                          />
+                        </div>
+                        <div className="sm:col-span-2">
+                          <TextAreaField
+                            label="Professional summary"
+                            value={draft.professionalSummary}
+                            onChange={(value) =>
+                              setDraft({
+                                ...draft,
+                                professionalSummary: value,
+                              })
+                            }
+                            meta={fields?.professionalSummary}
+                          />
+                        </div>
+                        {(
+                          [
+                            "skills",
+                            "workExperience",
+                            "education",
+                            "certifications",
+                            "languages",
+                            "links",
+                          ] as const
+                        ).map((key) => (
+                          <TextAreaField
+                            key={key}
+                            label={fieldLabel(key)}
+                            value={draft[key].join("\n")}
+                            onChange={(value) =>
+                              setDraft({ ...draft, [key]: lines(value) })
+                            }
+                            meta={fields?.[key]}
+                          />
+                        ))}
                       </div>
-                      <div className="sm:col-span-2">
-                        <TextAreaField
-                          label="Professional summary"
-                          value={draft.professionalSummary}
-                          onChange={(value) =>
-                            setDraft({
-                              ...draft,
-                              professionalSummary: value,
-                            })
-                          }
-                          meta={fields?.professionalSummary}
-                        />
-                      </div>
-                      {(
-                        [
-                          "skills",
-                          "workExperience",
-                          "education",
-                          "certifications",
-                          "languages",
-                          "links",
-                        ] as const
-                      ).map((key) => (
-                        <TextAreaField
-                          key={key}
-                          label={fieldLabel(key)}
-                          value={draft[key].join("\n")}
-                          onChange={(value) =>
-                            setDraft({ ...draft, [key]: lines(value) })
-                          }
-                          meta={fields?.[key]}
-                        />
-                      ))}
-                    </div>
-                    {resume.telegramContact && (
-                      <label className="mt-5 flex items-start gap-2 text-sm">
-                        <Checkbox
-                          checked={confirmTelegram}
-                          onCheckedChange={(v) =>
-                            setConfirmTelegram(v === true)
-                          }
-                        />
-                        <span>
-                          I confirmed this Telegram contact belongs to this
-                          candidate (
-                          {resume.telegramContact.username
-                            ? `@${resume.telegramContact.username}`
-                            : "connected user"}
-                          ).
-                        </span>
-                      </label>
-                    )}
-                    <Button
-                      type="submit"
-                      disabled={busy || resume.archived}
-                      className="mt-5 w-full"
-                    >
-                      {busy ? (
-                        <LoaderCircle className="animate-spin" />
-                      ) : (
-                        <Save />
+                      {resume.telegramContact && (
+                        <label className="mt-5 flex items-start gap-2 text-sm">
+                          <Checkbox
+                            checked={confirmTelegram}
+                            onCheckedChange={(v) =>
+                              setConfirmTelegram(v === true)
+                            }
+                          />
+                          <span>
+                            I confirmed this Telegram contact belongs to this
+                            candidate (
+                            {resume.telegramContact.username
+                              ? `@${resume.telegramContact.username}`
+                              : "connected user"}
+                            ).
+                          </span>
+                        </label>
                       )}
-                      Save changes
-                    </Button>
-                    <p className="mt-3 text-sm text-muted-foreground">
-                      Saving unfinished work keeps it pending review. Approving
-                      saves the current details and confirms this CV.{" "}
-                      <strong>This may start your published workflow.</strong>
-                    </p>
-                    <Button
-                      type="button"
-                      className="mt-3 w-full"
-                      variant="outline"
-                      disabled={
-                        busy ||
-                        resume.archived ||
-                        !draft.fullName.trim() ||
-                        !draft.email.trim()
-                      }
-                      onClick={() => void saveCandidate(true)}
-                    >
-                      <UserCheck />
-                      Approve CV
-                    </Button>
+                      <Button
+                        type="submit"
+                        disabled={busy || resume.archived}
+                        className="mt-5 w-full"
+                      >
+                        {busy ? (
+                          <LoaderCircle className="animate-spin" />
+                        ) : (
+                          <Save />
+                        )}
+                        Save changes
+                      </Button>
+                      <p className="mt-3 text-sm text-muted-foreground">
+                        Saving unfinished work keeps it pending review.
+                        Approving saves the current details and confirms this
+                        CV.{" "}
+                        <strong>This may start your published workflow.</strong>
+                      </p>
+                      <Button
+                        type="button"
+                        className="mt-3 w-full"
+                        variant="outline"
+                        disabled={
+                          busy ||
+                          resume.archived ||
+                          !draft.fullName.trim() ||
+                          !draft.email.trim()
+                        }
+                        onClick={() => void saveCandidate(true)}
+                      >
+                        <UserCheck />
+                        Approve CV
+                      </Button>
+                    </fieldset>
                   </form>
                 </CardContent>
               </Card>

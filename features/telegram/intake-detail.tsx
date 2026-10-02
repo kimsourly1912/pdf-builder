@@ -229,14 +229,6 @@ export function IntakeDetail({
           )
         ? "Resolve issue"
         : "View progress";
-  const nextAction =
-    data?.progress && data.progress.label === "CV approved" && !existingRun
-      ? !data.confirmed
-        ? { next: "Confirm contact", href: "#contact" }
-        : !workflows.length
-          ? { next: "Configure workflow", href: "/workflows" }
-          : { next: "Prepare candidate", href: "#preparation" }
-      : data?.progress;
   return (
     <AppShell displayName={displayName} fullWidth>
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -325,7 +317,154 @@ export function IntakeDetail({
               </div>
             </Card>
             <div className="order-first space-y-5 lg:order-last">
-              <Card id="contact" className="scroll-mt-24">
+              <Card id="preparation" className="scroll-mt-24">
+                <CardHeader>
+                  <CardTitle>Next step</CardTitle>
+                  <CardDescription>For {data.fileName}</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <Badge>
+                    {data.progress?.label ??
+                      (data.reviewReady ? "CV approved" : "Needs review")}
+                  </Badge>
+                  <p className="text-sm text-muted-foreground">
+                    {data.reviewReady
+                      ? `Approved in the Resume Editor${data.reviewedAt ? ` · ${runDate(data.reviewedAt)}` : ""}. Preparation reuses this approval.`
+                      : "Check the PDF and candidate details in the Resume Editor, then select Approve CV. AI extraction is optional."}
+                  </p>
+                  {data.possibleDuplicate && (
+                    <Alert variant="destructive">
+                      <AlertDescription>
+                        Resolve the possible duplicate in the Resume Editor
+                        before approval. Matching email does not authorize
+                        account reuse.
+                      </AlertDescription>
+                    </Alert>
+                  )}
+
+                  <p className="text-sm text-muted-foreground">
+                    {automatic
+                      ? "Approving a CV starts your published CV-approval workflow automatically. Use View progress for an existing preparation."
+                      : "No automatic CV-approval workflow is published. After approval, choose a published preparation workflow to start manually."}
+                  </p>
+                  {data.reviewReady &&
+                    !data.confirmed &&
+                    !data.archived &&
+                    !existingRun && (
+                      <Alert>
+                        <AlertDescription>
+                          <p>
+                            Telegram contact confirmation is required before an
+                            invitation.
+                          </p>
+                          <Button
+                            id="contact"
+                            className="mt-2 scroll-mt-24"
+                            size="sm"
+                            variant="outline"
+                            disabled={busy}
+                            onClick={() => {
+                              setConfirmed(false);
+                              setContactOpen(true);
+                            }}
+                          >
+                            Confirm contact
+                          </Button>
+                        </AlertDescription>
+                      </Alert>
+                    )}
+                  {!existingRun &&
+                    data.reviewReady &&
+                    data.confirmed &&
+                    workflows.length > 0 && (
+                      <Select value={workflowId} onValueChange={setWorkflowId}>
+                        <SelectTrigger
+                          className="w-full"
+                          aria-label="Intake workflow"
+                        >
+                          <SelectValue placeholder="Choose published workflow" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {workflows.map((w) => (
+                            <SelectItem key={w.id} value={w.id}>
+                              {w.name} ·{" "}
+                              {TRIGGER_LABELS[w.trigger ?? "staff_upload"]}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    )}
+                  {!data.reviewReady ? (
+                    <Button asChild className="w-full">
+                      <Link href={`/resumes/${data.resumeId}`}>
+                        <FilePenLine /> Review CV
+                      </Link>
+                    </Button>
+                  ) : existingRun ? (
+                    <Button asChild className="w-full" variant="outline">
+                      <Link
+                        href={`/workflows/${existingRun.workflowId}?tab=runs&run=${existingRun.id}`}
+                      >
+                        {runLabel}
+                      </Link>
+                    </Button>
+                  ) : !data.confirmed ? null : !workflows.length ? (
+                    <Button asChild className="w-full">
+                      <Link href="/workflows">Configure workflow</Link>
+                    </Button>
+                  ) : (
+                    <Button
+                      className="w-full"
+                      disabled={
+                        busy ||
+                        data.archived ||
+                        !data.reviewReady ||
+                        !data.confirmed ||
+                        !workflowId
+                      }
+                      onClick={() => {
+                        setConfirmed(data.confirmed);
+                        setReuse(
+                          !!data.existingAccount &&
+                            data.candidate.id !== "" &&
+                            data.accountCreated,
+                        );
+                        setRunOpen(true);
+                      }}
+                    >
+                      <Play />
+                      Prepare candidate
+                    </Button>
+                  )}
+                  {data.reviewReady && (
+                    <Link
+                      className="block text-sm underline"
+                      href={`/resumes/${data.resumeId}`}
+                    >
+                      View approved CV
+                    </Link>
+                  )}
+                  {!existingRun && !workflows.length && (
+                    <p className="text-xs text-muted-foreground">
+                      No suitable preparation workflow is published. Configure
+                      and publish one containing a Send Telegram invitation
+                      step.
+                    </p>
+                  )}
+                  {data.runs
+                    .filter((run) => run.id !== existingRun?.id)
+                    .map((run) => (
+                      <Link
+                        key={run.id}
+                        className="block text-sm underline"
+                        href={`/workflows/${run.workflowId}?tab=runs&run=${run.id}`}
+                      >
+                        View run · {run.status.replaceAll("_", " ")}
+                      </Link>
+                    ))}
+                </CardContent>
+              </Card>
+              <Card id="submitted-details" className="scroll-mt-24">
                 <CardHeader>
                   <CardTitle>Submitted details</CardTitle>
                   <CardDescription>
@@ -360,189 +499,10 @@ export function IntakeDetail({
                       <dd>
                         {data.accountCreated
                           ? "Created / linked"
-                          : "Created after verification when the workflow runs"}
+                          : "Created during preparation after CV approval"}
                       </dd>
                     </div>
                   </dl>
-                </CardContent>
-              </Card>
-              {data.progress && (
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Candidate progress</CardTitle>
-                    <CardDescription>
-                      For {data.progress.fileName}
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent className="space-y-3">
-                    <Badge>{data.progress.label}</Badge>
-                    <Button asChild className="w-full" variant="outline">
-                      <Link href={nextAction?.href ?? data.progress.href}>
-                        {nextAction?.next ?? data.progress.next}
-                      </Link>
-                    </Button>
-                  </CardContent>
-                </Card>
-              )}
-              <Card>
-                <CardHeader>
-                  <CardTitle>HR review</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <Badge variant={data.reviewReady ? "default" : "secondary"}>
-                    {data.reviewReady
-                      ? "CV approved"
-                      : "Needs Resume Editor review"}
-                  </Badge>
-                  <p className="text-sm text-muted-foreground">
-                    {data.reviewReady
-                      ? `Verified in the Resume Editor ${data.reviewedAt ? runDate(data.reviewedAt) : ""}. The workflow will reuse this approval.`
-                      : "Open the Resume Editor, check the PDF, enter or correct the candidate details, then save and verify. AI extraction is optional."}
-                  </p>
-                  {data.reviewReady && (
-                    <p className="text-sm">
-                      {data.candidate.fullName}
-                      <span className="block break-all text-muted-foreground">
-                        {data.candidate.email}
-                      </span>
-                    </p>
-                  )}
-                  <Button
-                    asChild
-                    variant={data.reviewReady ? "outline" : "default"}
-                    className="w-full"
-                  >
-                    <Link href={`/resumes/${data.resumeId}`}>
-                      <FilePenLine />
-                      {data.reviewReady
-                        ? "View verified CV"
-                        : "Open Resume Editor"}
-                    </Link>
-                  </Button>
-                  {data.possibleDuplicate && (
-                    <Alert variant="destructive">
-                      <AlertDescription>
-                        Resolve the possible duplicate in the Resume Editor
-                        before verification. Matching email does not authorize
-                        account reuse.
-                      </AlertDescription>
-                    </Alert>
-                  )}
-                </CardContent>
-              </Card>
-              <Card id="preparation" className="scroll-mt-24">
-                <CardHeader>
-                  <CardTitle>Preparation</CardTitle>
-                  <CardDescription>
-                    Use the verified CV to prepare the account, link the resume,
-                    assign forms, and send the Telegram invitation.
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <p className="text-sm text-muted-foreground">
-                    {automatic
-                      ? "Approving a CV starts your published CV-approval workflow automatically. Use View progress for an existing preparation."
-                      : "No automatic CV-approval workflow is published. After approval, choose a published preparation workflow to start manually."}
-                  </p>
-                  {!data.confirmed && !data.archived && (
-                    <Alert>
-                      <AlertDescription>
-                        <p>
-                          Telegram contact confirmation is required before an
-                          invitation.
-                        </p>
-                        <Button
-                          className="mt-2"
-                          size="sm"
-                          variant="outline"
-                          disabled={busy}
-                          onClick={() => {
-                            setConfirmed(false);
-                            setContactOpen(true);
-                          }}
-                        >
-                          Confirm contact
-                        </Button>
-                      </AlertDescription>
-                    </Alert>
-                  )}
-                  {!existingRun && (
-                    <Select value={workflowId} onValueChange={setWorkflowId}>
-                      <SelectTrigger
-                        className="w-full"
-                        aria-label="Intake workflow"
-                      >
-                        <SelectValue placeholder="Choose published workflow" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {workflows.map((w) => (
-                          <SelectItem key={w.id} value={w.id}>
-                            {w.name} ·{" "}
-                            {TRIGGER_LABELS[w.trigger ?? "staff_upload"]}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  )}
-                  {existingRun ? (
-                    <Button asChild className="w-full" variant="outline">
-                      <Link
-                        href={`/workflows/${existingRun.workflowId}?tab=runs&run=${existingRun.id}`}
-                      >
-                        {runLabel}
-                      </Link>
-                    </Button>
-                  ) : (
-                    <Button
-                      className="w-full"
-                      disabled={
-                        busy ||
-                        data.archived ||
-                        !data.reviewReady ||
-                        !data.confirmed ||
-                        !workflowId
-                      }
-                      onClick={() => {
-                        setConfirmed(data.confirmed);
-                        setReuse(
-                          !!data.existingAccount &&
-                            data.candidate.id !== "" &&
-                            data.accountCreated,
-                        );
-                        setRunOpen(true);
-                      }}
-                    >
-                      <Play />
-                      Run workflow
-                    </Button>
-                  )}
-                  {!data.reviewReady && (
-                    <p className="text-xs text-muted-foreground">
-                      Verify this CV in the Resume Editor to enable Run
-                      workflow. AI usage is not required.
-                    </p>
-                  )}
-                  {!existingRun && !workflows.length && (
-                    <p className="text-xs text-muted-foreground">
-                      No suitable preparation workflow is published. Configure
-                      and publish one containing a Send Telegram invitation
-                      step.{" "}
-                      <Link href="/workflows" className="underline">
-                        Configure workflow
-                      </Link>
-                    </p>
-                  )}
-                  {data.runs
-                    .filter((run) => run.id !== existingRun?.id)
-                    .map((run) => (
-                      <Link
-                        key={run.id}
-                        className="block text-sm underline"
-                        href={`/workflows/${run.workflowId}?tab=runs&run=${run.id}`}
-                      >
-                        View run · {run.status.replaceAll("_", " ")}
-                      </Link>
-                    ))}
                 </CardContent>
               </Card>
             </div>

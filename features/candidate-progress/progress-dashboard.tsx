@@ -38,6 +38,7 @@ import {
   type CandidateProgress,
   type CandidateStage,
 } from "./progress";
+import { candidateNextAction } from "./submission-progress";
 import { MoveDialog, MoveMenu } from "./progress-actions";
 type Data = {
   items: CandidateProgress[];
@@ -151,19 +152,6 @@ export function ProgressDashboard({
       void load(false);
     }
   }
-  function nextAction(item: CandidateProgress) {
-    return item.attention.length
-      ? "Resolve issue"
-      : item.run && ["queued", "running"].includes(item.run.status)
-        ? "View preparation"
-        : item.stage === "new" || item.stage === "reviewing"
-          ? "Review CV"
-          : item.stage === "approved"
-            ? "Prepare candidate"
-            : item.stage === "awaiting_forms"
-              ? "View forms"
-              : "Review submissions";
-  }
   const card = (item: CandidateProgress) => (
     <article
       key={item.id}
@@ -225,8 +213,8 @@ export function ProgressDashboard({
           {runDate(item.lastActivity)}
         </span>
         <Button asChild variant="ghost" size="sm">
-          <Link href={`/candidates/${item.id}`}>
-            {nextAction(item)}
+          <Link href={candidateNextAction(item).href}>
+            {candidateNextAction(item).next}
             <ArrowRight />
           </Link>
         </Button>
@@ -366,6 +354,14 @@ export function ProgressDashboard({
                   <h2 className="text-sm font-semibold">{STAGE_LABELS[s]}</h2>
                   <Badge variant="secondary">{data?.stats[s] ?? 0}</Badge>
                 </div>
+                {data &&
+                  data.stats[s] >
+                    data.items.filter((i) => i.stage === s).length && (
+                    <p className="mb-3 text-xs text-muted-foreground">
+                      Showing {data.items.filter((i) => i.stage === s).length}{" "}
+                      of {data.stats[s]} on this page
+                    </p>
+                  )}
                 {over === s && drag && (
                   <p className="mb-3 text-xs text-muted-foreground">
                     {transitionRequirement(drag.facts, s)
@@ -435,7 +431,9 @@ export function ProgressDashboard({
                   </TableCell>
                   <TableCell>
                     <Button asChild variant="outline" size="sm">
-                      <Link href={`/candidates/${i.id}`}>{nextAction(i)}</Link>
+                      <Link href={candidateNextAction(i).href}>
+                        {candidateNextAction(i).next}
+                      </Link>
                     </Button>
                   </TableCell>
                   <TableCell>

@@ -1,4 +1,29 @@
 import type { CandidateProgress } from "./progress";
+export function candidateNextAction(item: CandidateProgress) {
+  if (
+    item.facts.verified &&
+    item.run &&
+    ["queued", "running", "waiting_review", "failed"].includes(item.run.status)
+  ) {
+    return {
+      next:
+        item.run.status === "failed" ||
+        item.run.status === "waiting_review" ||
+        item.attention.length
+          ? "Resolve issue"
+          : "View progress",
+      href: `/workflows/${item.run.workflowId}?tab=runs&run=${item.run.id}`,
+    };
+  }
+  if (
+    item.facts.verified &&
+    item.attention.length &&
+    (item.contactConfirmed || !item.selectedCv.intakeId)
+  ) {
+    return { next: "Resolve issue", href: `/candidates/${item.id}` };
+  }
+  return submissionProgress(item);
+}
 export function submissionProgress(item: CandidateProgress) {
   const f = item.facts;
   if (!f.verified)
