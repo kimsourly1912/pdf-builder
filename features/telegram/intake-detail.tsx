@@ -184,18 +184,25 @@ export function IntakeDetail({
             Resume Editor.
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <Button variant="outline" disabled={busy} onClick={() => void load()}>
             <RefreshCw />
             Refresh
           </Button>
           {data && !data.archived && (
-            <ArchiveButton
-              type="intake"
-              id={data.id}
-              label="this intake"
-              onArchived={() => void load()}
-            />
+            <>
+              <Button asChild variant="outline">
+                <Link href={`/candidates/${data.candidate.id}`}>
+                  Candidate progress
+                </Link>
+              </Button>
+              <ArchiveButton
+                type="intake"
+                id={data.id}
+                label="this intake"
+                onArchived={() => void load()}
+              />
+            </>
           )}
         </div>
       </div>

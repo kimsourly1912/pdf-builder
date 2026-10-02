@@ -318,6 +318,29 @@ export const candidates = sqliteTable(
   ],
 );
 
+export const candidateProgress = sqliteTable(
+  "candidate_progress",
+  {
+    candidateId: text("candidate_id")
+      .primaryKey()
+      .references(() => candidates.id, { onDelete: "cascade" }),
+    ownerEmail: text("owner_email").notNull(),
+    selectedResumeId: text("selected_resume_id"),
+    primaryRunId: text("primary_run_id"),
+    manualStage: text("manual_stage"),
+    basisJson: text("basis_json"),
+    version: integer("version").notNull().default(0),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (t) => [
+    index("candidate_progress_owner_idx").on(t.ownerEmail),
+    check(
+      "candidate_progress_stage_check",
+      sql`${t.manualStage} IN ('new', 'reviewing', 'approved', 'awaiting_forms', 'ready')`,
+    ),
+  ],
+);
+
 export const resumes = sqliteTable(
   "resumes",
   {

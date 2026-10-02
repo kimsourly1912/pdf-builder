@@ -441,10 +441,12 @@ async function verifyDeployment(hostname, authenticatedCookie) {
     "/api/workflow-runs",
     "/api/intake",
     "/api/archive",
+    "/api/candidates",
     "/api/ai-field-detection/runs",
     "/workflows",
     "/intake",
     "/archive",
+    "/candidates",
     "/analyses",
   ]) {
     const response = await fetch(`https://${hostname}${path}`, {
@@ -469,6 +471,7 @@ async function verifyDeployment(hostname, authenticatedCookie) {
         {
           "/intake": "Candidate intake",
           "/archive": "Archive",
+          "/candidates": "Candidate progress",
           "/analyses": "AI analysis history",
         }[path] ?? "Workflows",
       )
