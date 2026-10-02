@@ -1,16 +1,17 @@
 # Telegram candidate intake
 
-Share `https://t.me/anghr_bot` through Messenger, LinkedIn, or Telegram. The candidate starts a private conversation and provides their full name, email address, and PDF CV. The bot stores the contact and original PDF in Candidate intake and the Resume Library. Uploading creates neither a login account nor an AI request, and does not start a workflow.
+Share `https://t.me/anghr_bot` through Messenger, LinkedIn, or Telegram. The candidate starts a private conversation and provides their full name, email address, and PDF CV. The bot stores the contact and original PDF in Candidate intake and the Resume Library. Uploading creates neither a login account nor an AI request. A published workflow with the Telegram submission starting event can prepare the CV and wait for HR approval.
 
 ## HR process
 
-1. Open **Candidate intake**, preview the CV, and confirm **Extract with AI** when paid extraction is needed. Successful extraction is reused by the workflow. Re-extraction requires another confirmation. Failed extraction remains visible and can be retried explicitly.
-2. Publish a workflow with **Review resume → Create candidate account → Link resume → Assign forms → Send Telegram invitation → Complete**. The Telegram step has an editable plain-text message with `{name}`, `{email}`, and `{formCount}` placeholders.
-3. Start the published workflow from the extracted intake. Review the CV and contact details, resolve any duplicate candidate link, and explicitly confirm the Telegram contact. Matching email alone does not authorize reuse of an existing account.
-4. Approve the review. The workflow creates or explicitly reuses the login account, links the CV, assigns the selected forms, and sends the invitation. Rejection performs none of these actions. Missing contact or bot configuration pauses delivery; HR can connect a contact from the run details without repeating account creation or assignments.
-5. New candidates receive a one-time activation button, set their own password, and continue to their forms. The link expires after 24 hours. Existing account holders receive a sign-in button. The invitation includes the email address; no temporary password is sent or exposed to HR for Telegram workflows.
+1. Open **Candidate intake** for bot-provided contact details, CV preview, CV history and verification status. Each Telegram contact has one inbox row; additional CVs appear in its history.
+2. Open the **Resume Editor**, enter or correct the candidate details, confirm their Telegram contact, then **Save and verify CV**. Paid AI extraction is optional and requires a separate confirmation in this editor. Neither submission nor a workflow makes a paid extraction request.
+3. Publish a workflow with a clear starting event: staff upload, Telegram submission, HR verification, or manual start. Legacy workflows keep their staff-upload event. Use the HR-verification event for account, form and Telegram invitation automation after the editor review.
+4. A verified intake can **Run workflow**. This reuses the editor approval without requiring a second CV review. Confirm contact ownership and explicitly approve reuse when an email already has an account. Changed CV/candidate revisions require a fresh review; duplicate candidate links must be resolved first.
+5. The workflow creates or explicitly reuses the login account, links the CV, assigns forms and sends the Telegram invitation. Rejection creates no account or forms. Missing configuration pauses delivery; retry after fixing it preserves previous assignments and accounts.
+6. New candidates receive a one-time activation button, set their own password, and continue to their forms. The link expires after 24 hours. Existing account holders receive a sign-in button. No temporary password is sent or exposed for Telegram workflows.
 
-The intake list searches and filters the most recent 200 submissions. The Resume Library's extraction action directs Telegram CVs to their intake confirmation screen.
+After submission, arbitrary messages or unsolicited PDFs do not create another intake. The bot offers `/add_cv` for an additional CV or `/replace_cv` to archive the latest unverified CV and store its replacement. Replacement of a verified CV is blocked; HR can use the archive and editor instead. Both choices retain the contact and candidate identity. No AI runs automatically.
 
 ## Production configuration
 

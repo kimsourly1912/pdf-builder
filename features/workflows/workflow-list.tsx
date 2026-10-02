@@ -5,34 +5,206 @@ import { Plus, Workflow, LoaderCircle } from "lucide-react";
 import { AppShell } from "@/components/patterns/app-shell";
 import { PageHeader } from "@/components/patterns/page-header";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { WorkflowRunsView } from "./workflow-runs";
 import { workflowApi, errorText, runDate } from "./client";
-import type { WorkflowSummary } from "./workflow";
+import {
+  TRIGGER_LABELS,
+  type WorkflowTrigger,
+  type WorkflowSummary,
+} from "./workflow";
+import { ArchiveButton } from "@/features/archive/archive-button";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import {
+  Select,
+  SelectTrigger,
+  SelectValue,
+  SelectContent,
+  SelectItem,
+} from "@/components/ui/select";
 
 export function WorkflowList(props: { displayName: string }) {
+  const [createOpen, setCreateOpen] = useState(false),
+    [trigger, setTrigger] = useState<WorkflowTrigger>("resume_verified");
   const [items, setItems] = useState<WorkflowSummary[]>([]);
-  const [loading, setLoading] = useState(true); const [busy, setBusy] = useState(false); const [error, setError] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
   const load = useCallback(async () => {
-    try { const data = await workflowApi<{ items: WorkflowSummary[] }>("/api/workflows"); setItems(data.items); setError(""); }
-    catch (e) { setError(errorText(e)); } finally { setLoading(false); }
+    try {
+      const data = await workflowApi<{ items: WorkflowSummary[] }>(
+        "/api/workflows",
+      );
+      setItems(data.items);
+      setError("");
+    } catch (e) {
+      setError(errorText(e));
+    } finally {
+      setLoading(false);
+    }
   }, []);
-  useEffect(() => { const timer = window.setTimeout(() => void load(), 0); return () => window.clearTimeout(timer); }, [load]);
+  useEffect(() => {
+    const timer = window.setTimeout(() => void load(), 0);
+    return () => window.clearTimeout(timer);
+  }, [load]);
   async function create() {
-    setBusy(true); setError("");
-    try { const data = await workflowApi<{ workflow: WorkflowSummary }>("/api/workflows", { method: "POST" }); window.location.assign(`/workflows/${data.workflow.id}`); }
-    catch (e) { setError(errorText(e)); setBusy(false); }
+    setBusy(true);
+    setError("");
+    try {
+      const data = await workflowApi<{ workflow: WorkflowSummary }>(
+        "/api/workflows",
+        { method: "POST", body: JSON.stringify({ trigger }) },
+      );
+      window.location.assign(`/workflows/${data.workflow.id}`);
+    } catch (e) {
+      setError(errorText(e));
+      setBusy(false);
+    }
   }
-  return <AppShell displayName={props.displayName} fullWidth>
-    <PageHeader title="Workflows" description="Automate candidate preparation after your team uploads a resume." actions={<Button disabled={busy} onClick={() => void create()}>{busy ? <LoaderCircle className="animate-spin" /> : <Plus />} New workflow</Button>} />
-    {error && <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>}
-    <Tabs defaultValue="workflows"><TabsList><TabsTrigger value="workflows">Workflows</TabsTrigger><TabsTrigger value="runs">All runs</TabsTrigger></TabsList>
-      <TabsContent value="workflows" className="mt-5">
-        {loading ? <p className="py-12 text-center text-muted-foreground">Loading workflows…</p> : !items.length ? <Card><CardContent className="flex flex-col items-center gap-4 py-16 text-center"><Workflow className="size-10 text-muted-foreground" /><div><h2 className="font-semibold">Create your first candidate workflow</h2><p className="mt-2 max-w-md text-sm text-muted-foreground">Start with extraction, manual CV review, account creation, resume linking, and form assignment.</p></div><Button onClick={() => void create()} disabled={busy}><Plus /> Create workflow</Button></CardContent></Card> : <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">{items.map(w => <Card key={w.id}><CardHeader><div className="flex items-center justify-between"><Workflow className="size-5 text-muted-foreground" /><Badge variant={w.active ? "default" : "secondary"}>{w.active ? "Published" : w.version ? "Paused" : "Draft"}</Badge></div><CardTitle className="mt-3">{w.name}</CardTitle><CardDescription>{w.version ? `Version ${w.version} · ` : ""}Updated {runDate(w.updatedAt)}</CardDescription></CardHeader><CardContent><Button asChild variant="outline" className="w-full"><Link href={`/workflows/${w.id}`}>Open workflow</Link></Button></CardContent></Card>)}</div>}
-      </TabsContent><TabsContent value="runs" className="mt-5"><WorkflowRunsView /></TabsContent>
-    </Tabs>
-  </AppShell>;
+  return (
+    <AppShell displayName={props.displayName} fullWidth>
+      <PageHeader
+        title="Workflows"
+        description="Choose a starting event and automate candidate preparation for that purpose."
+        actions={
+          <Button disabled={busy} onClick={() => setCreateOpen(true)}>
+            {busy ? <LoaderCircle className="animate-spin" /> : <Plus />} New
+            workflow
+          </Button>
+        }
+      />
+      {error && (
+        <Alert variant="destructive">
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      )}
+      <Tabs defaultValue="workflows">
+        <TabsList>
+          <TabsTrigger value="workflows">Workflows</TabsTrigger>
+          <TabsTrigger value="runs">All runs</TabsTrigger>
+        </TabsList>
+        <TabsContent value="workflows" className="mt-5">
+          {loading ? (
+            <p className="py-12 text-center text-muted-foreground">
+              Loading workflows…
+            </p>
+          ) : !items.length ? (
+            <Card>
+              <CardContent className="flex flex-col items-center gap-4 py-16 text-center">
+                <Workflow className="size-10 text-muted-foreground" />
+                <div>
+                  <h2 className="font-semibold">
+                    Create your first candidate workflow
+                  </h2>
+                  <p className="mt-2 max-w-md text-sm text-muted-foreground">
+                    Choose a starting event, prepare CV data, review, create an
+                    account, resume linking, and form assignment.
+                  </p>
+                </div>
+                <Button onClick={() => setCreateOpen(true)} disabled={busy}>
+                  <Plus /> Create workflow
+                </Button>
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+              {items.map((w) => (
+                <Card key={w.id}>
+                  <CardHeader>
+                    <div className="flex items-center justify-between">
+                      <Workflow className="size-5 text-muted-foreground" />
+                      <Badge variant={w.active ? "default" : "secondary"}>
+                        {w.active
+                          ? "Published"
+                          : w.version
+                            ? "Paused"
+                            : "Draft"}
+                      </Badge>
+                    </div>
+                    <CardTitle className="mt-3">{w.name}</CardTitle>
+                    <CardDescription>
+                      {w.version ? `Version ${w.version} · ` : ""}Updated{" "}
+                      {runDate(w.updatedAt)}
+                      <span className="mt-1 block">
+                        Starts: {TRIGGER_LABELS[w.trigger ?? "staff_upload"]}
+                      </span>
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <Button asChild variant="outline" className="w-full">
+                      <Link href={`/workflows/${w.id}`}>Open workflow</Link>
+                    </Button>
+                    <div className="mt-3">
+                      <ArchiveButton
+                        type="workflow"
+                        id={w.id}
+                        label={w.name}
+                        onArchived={() => void load()}
+                      />
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          )}
+        </TabsContent>
+        <TabsContent value="runs" className="mt-5">
+          <WorkflowRunsView />
+        </TabsContent>
+      </Tabs>
+      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Create a workflow for a purpose</DialogTitle>
+            <DialogDescription>
+              The starting event determines when this workflow runs. AI
+              extraction remains optional.
+            </DialogDescription>
+          </DialogHeader>
+          <Select
+            value={trigger}
+            onValueChange={(v) => setTrigger(v as WorkflowTrigger)}
+          >
+            <SelectTrigger
+              className="w-full"
+              aria-label="Workflow starting event"
+            >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {Object.entries(TRIGGER_LABELS).map(([value, label]) => (
+                <SelectItem key={value} value={value}>
+                  {label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCreateOpen(false)}>
+              Cancel
+            </Button>
+            <Button disabled={busy} onClick={() => void create()}>
+              Create workflow
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </AppShell>
+  );
 }

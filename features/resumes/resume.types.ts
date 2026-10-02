@@ -24,11 +24,22 @@ export const RESUME_STATUSES = [
 
 export type ResumeStatus = (typeof RESUME_STATUSES)[number];
 
-export const RESUME_EXTRACTION_STATUSES = ["queued", "processing", "completed", "failed"] as const;
-export type ResumeExtractionStatus = (typeof RESUME_EXTRACTION_STATUSES)[number];
+export const RESUME_EXTRACTION_STATUSES = [
+  "queued",
+  "processing",
+  "completed",
+  "failed",
+] as const;
+export type ResumeExtractionStatus =
+  (typeof RESUME_EXTRACTION_STATUSES)[number];
 
-export const RESUME_VERIFICATION_STATUSES = ["unverified", "needs_attention", "verified"] as const;
-export type ResumeVerificationStatus = (typeof RESUME_VERIFICATION_STATUSES)[number];
+export const RESUME_VERIFICATION_STATUSES = [
+  "unverified",
+  "needs_attention",
+  "verified",
+] as const;
+export type ResumeVerificationStatus =
+  (typeof RESUME_VERIFICATION_STATUSES)[number];
 
 export type ResumeVerificationState = "extracted" | "verified";
 
@@ -127,6 +138,9 @@ export type ResumeSummary = {
 
 export type ResumeDetail = ResumeSummary & {
   intakeId?: string;
+  archived?: boolean;
+  candidateRevision?: string;
+  telegramContact?: { username: string; confirmed: boolean };
   note: string;
   extraction: ResumeExtractionPayload | null;
   extractionVersion: number | null;
@@ -175,10 +189,16 @@ export function isResumeStatus(value: unknown): value is ResumeStatus {
   return RESUME_STATUSES.includes(value as ResumeStatus);
 }
 
-export function isResumeExtractionStatus(value: unknown): value is ResumeExtractionStatus {
+export function isResumeExtractionStatus(
+  value: unknown,
+): value is ResumeExtractionStatus {
   return RESUME_EXTRACTION_STATUSES.includes(value as ResumeExtractionStatus);
 }
 
-export function isResumeVerificationStatus(value: unknown): value is ResumeVerificationStatus {
-  return RESUME_VERIFICATION_STATUSES.includes(value as ResumeVerificationStatus);
+export function isResumeVerificationStatus(
+  value: unknown,
+): value is ResumeVerificationStatus {
+  return RESUME_VERIFICATION_STATUSES.includes(
+    value as ResumeVerificationStatus,
+  );
 }

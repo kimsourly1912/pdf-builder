@@ -1,16 +1,14 @@
 # Candidate preparation workflows
 
-The Workflows page automates the existing staff resume-upload process. It does
-not add anonymous uploads, public registration, or invitation emails.
+The Workflows page automates candidate preparation from staff uploads, Telegram submissions, HR verification, or a manual start. The starting event is chosen when creating a workflow and can be edited in its starting step. AI extraction is optional; workflows reuse stored data and never make a paid extraction request.
 
 ## Configure and run
 
-1. Open **Workflows → New workflow**.
+1. Open **Workflows → Create workflow** and choose its starting event.
 2. Select **Assign forms**, add templates and their recipient roles, and apply
    the step settings. Existing template resume mappings supply the autofill.
-3. Save a draft or publish the workflow. Publication enables new staff uploads.
-4. Upload a resume through the existing Resume Library. A scheduled worker
-   starts its run within approximately one minute, subject to workload.
+3. Save a draft or publish the workflow. Publication enables the selected starting event.
+4. Submit or verify a CV according to the selected event, or start the workflow manually. The scheduled worker processes queued runs.
 5. Open **Runs → Review CV**. Compare the PDF with extracted data, correct the
    fields, and complete the review checklist. Resolve duplicates in the Resume
    Library before approval.
@@ -28,7 +26,7 @@ disables future upload triggers and does not stop existing runs.
 - React Flow provides dragging, connection handles, zoom, and the canvas.
 - shadcn/ui supplies panels and form controls; TanStack Form manages editor
   settings and CV review validation.
-- Supported steps: staff upload, AI extraction, manual review, candidate account,
+- Supported steps: purpose-based starting event, optional resume preparation, HR review, candidate account,
   resume link, form assignment, conditions, complete, and stop.
 - Conditions compare resume source or applied position with an exact value,
   ignoring whitespace and letter case. Connect both branches.
@@ -60,8 +58,7 @@ confirm the owner-scoped candidate account, and it must not be linked to another
 candidate. Existing account passwords are preserved.
 
 For an account-creation conflict, choose **Return to review**, resolve the account
-details, and approve again. For extraction problems, use the existing resume
-analysis/retry controls, then retry the workflow step. Removed or archived
+details, and approve again. For CV-data problems, edit and verify the CV in the Resume Editor; optional paid extraction can help but is never required. Removed or archived
 resources produce an actionable failure and retain run history.
 
 ## Install and validate
@@ -79,6 +76,7 @@ npm test
 Migration `0019_candidate_workflows.sql` adds the workflow tables and review
 revision guard. Migration `0020_workflow_execution_guards.sql` protects account,
 resume-link, and assignment batches against expired or replaced worker leases.
+Migration `0022_archive_and_submission_choices.sql` adds central archive retention, bot CV choices and guarded manual verification. See [Telegram intake](telegram-candidate-intake.md) and [Archive](archive.md).
 Unexpected database errors use a safe staff-facing message; account progress is
 recorded only after its transaction succeeds. The production deployment script applies D1 migrations
 before publishing the Worker. Pushing a validated commit to

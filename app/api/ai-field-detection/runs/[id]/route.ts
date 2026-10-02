@@ -1,3 +1,4 @@
+import { isArchived } from "@/features/archive/archive.server";
 import { and, eq, inArray } from "drizzle-orm";
 
 import { getDb } from "@/db";
@@ -41,6 +42,11 @@ export async function PATCH(request: Request, context: RouteContext) {
     const { id } = await context.params;
     const run = await findAiFieldDetectionRunForOwner(id, ownerEmail);
     if (!run) return jsonError("AI analysis not found.", 404);
+    if (await isArchived("ai_run", id))
+      return jsonError(
+        "Restore this analysis from Archive before reviewing it.",
+        409,
+      );
     if (run.status === "reviewed") {
       const acceptedCandidates = parseStoredReviewedCandidates(
         run.reviewedCandidatesJson,

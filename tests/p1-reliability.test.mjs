@@ -69,11 +69,11 @@ test("verifies stored PDF checksums before owner download", () => {
   assert.match(resume, /sha256Hex\(bytes\)/);
 });
 
-test("destructive routes enqueue cleanup before deleting database records", () => {
-  const template = read("app/api/templates/[id]/route.ts");
-  const resume = read("app/api/resumes/[id]/route.ts");
-  assert.match(template, /INSERT OR IGNORE INTO storage_cleanup_jobs/);
-  assert.match(template, /DELETE FROM templates/);
-  assert.match(resume, /INSERT OR IGNORE INTO storage_cleanup_jobs/);
-  assert.match(resume, /DELETE FROM resumes/);
+test("normal removal archives and permanent deletion queues file cleanup", () => {
+  const archive = read("features/archive/archive.server.ts");
+  assert.match(read("app/api/templates/[id]/route.ts"), /archiveEntity/);
+  assert.match(read("app/api/resumes/[id]/route.ts"), /archiveEntity/);
+  assert.match(archive, /INSERT OR IGNORE INTO storage_cleanup_jobs/);
+  assert.match(archive, /archive_transition_guards/);
+  assert.match(archive, /DELETE FROM/);
 });

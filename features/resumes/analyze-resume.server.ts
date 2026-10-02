@@ -1,4 +1,8 @@
-import { telegramIntakes, intakeExtractionGuards } from "@/features/telegram/schema";
+import { isArchived } from "@/features/archive/archive.server";
+import {
+  telegramIntakes,
+  intakeExtractionGuards,
+} from "@/features/telegram/schema";
 import { extractResumeProfile } from "@/features/resumes/resume-extraction";
 import { and, desc, eq, ne, or, type SQL } from "drizzle-orm";
 
@@ -13,7 +17,10 @@ import {
   resumes,
 } from "@/db/schema";
 import { createAuditEvent } from "@/features/audit/audit.server";
-import { normalizeEmail, normalizePhone } from "@/features/resumes/resume-extraction";
+import {
+  normalizeEmail,
+  normalizePhone,
+} from "@/features/resumes/resume-extraction";
 import {
   extractResumeWithOpenAi,
   ResumeExtractionProviderError,
@@ -45,10 +52,43 @@ export async function analyzeResumeForOwner(
       .where(and(eq(resumes.id, id), eq(resumes.ownerEmail, ownerEmail)))
       .limit(1);
     if (!resume) return jsonError("Resume not found.", 404);
+    if (await isArchived("resume", id))
+      return jsonError(
+        "Restore this CV from Archive before requesting extraction.",
+        409,
+      );
 
-    const [intake] = await db.select().from(telegramIntakes).where(and(eq(telegramIntakes.resumeId,id),eq(telegramIntakes.ownerEmail,ownerEmail))).limit(1);
-    if (intake && (!options.intakeToken || intake.extractionToken !== options.intakeToken)) return jsonError("Open Candidate intake and confirm paid AI extraction first.",409);
-    const [intakeCandidate] = intake && resume.candidateId ? await db.select({updatedAt:candidates.updatedAt}).from(candidates).where(and(eq(candidates.id,resume.candidateId),eq(candidates.ownerEmail,ownerEmail))).limit(1) : [];
+    const [intake] = await db
+      .select()
+      .from(telegramIntakes)
+      .where(
+        and(
+          eq(telegramIntakes.resumeId, id),
+          eq(telegramIntakes.ownerEmail, ownerEmail),
+        ),
+      )
+      .limit(1);
+    if (
+      intake &&
+      (!options.intakeToken || intake.extractionToken !== options.intakeToken)
+    )
+      return jsonError(
+        "Open Candidate intake and confirm paid AI extraction first.",
+        409,
+      );
+    const [intakeCandidate] =
+      intake && resume.candidateId
+        ? await db
+            .select({ updatedAt: candidates.updatedAt })
+            .from(candidates)
+            .where(
+              and(
+                eq(candidates.id, resume.candidateId),
+                eq(candidates.ownerEmail, ownerEmail),
+              ),
+            )
+            .limit(1)
+        : [];
     const [latestExtraction] = await db
       .select()
       .from(resumeExtractions)
@@ -65,7 +105,14 @@ export async function analyzeResumeForOwner(
     const nextExtractionVersion = (latestExtraction?.versionNumber ?? 0) + 1;
     const stored = latestExtraction
       ? parseStoredExtraction(latestExtraction.fieldsJson)
-      : intake ? extractResumeProfile(Array.from({length:resume.pageCount},(_,i)=>({pageNumber:i+1,text:""}))) : null;
+      : intake
+        ? extractResumeProfile(
+            Array.from({ length: resume.pageCount }, (_, i) => ({
+              pageNumber: i + 1,
+              text: "",
+            })),
+          )
+        : null;
     if (!stored) {
       return jsonError(
         "This resume has no readable extraction to use as a fallback.",
@@ -100,9 +147,10 @@ export async function analyzeResumeForOwner(
         fallback,
       });
     } catch (error) {
-      const code = error instanceof ResumeExtractionProviderError
-        ? error.code
-        : "AI_PROVIDER_FAILED";
+      const code =
+        error instanceof ResumeExtractionProviderError
+          ? error.code
+          : "AI_PROVIDER_FAILED";
       const now = new Date().toISOString();
       await db.batch([
         db.insert(resumeProcessingJobs).values({
@@ -115,11 +163,17 @@ export async function analyzeResumeForOwner(
           completedAt: now,
           createdAt: now,
         }),
-        db.update(resumes).set({
-          status: "needs_attention",
-          errorMessage: "AI analysis could not be completed. The previous extraction is still available.",
-          updatedAt: now,
-        }).where(and(eq(resumes.id, resume.id), eq(resumes.ownerEmail, ownerEmail))),
+        db
+          .update(resumes)
+          .set({
+            status: "needs_attention",
+            errorMessage:
+              "AI analysis could not be completed. The previous extraction is still available.",
+            updatedAt: now,
+          })
+          .where(
+            and(eq(resumes.id, resume.id), eq(resumes.ownerEmail, ownerEmail)),
+          ),
       ]);
       console.error("Resume AI analysis failed", { resumeId: resume.id, code });
       return jsonError(
@@ -133,15 +187,28 @@ export async function analyzeResumeForOwner(
     const email = extraction.fields.emails.value?.[0] ?? "";
     const phone = extraction.fields.phones.value?.[0] ?? "";
     const matches: SQL[] = [];
-    if (email) matches.push(eq(candidates.normalizedEmail, normalizeEmail(email)));
-    if (phone) matches.push(eq(candidates.normalizedPhone, normalizePhone(phone)));
-    const duplicate = matches.length > 0
-      ? (await db.select().from(candidates).where(and(
-          eq(candidates.ownerEmail, ownerEmail),
-          resume.candidateId ? ne(candidates.id, resume.candidateId) : undefined,
-          or(...matches),
-        )).limit(1))[0] ?? null
-      : null;
+    if (email)
+      matches.push(eq(candidates.normalizedEmail, normalizeEmail(email)));
+    if (phone)
+      matches.push(eq(candidates.normalizedPhone, normalizePhone(phone)));
+    const duplicate =
+      matches.length > 0
+        ? ((
+            await db
+              .select()
+              .from(candidates)
+              .where(
+                and(
+                  eq(candidates.ownerEmail, ownerEmail),
+                  resume.candidateId
+                    ? ne(candidates.id, resume.candidateId)
+                    : undefined,
+                  or(...matches),
+                ),
+              )
+              .limit(1)
+          )[0] ?? null)
+        : null;
 
     const now = new Date().toISOString();
     const extractionId = crypto.randomUUID();
@@ -149,141 +216,215 @@ export async function analyzeResumeForOwner(
     const statements = [];
     if (!candidateId && !duplicate) {
       candidateId = crypto.randomUUID();
-      statements.push(db.insert(candidates).values(
-        candidateInsertFromExtraction(extraction, {
-          id: candidateId,
-          ownerEmail,
-          now,
-        }),
-      ));
+      statements.push(
+        db.insert(candidates).values(
+          candidateInsertFromExtraction(extraction, {
+            id: candidateId,
+            ownerEmail,
+            now,
+          }),
+        ),
+      );
     }
     if (candidateId && resume.candidateId) {
-      const [candidate] = await db.select().from(candidates).where(and(
-        eq(candidates.id, candidateId),
-        eq(candidates.ownerEmail, ownerEmail),
-      )).limit(1);
+      const [candidate] = await db
+        .select()
+        .from(candidates)
+        .where(
+          and(
+            eq(candidates.id, candidateId),
+            eq(candidates.ownerEmail, ownerEmail),
+          ),
+        )
+        .limit(1);
       if (candidate?.verificationStatus !== "verified") {
         const next = candidateInsertFromExtraction(extraction, {
           id: candidate.id,
           ownerEmail,
           now,
         });
-        statements.push(db.update(candidates).set({
-          fullName: next.fullName,
-          firstName: next.firstName,
-          lastName: next.lastName,
-          email: next.email,
-          normalizedEmail: next.normalizedEmail,
-          phone: next.phone,
-          normalizedPhone: next.normalizedPhone,
-          address: next.address,
-          dateOfBirth: next.dateOfBirth,
-          gender: next.gender,
-          nationality: next.nationality,
-          currentTitle: next.currentTitle,
-          professionalSummary: next.professionalSummary,
-          skillsJson: next.skillsJson,
-          workExperienceJson: next.workExperienceJson,
-          educationJson: next.educationJson,
-          certificationsJson: next.certificationsJson,
-          languagesJson: next.languagesJson,
-          linksJson: next.linksJson,
-          updatedAt: now,
-        }).where(and(
-          eq(candidates.id, candidate.id),
-          eq(candidates.ownerEmail, ownerEmail),
-        )));
+        statements.push(
+          db
+            .update(candidates)
+            .set({
+              fullName: next.fullName,
+              firstName: next.firstName,
+              lastName: next.lastName,
+              email: next.email,
+              normalizedEmail: next.normalizedEmail,
+              phone: next.phone,
+              normalizedPhone: next.normalizedPhone,
+              address: next.address,
+              dateOfBirth: next.dateOfBirth,
+              gender: next.gender,
+              nationality: next.nationality,
+              currentTitle: next.currentTitle,
+              professionalSummary: next.professionalSummary,
+              skillsJson: next.skillsJson,
+              workExperienceJson: next.workExperienceJson,
+              educationJson: next.educationJson,
+              certificationsJson: next.certificationsJson,
+              languagesJson: next.languagesJson,
+              linksJson: next.linksJson,
+              updatedAt: now,
+            })
+            .where(
+              and(
+                eq(candidates.id, candidate.id),
+                eq(candidates.ownerEmail, ownerEmail),
+              ),
+            ),
+        );
       }
     }
 
-    statements.push(db.insert(resumeExtractions).values({
-      id: extractionId,
-      resumeId: resume.id,
-      versionNumber: nextExtractionVersion,
-      engine: extraction.engine,
-      status: "completed",
-      fieldsJson: JSON.stringify(extraction),
-      pageCount: extraction.pageCount,
-      scannedPageCount: extraction.scannedPageCount,
-      createdByEmail: ownerEmail,
-      createdAt: now,
-    }));
+    statements.push(
+      db.insert(resumeExtractions).values({
+        id: extractionId,
+        resumeId: resume.id,
+        versionNumber: nextExtractionVersion,
+        engine: extraction.engine,
+        status: "completed",
+        fieldsJson: JSON.stringify(extraction),
+        pageCount: extraction.pageCount,
+        scannedPageCount: extraction.scannedPageCount,
+        createdByEmail: ownerEmail,
+        createdAt: now,
+      }),
+    );
 
     if (candidateId) {
-      const [latestProfile] = await db.select({
-        versionNumber: candidateProfileVersions.versionNumber,
-      }).from(candidateProfileVersions).where(and(
-        eq(candidateProfileVersions.ownerEmail, ownerEmail),
-        eq(candidateProfileVersions.candidateId, candidateId),
-      )).orderBy(desc(candidateProfileVersions.versionNumber)).limit(1);
-      statements.push(db.insert(candidateProfileVersions).values({
-        id: crypto.randomUUID(),
-        ownerEmail,
-        candidateId,
-        resumeId: resume.id,
-        extractionId,
-        versionNumber: (latestProfile?.versionNumber ?? 0) + 1,
-        schemaVersion: 2,
-        profileJson: JSON.stringify(extraction.profile),
-        verificationStatus: "extracted",
-        source: extraction.engine,
-        createdByEmail: ownerEmail,
-        createdAt: now,
-      }));
+      const [latestProfile] = await db
+        .select({
+          versionNumber: candidateProfileVersions.versionNumber,
+        })
+        .from(candidateProfileVersions)
+        .where(
+          and(
+            eq(candidateProfileVersions.ownerEmail, ownerEmail),
+            eq(candidateProfileVersions.candidateId, candidateId),
+          ),
+        )
+        .orderBy(desc(candidateProfileVersions.versionNumber))
+        .limit(1);
+      statements.push(
+        db.insert(candidateProfileVersions).values({
+          id: crypto.randomUUID(),
+          ownerEmail,
+          candidateId,
+          resumeId: resume.id,
+          extractionId,
+          versionNumber: (latestProfile?.versionNumber ?? 0) + 1,
+          schemaVersion: 2,
+          profileJson: JSON.stringify(extraction.profile),
+          verificationStatus: "extracted",
+          source: extraction.engine,
+          createdByEmail: ownerEmail,
+          createdAt: now,
+        }),
+      );
     }
     if (candidateId && !resume.candidateId) {
-      statements.push(db.insert(candidateResumeLinks).values({
+      statements.push(
+        db.insert(candidateResumeLinks).values({
+          id: crypto.randomUUID(),
+          candidateId,
+          resumeId: resume.id,
+          linkType: "automatic",
+          createdByEmail: ownerEmail,
+          createdAt: now,
+        }),
+      );
+    }
+    const status = resumeStatusForExtraction(
+      extraction,
+      Boolean(duplicate),
+      false,
+    );
+    statements.push(
+      db.insert(resumeProcessingJobs).values({
         id: crypto.randomUUID(),
-        candidateId,
         resumeId: resume.id,
-        linkType: "automatic",
-        createdByEmail: ownerEmail,
+        attemptNumber: nextAttempt,
+        status: "completed",
+        errorCode: null,
+        startedAt: now,
+        completedAt: now,
         createdAt: now,
-      }));
-    }
-    const status = resumeStatusForExtraction(extraction, Boolean(duplicate), false);
-    statements.push(db.insert(resumeProcessingJobs).values({
-      id: crypto.randomUUID(),
-      resumeId: resume.id,
-      attemptNumber: nextAttempt,
-      status: "completed",
-      errorCode: null,
-      startedAt: now,
-      completedAt: now,
-      createdAt: now,
-    }));
-    statements.push(db.update(resumes).set({
-      candidateId,
-      duplicateCandidateId: duplicate?.id ?? null,
-      status,
-      verificationStatus: status === "ready" ? "unverified" : "needs_attention",
-      errorMessage: null,
-      updatedAt: now,
-    }).where(and(eq(resumes.id, resume.id), eq(resumes.ownerEmail, ownerEmail))));
-    statements.push(db.insert(auditEvents).values(createAuditEvent({
-      request,
-      ownerEmail,
-      actorType: "owner",
-      actorId: ownerEmail,
-      action: "resume.ai_analyzed",
-      targetType: "resume",
-      targetId: resume.id,
-      metadata: {
-        extractionVersion: nextExtractionVersion,
-        engine: extraction.engine,
-        status,
-      },
-      createdAt: now,
-    })));
+      }),
+    );
+    statements.push(
+      db
+        .update(resumes)
+        .set({
+          candidateId,
+          duplicateCandidateId: duplicate?.id ?? null,
+          status,
+          verificationStatus:
+            status === "ready" ? "unverified" : "needs_attention",
+          errorMessage: null,
+          updatedAt: now,
+        })
+        .where(
+          and(eq(resumes.id, resume.id), eq(resumes.ownerEmail, ownerEmail)),
+        ),
+    );
+    statements.push(
+      db.insert(auditEvents).values(
+        createAuditEvent({
+          request,
+          ownerEmail,
+          actorType: "owner",
+          actorId: ownerEmail,
+          action: "resume.ai_analyzed",
+          targetType: "resume",
+          targetId: resume.id,
+          metadata: {
+            extractionVersion: nextExtractionVersion,
+            engine: extraction.engine,
+            status,
+          },
+          createdAt: now,
+        }),
+      ),
+    );
     if (intake && options.intakeToken && intakeCandidate) {
-      statements.unshift(db.insert(intakeExtractionGuards).values({intakeId:intake.id,lockToken:options.intakeToken,resumeRevision:resume.updatedAt,candidateRevision:intakeCandidate.updatedAt,checkedAt:new Date().toISOString()}));
-      statements.push(db.update(telegramIntakes).set({extractionStatus:"extracted",extractionToken:null,extractionUntil:null}).where(and(eq(telegramIntakes.id,intake.id),eq(telegramIntakes.extractionToken,options.intakeToken))));
+      statements.unshift(
+        db
+          .insert(intakeExtractionGuards)
+          .values({
+            intakeId: intake.id,
+            lockToken: options.intakeToken,
+            resumeRevision: resume.updatedAt,
+            candidateRevision: intakeCandidate.updatedAt,
+            checkedAt: new Date().toISOString(),
+          }),
+      );
+      statements.push(
+        db
+          .update(telegramIntakes)
+          .set({
+            extractionStatus: "extracted",
+            extractionToken: null,
+            extractionUntil: null,
+          })
+          .where(
+            and(
+              eq(telegramIntakes.id, intake.id),
+              eq(telegramIntakes.extractionToken, options.intakeToken),
+            ),
+          ),
+      );
     }
-    await db.batch(statements as [typeof statements[number], ...typeof statements]);
+    await db.batch(
+      statements as [(typeof statements)[number], ...typeof statements],
+    );
     return Response.json({ resume: { id: resume.id, status } });
   } catch (error) {
     if (isResponse(error)) return error;
-    console.error("Failed to analyze resume", {errorName:error instanceof Error ? error.name : "Unknown"});
+    console.error("Failed to analyze resume", {
+      errorName: error instanceof Error ? error.name : "Unknown",
+    });
     return jsonError("The resume could not be analyzed.", 500);
   }
 }

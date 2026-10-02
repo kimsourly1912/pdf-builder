@@ -9,6 +9,11 @@ export type DatabaseBatchResult = {
 
 export type DatabaseStatement = {
   bind(...values: unknown[]): DatabaseStatement;
+  first<T = Record<string, unknown>>(): Promise<T | null>;
+  all<T = Record<string, unknown>>(): Promise<{
+    results: T[];
+    success: boolean;
+  }>;
 };
 
 export type DatabaseBinding = {
@@ -19,7 +24,7 @@ export type DatabaseBinding = {
 export function getDb() {
   if (!env.DB) {
     throw new Error(
-      "Cloudflare D1 binding `DB` is unavailable. Set the `d1` field in .openai/hosting.json to `DB` or let your control plane inject the real binding values before using the database."
+      "Cloudflare D1 binding `DB` is unavailable. Set the `d1` field in .openai/hosting.json to `DB` or let your control plane inject the real binding values before using the database.",
     );
   }
 

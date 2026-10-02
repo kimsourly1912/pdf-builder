@@ -1,4 +1,5 @@
-import { eq } from "drizzle-orm";
+import { notArchived } from "@/features/archive/archive";
+import { and, desc, eq } from "drizzle-orm";
 
 import { getDb } from "@/db";
 import { aiFieldDetectionRuns } from "@/db/schema";
@@ -106,4 +107,28 @@ function safePdfFileName(value: string): string {
   return normalized.toLowerCase().endsWith(".pdf")
     ? normalized.slice(0, 160)
     : `${normalized.slice(0, 156) || "document"}.pdf`;
+}
+
+export async function GET(request: Request) {
+  try {
+    const owner = await requireRequestOwner(request);
+    const rows = await getDb()
+      .select()
+      .from(aiFieldDetectionRuns)
+      .where(
+        and(
+          eq(aiFieldDetectionRuns.ownerEmail, owner),
+          notArchived("ai_run", aiFieldDetectionRuns.id),
+        ),
+      )
+      .orderBy(desc(aiFieldDetectionRuns.updatedAt))
+      .limit(200);
+    return Response.json(
+      { runs: rows.map(publicAiFieldDetectionRun) },
+      { headers: { "Cache-Control": "no-store" } },
+    );
+  } catch (e) {
+    if (isResponse(e)) return e;
+    return jsonError("Analysis history could not be loaded.", 500);
+  }
 }

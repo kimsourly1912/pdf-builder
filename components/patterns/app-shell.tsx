@@ -2,6 +2,7 @@
 
 import {
   Activity,
+  Archive,
   FilePenLine,
   Files,
   FileText,
@@ -45,6 +46,8 @@ const navigationItems = [
   { href: "/accounts", label: "Accounts", icon: UsersRound },
   { href: "/workflows", label: "Workflows", icon: Workflow },
   { href: "/intake", label: "Candidate intake", icon: Inbox },
+  { href: "/analyses", label: "AI analyses", icon: Archive },
+  { href: "/archive", label: "Archive", icon: Archive },
   { href: "/activity", label: "Activity", icon: Activity },
 ];
 
@@ -140,7 +143,9 @@ function AppShell(props: AppShellProps) {
           <SignOutButton />
         </header>
         <div className="flex flex-1 flex-col">
-          <div className={`mx-auto flex w-full min-w-0 flex-1 flex-col gap-6 p-4 sm:p-6 lg:p-8 ${props.fullWidth ? "max-w-none" : "max-w-[90rem]"}`}>
+          <div
+            className={`mx-auto flex w-full min-w-0 flex-1 flex-col gap-6 p-4 sm:p-6 lg:p-8 ${props.fullWidth ? "max-w-none" : "max-w-[90rem]"}`}
+          >
             {props.children}
           </div>
         </div>

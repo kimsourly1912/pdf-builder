@@ -1,6 +1,12 @@
 "use client";
 
-import { AlertTriangle, Download, FileText, LoaderCircle, RefreshCw } from "lucide-react";
+import {
+  AlertTriangle,
+  Download,
+  FileText,
+  LoaderCircle,
+  RefreshCw,
+} from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -10,11 +16,14 @@ export function ResumePdfPreview(props: {
   resumeId: string;
   fileName: string;
   contained?: boolean;
+  allowDownload?: boolean;
 }) {
   const { resumeId, fileName } = props;
   const pagesRef = useRef<HTMLDivElement>(null);
   const [attempt, setAttempt] = useState(0);
-  const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
+  const [status, setStatus] = useState<"loading" | "ready" | "error">(
+    "loading",
+  );
   const [error, setError] = useState("");
   const previewUrl = `/api/resumes/${resumeId}/download`;
 
@@ -57,7 +66,11 @@ export function ResumePdfPreview(props: {
         if (disposed) return;
 
         const pixelRatio = Math.min(window.devicePixelRatio || 1, 2);
-        for (let pageNumber = 1; pageNumber <= document.numPages; pageNumber += 1) {
+        for (
+          let pageNumber = 1;
+          pageNumber <= document.numPages;
+          pageNumber += 1
+        ) {
           if (disposed) return;
           const page = await document.getPage(pageNumber);
           const displayViewport = page.getViewport({ scale: 1.5 });
@@ -67,14 +80,18 @@ export function ResumePdfPreview(props: {
 
           const canvas = window.document.createElement("canvas");
           const context = canvas.getContext("2d", { alpha: false });
-          if (!context) throw new Error("This browser cannot render the PDF preview.");
+          if (!context)
+            throw new Error("This browser cannot render the PDF preview.");
           canvas.width = Math.ceil(renderViewport.width);
           canvas.height = Math.ceil(renderViewport.height);
           canvas.style.width = `${displayViewport.width}px`;
           canvas.style.height = "auto";
           canvas.style.maxWidth = "100%";
           canvas.className = "block bg-white shadow-sm ring-1 ring-black/10";
-          canvas.setAttribute("aria-label", `Page ${pageNumber} of ${document.numPages}`);
+          canvas.setAttribute(
+            "aria-label",
+            `Page ${pageNumber} of ${document.numPages}`,
+          );
 
           const caption = window.document.createElement("figcaption");
           caption.className = "text-xs text-muted-foreground";
@@ -83,7 +100,11 @@ export function ResumePdfPreview(props: {
           pageElement.insertAdjacentElement("beforeend", caption);
           container.insertAdjacentElement("beforeend", pageElement);
 
-          await page.render({ canvas, canvasContext: context, viewport: renderViewport }).promise;
+          await page.render({
+            canvas,
+            canvasContext: context,
+            viewport: renderViewport,
+          }).promise;
           page.cleanup();
         }
         if (!disposed) setStatus("ready");
@@ -107,17 +128,25 @@ export function ResumePdfPreview(props: {
   }, [attempt, previewUrl]);
 
   return (
-    <div className={props.contained ? "flex h-full min-h-0 flex-col bg-muted/40" : "flex min-h-[32rem] flex-col bg-muted/40 xl:h-[calc(100vh-6rem)] xl:min-h-[650px]"}>
+    <div
+      className={
+        props.contained
+          ? "flex h-full min-h-0 flex-col bg-muted/40"
+          : "flex min-h-[32rem] flex-col bg-muted/40 xl:h-[calc(100vh-6rem)] xl:min-h-[650px]"
+      }
+    >
       <div className="flex items-center justify-between gap-3 border-b bg-card px-4 py-3">
         <div className="flex min-w-0 items-center gap-2">
           <FileText className="size-4 shrink-0 text-muted-foreground" />
           <p className="truncate text-sm font-medium">{fileName}</p>
         </div>
-        <Button asChild variant="outline" size="xs">
-          <a href={previewUrl} download>
-            <Download /> Download
-          </a>
-        </Button>
+        {props.allowDownload !== false && (
+          <Button asChild variant="outline" size="xs">
+            <a href={previewUrl} download>
+              <Download /> Download
+            </a>
+          </Button>
+        )}
       </div>
 
       <div className="relative min-h-0 flex-1 overflow-y-auto overscroll-contain p-3 sm:p-5">
@@ -127,7 +156,8 @@ export function ResumePdfPreview(props: {
             role="status"
           >
             <div className="flex items-center gap-2 rounded-lg border bg-card px-4 py-3 text-sm shadow-sm">
-              <LoaderCircle className="size-4 animate-spin" /> Rendering PDF preview…
+              <LoaderCircle className="size-4 animate-spin" /> Rendering PDF
+              preview…
             </div>
           </div>
         )}
@@ -147,11 +177,13 @@ export function ResumePdfPreview(props: {
                 >
                   <RefreshCw /> Try again
                 </Button>
-                <Button asChild variant="outline" size="sm">
-                  <a href={previewUrl} download>
-                    <Download /> Download PDF
-                  </a>
-                </Button>
+                {props.allowDownload !== false && (
+                  <Button asChild variant="outline" size="sm">
+                    <a href={previewUrl} download>
+                      <Download /> Download PDF
+                    </a>
+                  </Button>
+                )}
               </div>
             </AlertDescription>
           </Alert>
@@ -170,7 +202,7 @@ export function ResumePdfPreview(props: {
 
 async function responseError(response: Response): Promise<string> {
   try {
-    const payload = await response.clone().json() as { error?: string };
+    const payload = (await response.clone().json()) as { error?: string };
     return payload.error || "The PDF preview could not be loaded.";
   } catch {
     return "The PDF preview could not be loaded.";

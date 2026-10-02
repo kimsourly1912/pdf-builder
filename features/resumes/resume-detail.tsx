@@ -9,17 +9,14 @@ import {
   LoaderCircle,
   RefreshCw,
   Save,
-  Trash2,
+  Archive,
   UserCheck,
 } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 
-import {
-  Alert,
-  AlertDescription,
-  AlertTitle,
-} from "@/components/ui/alert";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -59,17 +56,16 @@ import type {
   ResumeExtractionFields,
 } from "@/features/resumes/resume.types";
 
-type CandidateDraft = Omit<
-  ResumeCandidateSummary,
-  "id" | "verificationStatus"
->;
+type CandidateDraft = Omit<ResumeCandidateSummary, "id" | "verificationStatus">;
 
 export function ResumeDetailView(props: { resumeId: string }) {
   const [resume, setResume] = useState<ResumeDetail | null>(null);
   const [draft, setDraft] = useState<CandidateDraft | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
-  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleteOpen, setArchiveOpen] = useState(false);
+  const [aiOpen, setAiOpen] = useState(false),
+    [confirmTelegram, setConfirmTelegram] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
 
@@ -91,6 +87,7 @@ export function ResumeDetailView(props: { resumeId: string }) {
       }
 
       setResume(payload.resume);
+      setConfirmTelegram(payload.resume.telegramContact?.confirmed ?? false);
       setDraft(
         payload.resume.candidate
           ? candidateDraft(payload.resume.candidate)
@@ -127,6 +124,9 @@ export function ResumeDetailView(props: { resumeId: string }) {
         body: JSON.stringify({
           action: "update_candidate",
           candidate: draft,
+          confirmTelegram,
+          resumeRevision: resume?.updatedAt,
+          candidateRevision: resume?.candidateRevision,
         }),
       });
       const payload = (await response.json()) as { error?: string };
@@ -177,7 +177,9 @@ export function ResumeDetailView(props: { resumeId: string }) {
       await loadResume();
     } catch (cause) {
       setError(
-        cause instanceof Error ? cause.message : "Candidate could not be linked.",
+        cause instanceof Error
+          ? cause.message
+          : "Candidate could not be linked.",
       );
     } finally {
       setBusy(false);
@@ -186,16 +188,23 @@ export function ResumeDetailView(props: { resumeId: string }) {
 
   async function retryExtraction() {
     if (!resume) return;
-    if (resume.intakeId) { window.location.assign(`/intake/${resume.intakeId}`); return; }
+    setAiOpen(false);
 
     setBusy(true);
     setError("");
     setNotice("");
 
     try {
-      const response = await fetch(`/api/resumes/${resume.id}/analyze`, {
-        method: "POST",
-      });
+      const response = await fetch(
+        resume.intakeId
+          ? `/api/intake/${resume.intakeId}/extract`
+          : `/api/resumes/${resume.id}/analyze`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ confirm: true, reextract: true }),
+        },
+      );
       const payload = (await response.json()) as { error?: string };
 
       if (!response.ok) {
@@ -228,16 +237,18 @@ export function ResumeDetailView(props: { resumeId: string }) {
 
       if (!response.ok) {
         const payload = (await response.json()) as { error?: string };
-        throw new Error(payload.error || "Resume could not be deleted.");
+        throw new Error(payload.error || "Resume could not be archived.");
       }
 
       window.location.assign("/resumes");
     } catch (cause) {
       setError(
-        cause instanceof Error ? cause.message : "Resume could not be deleted.",
+        cause instanceof Error
+          ? cause.message
+          : "Resume could not be archived.",
       );
       setBusy(false);
-      setDeleteOpen(false);
+      setArchiveOpen(false);
     }
   }
 
@@ -292,19 +303,19 @@ export function ResumeDetailView(props: { resumeId: string }) {
               variant="outline"
               size="sm"
               disabled={busy}
-              onClick={() => void retryExtraction()}
+              onClick={() => setAiOpen(true)}
             >
               <RefreshCw className={busy ? "animate-spin" : ""} />
-              {resume.intakeId ? "Review intake / extract" : "Retry"}
+              Optional AI extraction
             </Button>
             <Button
               variant="outline"
               size="sm"
               disabled={busy}
               className="text-destructive hover:text-destructive"
-              onClick={() => setDeleteOpen(true)}
+              onClick={() => setArchiveOpen(true)}
             >
-              <Trash2 /> Delete
+              <Archive /> Archive
             </Button>
           </div>
         </div>
@@ -333,45 +344,42 @@ export function ResumeDetailView(props: { resumeId: string }) {
         )}
 
         {resume.duplicateCandidate && (
-            <Alert
-              variant="destructive"
-              className="mb-4 grid-cols-[auto_1fr] gap-4 bg-destructive/5"
-            >
-              <AlertTriangle />
-              <div className="min-w-0">
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
-                  <div className="min-w-0 flex-1">
-                    <AlertTitle>Possible existing candidate</AlertTitle>
-                    <AlertDescription className="mt-1">
-                      Matched{" "}
-                      {resume.duplicateCandidate.fullName ||
-                        "an existing candidate"}{" "}
-                      using email or phone. Review before linking; existing data
-                      will not be overwritten.
-                    </AlertDescription>
-                  </div>
-                  <Button
-                    disabled={busy}
-                    variant="destructive"
-                    onClick={() => void linkDuplicate()}
-                  >
-                    <UserCheck /> Link candidate
-                  </Button>
+          <Alert
+            variant="destructive"
+            className="mb-4 grid-cols-[auto_1fr] gap-4 bg-destructive/5"
+          >
+            <AlertTriangle />
+            <div className="min-w-0">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
+                <div className="min-w-0 flex-1">
+                  <AlertTitle>Possible existing candidate</AlertTitle>
+                  <AlertDescription className="mt-1">
+                    Matched{" "}
+                    {resume.duplicateCandidate.fullName ||
+                      "an existing candidate"}{" "}
+                    using email or phone. Review before linking; existing data
+                    will not be overwritten.
+                  </AlertDescription>
                 </div>
-                <DuplicateComparison
-                  existing={resume.duplicateCandidate}
-                  fields={fields}
-                />
+                <Button
+                  disabled={busy}
+                  variant="destructive"
+                  onClick={() => void linkDuplicate()}
+                >
+                  <UserCheck /> Link candidate
+                </Button>
               </div>
-            </Alert>
-          )}
+              <DuplicateComparison
+                existing={resume.duplicateCandidate}
+                fields={fields}
+              />
+            </div>
+          </Alert>
+        )}
 
         <div className="grid items-start gap-5 xl:grid-cols-[minmax(500px,1fr)_minmax(430px,560px)]">
           <Card className="gap-0 overflow-hidden py-0 xl:sticky xl:top-20">
-            <ResumePdfPreview
-              resumeId={resume.id}
-              fileName={resume.fileName}
-            />
+            <ResumePdfPreview resumeId={resume.id} fileName={resume.fileName} />
           </Card>
 
           <section className="space-y-4">
@@ -391,7 +399,9 @@ export function ResumeDetailView(props: { resumeId: string }) {
                       <CheckCircle2 /> Verified
                     </Badge>
                   ) : (
-                    <Badge variant="secondary">{resume.verificationStatus.replaceAll("_", " ")}</Badge>
+                    <Badge variant="secondary">
+                      {resume.verificationStatus.replaceAll("_", " ")}
+                    </Badge>
                   )}
                 </CardHeader>
                 <CardContent>
@@ -499,13 +509,35 @@ export function ResumeDetailView(props: { resumeId: string }) {
                         />
                       ))}
                     </div>
-                    <Button type="submit" disabled={busy} className="mt-5 w-full">
+                    {resume.telegramContact && (
+                      <label className="mt-5 flex items-start gap-2 text-sm">
+                        <Checkbox
+                          checked={confirmTelegram}
+                          onCheckedChange={(v) =>
+                            setConfirmTelegram(v === true)
+                          }
+                        />
+                        <span>
+                          I confirmed this Telegram contact belongs to this
+                          candidate (
+                          {resume.telegramContact.username
+                            ? `@${resume.telegramContact.username}`
+                            : "connected user"}
+                          ).
+                        </span>
+                      </label>
+                    )}
+                    <Button
+                      type="submit"
+                      disabled={busy || resume.archived}
+                      className="mt-5 w-full"
+                    >
                       {busy ? (
                         <LoaderCircle className="animate-spin" />
                       ) : (
                         <Save />
                       )}
-                      Save and verify candidate
+                      Save and verify CV
                     </Button>
                   </form>
                 </CardContent>
@@ -525,16 +557,44 @@ export function ResumeDetailView(props: { resumeId: string }) {
         </div>
       </div>
 
-      <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+      {resume.intakeId && (
+        <Button asChild variant="outline">
+          <Link href={`/intake/${resume.intakeId}`}>
+            Back to intake overview
+          </Link>
+        </Button>
+      )}
+      <AlertDialog open={aiOpen} onOpenChange={setAiOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Extract this CV with AI?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This uses paid AI processing. You can enter and verify candidate
+              details manually instead. Extracting an already reviewed CV
+              replaces its data and requires a new review.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={busy}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={busy || resume.archived}
+              onClick={() => void retryExtraction()}
+            >
+              Confirm paid extraction
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      <AlertDialog open={deleteOpen} onOpenChange={setArchiveOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogMedia>
-              <Trash2 />
+              <Archive />
             </AlertDialogMedia>
-            <AlertDialogTitle>Permanently delete this resume?</AlertDialogTitle>
+            <AlertDialogTitle>Archive this resume?</AlertDialogTitle>
             <AlertDialogDescription>
-              The PDF and its extraction history will be deleted. This action
-              cannot be undone.
+              The CV and linked intake will be hidden from active lists. The PDF
+              and history remain stored and can be restored from Archive.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -544,8 +604,8 @@ export function ResumeDetailView(props: { resumeId: string }) {
               className="bg-destructive text-white hover:bg-destructive/90"
               onClick={() => void deleteResume()}
             >
-              {busy ? <LoaderCircle className="animate-spin" /> : <Trash2 />}
-              Delete resume
+              {busy ? <LoaderCircle className="animate-spin" /> : <Archive />}
+              Archive resume
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -619,11 +679,11 @@ function ResumeMeta(props: { resume: ResumeDetail }) {
       </CardHeader>
       <CardContent>
         <dl className="grid grid-cols-2 gap-3 text-xs">
+          <Meta label="Extraction" value={props.resume.extractionStatus} />
           <Meta
-            label="Extraction"
-            value={props.resume.extractionStatus}
+            label="Resume verification"
+            value={props.resume.verificationStatus.replaceAll("_", " ")}
           />
-          <Meta label="Resume verification" value={props.resume.verificationStatus.replaceAll("_", " ")} />
           <Meta label="Pages" value={String(props.resume.pageCount)} />
           <Meta
             label="Source"
@@ -653,8 +713,8 @@ function ResumeMeta(props: { resume: ResumeDetail }) {
         {props.resume.extraction &&
           props.resume.extraction.scannedPageCount > 0 && (
             <p className="mt-3 text-xs text-warning-foreground">
-              {props.resume.extraction.scannedPageCount} page(s) had little or no
-              selectable text. Review those pages manually.
+              {props.resume.extraction.scannedPageCount} page(s) had little or
+              no selectable text. Review those pages manually.
             </p>
           )}
       </CardContent>
@@ -693,6 +753,7 @@ function TextField(props: {
         />
       ) : (
         <Input
+          aria-label={props.label}
           type={props.type ?? "text"}
           value={props.value}
           onChange={(event) => props.onChange(event.target.value)}
@@ -772,10 +833,7 @@ function fieldLabel(value: string) {
     .replace(/^./u, (letter) => letter.toUpperCase());
 }
 
-function CenteredState(props: {
-  title: string;
-  icon: React.ReactNode;
-}) {
+function CenteredState(props: { title: string; icon: React.ReactNode }) {
   return (
     <main className="flex min-h-screen items-center justify-center bg-background p-4">
       <Card className="w-full max-w-sm text-center">

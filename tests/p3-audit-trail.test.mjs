@@ -88,20 +88,21 @@ test("critical writes record audit events in their database batches", () => {
   for (const action of [
     "template.created",
     "template.published",
-    "template.archived",
-    "template.restored",
-    "template.deleted",
     "account.created",
     "assignment.created",
     "link.regenerated",
     "link.revoked",
-    "resume.deleted",
     "resume.uploaded",
     "submission.completed",
   ]) {
     assert.match(sources, new RegExp(action.replace(".", "\\."), "u"));
   }
   assert.doesNotMatch(sources, /metadata:.*token/iu);
+  const archive = read("features/archive/archive.server.ts");
+  assert.match(archive, /INSERT INTO audit_events/u);
+  assert.match(archive, /`record\.\$\{action\}`/u);
+  for (const action of ["archived", "restored", "deleted_permanently"])
+    assert.match(archive, new RegExp(`"${action}"`, "u"));
 });
 
 test("owner activity API is scoped, bounded, and non-cacheable", () => {

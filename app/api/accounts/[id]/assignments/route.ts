@@ -32,9 +32,7 @@ import {
   jsonError,
   requireRequestOwner,
 } from "@/features/templates/template.server";
-import {
-  validIdempotencyKey,
-} from "@/features/templates/recipient-link-lifecycle";
+import { validIdempotencyKey } from "@/features/templates/recipient-link-lifecycle";
 import { parseVersionRoles } from "@/features/templates/template-write";
 
 export async function POST(
@@ -67,16 +65,14 @@ export async function POST(
     );
     const rawAllowedFieldIds = body.allowedFieldIds;
     if (
-      allowedFieldIdsProvided
-      && (
-        !Array.isArray(rawAllowedFieldIds)
-        || rawAllowedFieldIds.length > 200
-        || rawAllowedFieldIds.some(
+      allowedFieldIdsProvided &&
+      (!Array.isArray(rawAllowedFieldIds) ||
+        rawAllowedFieldIds.length > 200 ||
+        rawAllowedFieldIds.some(
           (fieldId) =>
-            typeof fieldId !== "string"
-            || !/^[A-Za-z0-9_-]{1,120}$/u.test(fieldId),
-        )
-      )
+            typeof fieldId !== "string" ||
+            !/^[A-Za-z0-9_-]{1,120}$/u.test(fieldId),
+        ))
     ) {
       return jsonError("Resume-data field selection is invalid.", 400);
     }
@@ -88,21 +84,25 @@ export async function POST(
       "allowedProfileKeys",
     );
     const rawAllowedProfileKeys = body.allowedProfileKeys ?? [];
-    if (!Array.isArray(rawAllowedProfileKeys)
-      || rawAllowedProfileKeys.length > 40
-      || rawAllowedProfileKeys.some((key) => !isCandidatePrefillKey(key))) {
+    if (
+      !Array.isArray(rawAllowedProfileKeys) ||
+      rawAllowedProfileKeys.length > 40 ||
+      rawAllowedProfileKeys.some((key) => !isCandidatePrefillKey(key))
+    ) {
       return jsonError("Resume value selection is invalid.", 400);
     }
-    const requestedAllowedProfileKeys = [...new Set(rawAllowedProfileKeys as string[])];
+    const requestedAllowedProfileKeys = [
+      ...new Set(rawAllowedProfileKeys as string[]),
+    ];
     const profileSelectionProvided = Object.prototype.hasOwnProperty.call(
       body,
       "candidateProfileVersionId",
     );
     const rawProfileVersionId = body.candidateProfileVersionId;
     if (
-      profileSelectionProvided
-      && rawProfileVersionId !== null
-      && typeof rawProfileVersionId !== "string"
+      profileSelectionProvided &&
+      rawProfileVersionId !== null &&
+      typeof rawProfileVersionId !== "string"
     ) {
       return jsonError("Candidate profile selection is invalid.", 400);
     }
@@ -111,23 +111,23 @@ export async function POST(
         ? rawProfileVersionId.trim()
         : null;
     if (
-      !templateId
-      || !roleId
-      || (requestedProfileVersionId?.length ?? 0) > 128
+      !templateId ||
+      !roleId ||
+      (requestedProfileVersionId?.length ?? 0) > 128
     ) {
       return jsonError("Choose a template and recipient role.", 400);
     }
     if (
-      prefillModeProvided
-      && prefillMode !== "none"
-      && !requestedProfileVersionId
+      prefillModeProvided &&
+      prefillMode !== "none" &&
+      !requestedProfileVersionId
     ) {
       return jsonError("Choose resume data for this assignment.", 400);
     }
     if (
-      prefillMode !== "none"
-      && allowedFieldIds !== null
-      && allowedFieldIds.length + requestedAllowedProfileKeys.length === 0
+      prefillMode !== "none" &&
+      allowedFieldIds !== null &&
+      allowedFieldIds.length + requestedAllowedProfileKeys.length === 0
     ) {
       return jsonError("Choose at least one resume-data field.", 400);
     }
@@ -147,8 +147,7 @@ export async function POST(
         assignment: formAssignments,
         templateName: templates.name,
         versionNumber: templateVersions.versionNumber,
-        candidateProfileVersionNumber:
-          candidateProfileVersions.versionNumber,
+        candidateProfileVersionNumber: candidateProfileVersions.versionNumber,
         candidateName: candidates.fullName,
         candidateFileName: resumes.fileName,
       })
@@ -188,15 +187,17 @@ export async function POST(
           eq(resumes.ownerEmail, ownerEmail),
         ),
       )
-      .where(and(
-        eq(formAssignments.userId, userId),
-        eq(formAssignments.assignmentRequestKey, idempotencyKey),
-      ))
+      .where(
+        and(
+          eq(formAssignments.userId, userId),
+          eq(formAssignments.assignmentRequestKey, idempotencyKey),
+        ),
+      )
       .limit(1);
     if (existingAssignment) {
       if (
-        existingAssignment.assignment.assignmentRequestFingerprint
-        !== requestFingerprint
+        existingAssignment.assignment.assignmentRequestFingerprint !==
+        requestFingerprint
       ) {
         return jsonError(
           "This assignment request key was already used with different data.",
@@ -221,9 +222,16 @@ export async function POST(
       .select({ id: user.id, candidate: candidates })
       .from(recipientProfiles)
       .innerJoin(user, eq(recipientProfiles.userId, user.id))
-      .leftJoin(candidates, and(eq(candidates.userId, user.id), eq(candidates.ownerEmail, ownerEmail)))
+      .leftJoin(
+        candidates,
+        and(
+          eq(candidates.userId, user.id),
+          eq(candidates.ownerEmail, ownerEmail),
+        ),
+      )
       .where(
         and(
+          eq(user.banned, false),
           eq(recipientProfiles.userId, userId),
           eq(recipientProfiles.createdByEmail, ownerEmail),
         ),
@@ -287,18 +295,20 @@ export async function POST(
             eq(resumes.ownerEmail, ownerEmail),
           ),
         )
-        .where(and(
-          eq(candidateProfileVersions.id, requestedProfileVersionId),
-          eq(candidateProfileVersions.ownerEmail, ownerEmail),
-          eq(candidates.ownerEmail, ownerEmail),
-        ))
+        .where(
+          and(
+            eq(candidateProfileVersions.id, requestedProfileVersionId),
+            eq(candidateProfileVersions.ownerEmail, ownerEmail),
+            eq(candidates.ownerEmail, ownerEmail),
+          ),
+        )
         .limit(1);
       if (!selection) return jsonError("Candidate profile not found.", 404);
       selectedProfile = selection;
     } else if (
-      prefillMode !== "none"
-      && !profileSelectionProvided
-      && account.candidate
+      prefillMode !== "none" &&
+      !profileSelectionProvided &&
+      account.candidate
     ) {
       const [version] = await db
         .select({
@@ -313,12 +323,16 @@ export async function POST(
             eq(resumes.ownerEmail, ownerEmail),
           ),
         )
-        .where(and(
-          eq(candidateProfileVersions.ownerEmail, ownerEmail),
-          eq(candidateProfileVersions.candidateId, account.candidate.id),
-        ))
+        .where(
+          and(
+            eq(candidateProfileVersions.ownerEmail, ownerEmail),
+            eq(candidateProfileVersions.candidateId, account.candidate.id),
+          ),
+        )
         .orderBy(
-          desc(sql<number>`case when ${candidateProfileVersions.verificationStatus} = 'verified' then 1 else 0 end`),
+          desc(
+            sql<number>`case when ${candidateProfileVersions.verificationStatus} = 'verified' then 1 else 0 end`,
+          ),
           desc(candidateProfileVersions.versionNumber),
         )
         .limit(1);
@@ -332,9 +346,9 @@ export async function POST(
     }
 
     if (
-      selectedProfile
-      && selectedProfile.candidate.userId !== userId
-      && !profileMismatchConfirmed
+      selectedProfile &&
+      selectedProfile.candidate.userId !== userId &&
+      !profileMismatchConfirmed
     ) {
       return jsonError(
         "Confirm that this resume belongs to a different account before assigning it.",
@@ -349,30 +363,33 @@ export async function POST(
     }
     const allowedProfileKeys = allowedProfileKeysProvided
       ? requestedAllowedProfileKeys
-      : profile ? availableProfileKeys(profile) : [];
-    const snapshotCandidate = prefillMode === "none"
-      ? null
-      : profileSelectionProvided
-        ? selectedProfile?.candidate ?? null
-        : account.candidate;
+      : profile
+        ? availableProfileKeys(profile)
+        : [];
+    const snapshotCandidate =
+      prefillMode === "none"
+        ? null
+        : profileSelectionProvided
+          ? (selectedProfile?.candidate ?? null)
+          : account.candidate;
     const snapshot = buildCandidatePrefillSnapshot({
       candidate: snapshotCandidate,
       annotations,
       recipientRoleId: role.id,
-      profileVersion: selectedProfile && profile
-        ? {
-            id: selectedProfile.version.id,
-            profile,
-            verificationStatus:
-              selectedProfile.version.verificationStatus === "verified"
-                ? "verified"
-                : "extracted",
-          }
-        : null,
+      profileVersion:
+        selectedProfile && profile
+          ? {
+              id: selectedProfile.version.id,
+              profile,
+              verificationStatus:
+                selectedProfile.version.verificationStatus === "verified"
+                  ? "verified"
+                  : "extracted",
+            }
+          : null,
     });
-    const selectedProfileVersionId = selectedProfile && profile
-      ? selectedProfile.version.id
-      : null;
+    const selectedProfileVersionId =
+      selectedProfile && profile ? selectedProfile.version.id : null;
     const prefillStorage = buildAssignmentPrefillStorage({
       mode: prefillMode,
       snapshot,
@@ -380,10 +397,16 @@ export async function POST(
       profile,
       allowedProfileKeys,
     });
-    if (prefillMode !== "none"
-      && allowedFieldIds !== null
-      && prefillStorage.approvedFieldIds.length !== allowedFieldIds.length + allowedProfileKeys.length) {
-      return jsonError("One or more selected resume values are unavailable.", 422);
+    if (
+      prefillMode !== "none" &&
+      allowedFieldIds !== null &&
+      prefillStorage.approvedFieldIds.length !==
+        allowedFieldIds.length + allowedProfileKeys.length
+    ) {
+      return jsonError(
+        "One or more selected resume values are unavailable.",
+        422,
+      );
     }
     await db.batch([
       db.insert(recipientLinks).values({
@@ -443,7 +466,8 @@ export async function POST(
             candidateId: snapshotCandidate?.id ?? null,
             prefillMode,
             approvedFieldCount: prefillStorage.approvedFieldIds.length,
-            prefilledFieldCount: Object.keys(prefillStorage.initialValues).length,
+            prefilledFieldCount: Object.keys(prefillStorage.initialValues)
+              .length,
           },
           createdAt: now,
         }),
@@ -478,7 +502,8 @@ export async function POST(
   } catch (error) {
     if (isResponse(error)) return error;
     console.error("Failed to assign recipient form", error);
-    const duplicate = error instanceof Error && /unique|constraint/iu.test(error.message);
+    const duplicate =
+      error instanceof Error && /unique|constraint/iu.test(error.message);
     return jsonError(
       duplicate
         ? "This version and role are already assigned to this account."
@@ -504,33 +529,45 @@ export async function PATCH(
         ? body.candidateProfileVersionId.trim()
         : null;
     const profileMismatchConfirmed = body.profileMismatchConfirmed === true;
-    const allowedFieldIdsProvided = Object.prototype.hasOwnProperty.call(body, "allowedFieldIds");
-    const allowedProfileKeysProvided = Object.prototype.hasOwnProperty.call(body, "allowedProfileKeys");
+    const allowedFieldIdsProvided = Object.prototype.hasOwnProperty.call(
+      body,
+      "allowedFieldIds",
+    );
+    const allowedProfileKeysProvided = Object.prototype.hasOwnProperty.call(
+      body,
+      "allowedProfileKeys",
+    );
     const rawAllowedFieldIds = body.allowedFieldIds ?? [];
     const rawAllowedProfileKeys = body.allowedProfileKeys ?? [];
     if (
-      !/^[A-Za-z0-9_-]{1,128}$/u.test(assignmentId)
-      || !expectedUpdatedAt
-      || expectedUpdatedAt.length > 40
-      || !isAssignmentPrefillMode(prefillMode)
-      || !Array.isArray(rawAllowedFieldIds)
-      || rawAllowedFieldIds.length > 200
-      || rawAllowedFieldIds.some(
+      !/^[A-Za-z0-9_-]{1,128}$/u.test(assignmentId) ||
+      !expectedUpdatedAt ||
+      expectedUpdatedAt.length > 40 ||
+      !isAssignmentPrefillMode(prefillMode) ||
+      !Array.isArray(rawAllowedFieldIds) ||
+      rawAllowedFieldIds.length > 200 ||
+      rawAllowedFieldIds.some(
         (fieldId) =>
-          typeof fieldId !== "string"
-          || !/^[A-Za-z0-9_-]{1,120}$/u.test(fieldId),
-      )
-      || !Array.isArray(rawAllowedProfileKeys)
-      || rawAllowedProfileKeys.length > 40
-      || rawAllowedProfileKeys.some((key) => !isCandidatePrefillKey(key))
+          typeof fieldId !== "string" ||
+          !/^[A-Za-z0-9_-]{1,120}$/u.test(fieldId),
+      ) ||
+      !Array.isArray(rawAllowedProfileKeys) ||
+      rawAllowedProfileKeys.length > 40 ||
+      rawAllowedProfileKeys.some((key) => !isCandidatePrefillKey(key))
     ) {
       return jsonError("The resume-data replacement request is invalid.", 400);
     }
     const allowedFieldIds = [...new Set(rawAllowedFieldIds as string[])];
-    const requestedAllowedProfileKeys = [...new Set(rawAllowedProfileKeys as string[])];
-    if (prefillMode !== "none" && (!profileVersionId
-      || (allowedFieldIdsProvided && allowedProfileKeysProvided
-        && allowedFieldIds.length + requestedAllowedProfileKeys.length === 0))) {
+    const requestedAllowedProfileKeys = [
+      ...new Set(rawAllowedProfileKeys as string[]),
+    ];
+    if (
+      prefillMode !== "none" &&
+      (!profileVersionId ||
+        (allowedFieldIdsProvided &&
+          allowedProfileKeysProvided &&
+          allowedFieldIds.length + requestedAllowedProfileKeys.length === 0))
+    ) {
       return jsonError(
         "Choose resume data and at least one approved field.",
         400,
@@ -554,17 +591,19 @@ export async function PATCH(
         recipientProfiles,
         eq(formAssignments.userId, recipientProfiles.userId),
       )
-      .where(and(
-        eq(formAssignments.id, assignmentId),
-        eq(formAssignments.userId, userId),
-        eq(templates.ownerEmail, ownerEmail),
-        eq(recipientProfiles.createdByEmail, ownerEmail),
-      ))
+      .where(
+        and(
+          eq(formAssignments.id, assignmentId),
+          eq(formAssignments.userId, userId),
+          eq(templates.ownerEmail, ownerEmail),
+          eq(recipientProfiles.createdByEmail, ownerEmail),
+        ),
+      )
       .limit(1);
     if (!target) return jsonError("Assignment not found.", 404);
     if (
-      target.assignment.status !== "assigned"
-      || target.assignment.updatedAt !== expectedUpdatedAt
+      target.assignment.status !== "assigned" ||
+      target.assignment.updatedAt !== expectedUpdatedAt
     ) {
       return jsonError(
         "This assignment changed. Refresh it before replacing resume data.",
@@ -599,17 +638,16 @@ export async function PATCH(
             eq(resumes.ownerEmail, ownerEmail),
           ),
         )
-        .where(and(
-          eq(candidateProfileVersions.id, profileVersionId),
-          eq(candidateProfileVersions.ownerEmail, ownerEmail),
-          eq(candidates.ownerEmail, ownerEmail),
-        ))
+        .where(
+          and(
+            eq(candidateProfileVersions.id, profileVersionId),
+            eq(candidateProfileVersions.ownerEmail, ownerEmail),
+            eq(candidates.ownerEmail, ownerEmail),
+          ),
+        )
         .limit(1);
       if (!selection) return jsonError("Candidate profile not found.", 404);
-      if (
-        selection.candidate.userId !== userId
-        && !profileMismatchConfirmed
-      ) {
+      if (selection.candidate.userId !== userId && !profileMismatchConfirmed) {
         return jsonError(
           "Confirm that this resume belongs to a different account before replacing it.",
           409,
@@ -630,35 +668,38 @@ export async function PATCH(
         target.version.annotationsJson,
       ),
       recipientRoleId: target.assignment.roleId,
-      profileVersion: selectedProfile && profile
-        ? {
-            id: selectedProfile.version.id,
-            profile,
-            verificationStatus:
-              selectedProfile.version.verificationStatus === "verified"
-                ? "verified"
-                : "extracted",
-          }
-        : null,
+      profileVersion:
+        selectedProfile && profile
+          ? {
+              id: selectedProfile.version.id,
+              profile,
+              verificationStatus:
+                selectedProfile.version.verificationStatus === "verified"
+                  ? "verified"
+                  : "extracted",
+            }
+          : null,
     });
     const selectedFieldIds = allowedFieldIdsProvided
       ? allowedFieldIds
       : mappedAutomaticFieldIds(snapshot);
     const allowedProfileKeys = allowedProfileKeysProvided
       ? requestedAllowedProfileKeys
-      : profile ? availableProfileKeys(profile) : [];
+      : profile
+        ? availableProfileKeys(profile)
+        : [];
     const storage = buildAssignmentPrefillStorage({
       mode: prefillMode,
       snapshot,
-      allowedFieldIds:
-        prefillMode === "none" ? [] : selectedFieldIds,
+      allowedFieldIds: prefillMode === "none" ? [] : selectedFieldIds,
       profile,
       allowedProfileKeys: prefillMode === "none" ? [] : allowedProfileKeys,
     });
     if (
-      prefillMode !== "none"
-      && allowedFieldIdsProvided
-      && storage.approvedFieldIds.length !== selectedFieldIds.length + allowedProfileKeys.length
+      prefillMode !== "none" &&
+      allowedFieldIdsProvided &&
+      storage.approvedFieldIds.length !==
+        selectedFieldIds.length + allowedProfileKeys.length
     ) {
       return jsonError(
         "One or more approved fields are no longer available.",
@@ -688,8 +729,9 @@ export async function PATCH(
     });
     const database = getDatabaseBinding();
     const results = await database.batch([
-      database.prepare(
-        `UPDATE form_assignments
+      database
+        .prepare(
+          `UPDATE form_assignments
          SET initial_values_json = ?,
              candidate_profile_version_id = ?,
              initial_values_meta_json = ?,
@@ -701,20 +743,22 @@ export async function PATCH(
            AND user_id = ?
            AND status = 'assigned'
            AND updated_at = ?`,
-      ).bind(
-        JSON.stringify(storage.initialValues),
-        selectedProfile?.version.id ?? null,
-        JSON.stringify(storage.initialMetadata),
-        prefillMode,
-        JSON.stringify(storage.availableValues),
-        JSON.stringify(storage.availableMetadata),
-        now,
-        assignmentId,
-        userId,
-        expectedUpdatedAt,
-      ),
-      database.prepare(
-        `INSERT INTO audit_events (
+        )
+        .bind(
+          JSON.stringify(storage.initialValues),
+          selectedProfile?.version.id ?? null,
+          JSON.stringify(storage.initialMetadata),
+          prefillMode,
+          JSON.stringify(storage.availableValues),
+          JSON.stringify(storage.availableMetadata),
+          now,
+          assignmentId,
+          userId,
+          expectedUpdatedAt,
+        ),
+      database
+        .prepare(
+          `INSERT INTO audit_events (
           id, owner_email, actor_type, actor_id, action, target_type,
           target_id, request_id, metadata_json, created_at
         )
@@ -723,21 +767,22 @@ export async function PATCH(
           SELECT 1 FROM form_assignments
           WHERE id = ? AND user_id = ? AND updated_at = ?
         )`,
-      ).bind(
-        auditEvent.id,
-        auditEvent.ownerEmail,
-        auditEvent.actorType,
-        auditEvent.actorId,
-        auditEvent.action,
-        auditEvent.targetType,
-        auditEvent.targetId,
-        auditEvent.requestId,
-        auditEvent.metadataJson,
-        auditEvent.createdAt,
-        assignmentId,
-        userId,
-        now,
-      ),
+        )
+        .bind(
+          auditEvent.id,
+          auditEvent.ownerEmail,
+          auditEvent.actorType,
+          auditEvent.actorId,
+          auditEvent.action,
+          auditEvent.targetType,
+          auditEvent.targetId,
+          auditEvent.requestId,
+          auditEvent.metadataJson,
+          auditEvent.createdAt,
+          assignmentId,
+          userId,
+          now,
+        ),
     ]);
     if (Number(results[0]?.meta?.changes ?? 0) < 1) {
       return jsonError(
@@ -836,7 +881,7 @@ function parseRecord(value: string): Record<string, unknown> {
   try {
     const parsed = JSON.parse(value) as unknown;
     return parsed && !Array.isArray(parsed) && typeof parsed === "object"
-      ? parsed as Record<string, unknown>
+      ? (parsed as Record<string, unknown>)
       : {};
   } catch {
     return {};
@@ -846,16 +891,18 @@ function parseRecord(value: string): Record<string, unknown> {
 function parseArray<T>(value: string): T[] {
   try {
     const parsed = JSON.parse(value) as unknown;
-    return Array.isArray(parsed) ? parsed as T[] : [];
+    return Array.isArray(parsed) ? (parsed as T[]) : [];
   } catch {
     return [];
   }
 }
 
-
 function parseProfile(value: string) {
   try {
-    return normalizeCandidateProfile(JSON.parse(value) as unknown, MAX_RESUME_PAGES);
+    return normalizeCandidateProfile(
+      JSON.parse(value) as unknown,
+      MAX_RESUME_PAGES,
+    );
   } catch {
     return null;
   }

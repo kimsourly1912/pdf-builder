@@ -1,4 +1,5 @@
 "use client";
+import { ArchiveButton } from "@/features/archive/archive-button";
 
 import {
   Archive,
@@ -40,11 +41,7 @@ import { StatusBadge } from "@/components/patterns/status-badge";
 import type { StatusTone } from "@/components/patterns/status-badge";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-} from "@/components/ui/card";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
@@ -53,10 +50,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import {
-  DataTable,
-  DataTableColumnHeader,
-} from "@/components/ui/data-table";
+import { DataTable, DataTableColumnHeader } from "@/components/ui/data-table";
 import type { DataTableFeatures } from "@/components/ui/data-table-features";
 import {
   DropdownMenu,
@@ -199,9 +193,12 @@ export function TemplatesDashboard(props: { displayName: string }) {
     archived: 0,
     recipientRoles: 0,
   });
-  const [activePageMeta, setActivePageMeta] = useState<PageMeta>(EMPTY_PAGE_META);
-  const [archivedPageMeta, setArchivedPageMeta] = useState<PageMeta>(EMPTY_PAGE_META);
-  const [submissionPageMeta, setSubmissionPageMeta] = useState<PageMeta>(EMPTY_PAGE_META);
+  const [activePageMeta, setActivePageMeta] =
+    useState<PageMeta>(EMPTY_PAGE_META);
+  const [archivedPageMeta, setArchivedPageMeta] =
+    useState<PageMeta>(EMPTY_PAGE_META);
+  const [submissionPageMeta, setSubmissionPageMeta] =
+    useState<PageMeta>(EMPTY_PAGE_META);
   const [activeSearchDraft, setActiveSearchDraft] = useState("");
   const [activeSearch, setActiveSearch] = useState("");
   const [archivedSearchDraft, setArchivedSearchDraft] = useState("");
@@ -221,8 +218,10 @@ export function TemplatesDashboard(props: { displayName: string }) {
   const [removingTemplateId, setRemovingTemplateId] = useState<string | null>(
     null,
   );
-  const [filterDraft, setFilterDraft] = useState<DashboardFilters>(EMPTY_FILTERS);
-  const [appliedFilters, setAppliedFilters] = useState<DashboardFilters>(EMPTY_FILTERS);
+  const [filterDraft, setFilterDraft] =
+    useState<DashboardFilters>(EMPTY_FILTERS);
+  const [appliedFilters, setAppliedFilters] =
+    useState<DashboardFilters>(EMPTY_FILTERS);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -243,10 +242,17 @@ export function TemplatesDashboard(props: { displayName: string }) {
       });
       if (activeSearch) activeParams.set("search", activeSearch);
       if (archivedSearch) archivedParams.set("search", archivedSearch);
-      const [activeResponse, archivedResponse, optionsResponse, submissionResponse] = await Promise.all([
+      const [
+        activeResponse,
+        archivedResponse,
+        optionsResponse,
+        submissionResponse,
+      ] = await Promise.all([
         fetch(`/api/templates?${activeParams}`, { cache: "no-store" }),
         fetch(`/api/templates?${archivedParams}`, { cache: "no-store" }),
-        fetch("/api/templates?status=all&pageSize=100&sort=name&order=asc", { cache: "no-store" }),
+        fetch("/api/templates?status=all&pageSize=100&sort=name&order=asc", {
+          cache: "no-store",
+        }),
         fetch(`/api/submissions?${submissionParams}`, { cache: "no-store" }),
       ]);
       const activePayload = (await activeResponse.json()) as {
@@ -284,7 +290,12 @@ export function TemplatesDashboard(props: { displayName: string }) {
         hasNextPage?: boolean;
         error?: string;
       };
-      if (!activeResponse.ok || !archivedResponse.ok || !optionsResponse.ok || !submissionResponse.ok) {
+      if (
+        !activeResponse.ok ||
+        !archivedResponse.ok ||
+        !optionsResponse.ok ||
+        !submissionResponse.ok
+      ) {
         throw new Error(
           activePayload.error ||
             archivedPayload.error ||
@@ -293,16 +304,31 @@ export function TemplatesDashboard(props: { displayName: string }) {
             "Dashboard could not be loaded.",
         );
       }
-      setTemplates([...(activePayload.items ?? []), ...(archivedPayload.items ?? [])]);
+      setTemplates([
+        ...(activePayload.items ?? []),
+        ...(archivedPayload.items ?? []),
+      ]);
       setTemplateOptions(optionsPayload.items ?? []);
       setSubmissions(submissionPayload.items ?? []);
-      setTemplateStats(activePayload.stats ?? { active: 0, archived: 0, recipientRoles: 0 });
-      setActivePageMeta((current) => pageMetaFromPayload(activePayload, current));
-      setArchivedPageMeta((current) => pageMetaFromPayload(archivedPayload, current));
-      setSubmissionPageMeta((current) => pageMetaFromPayload(submissionPayload, current));
+      setTemplateStats(
+        activePayload.stats ?? { active: 0, archived: 0, recipientRoles: 0 },
+      );
+      setActivePageMeta((current) =>
+        pageMetaFromPayload(activePayload, current),
+      );
+      setArchivedPageMeta((current) =>
+        pageMetaFromPayload(archivedPayload, current),
+      );
+      setSubmissionPageMeta((current) =>
+        pageMetaFromPayload(submissionPayload, current),
+      );
       setSubmissionTotal(submissionPayload.totalItems ?? 0);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Dashboard could not be loaded.");
+      setError(
+        cause instanceof Error
+          ? cause.message
+          : "Dashboard could not be loaded.",
+      );
     } finally {
       setLoading(false);
     }
@@ -368,10 +394,17 @@ export function TemplatesDashboard(props: { displayName: string }) {
       if (!response.ok || !payload.link) {
         throw new Error(payload.error || "A new link could not be created.");
       }
-      setGeneratedLinks((current) => ({ ...current, [key]: payload.link!.url }));
+      setGeneratedLinks((current) => ({
+        ...current,
+        [key]: payload.link!.url,
+      }));
       updateRecipientLink(templateId, roleId, payload.link);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "A new link could not be created.");
+      setError(
+        cause instanceof Error
+          ? cause.message
+          : "A new link could not be created.",
+      );
     } finally {
       setLinkActionKey(null);
     }
@@ -406,7 +439,11 @@ export function TemplatesDashboard(props: { displayName: string }) {
       });
       updateRecipientLink(templateId, roleId, payload.link);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "The link could not be revoked.");
+      setError(
+        cause instanceof Error
+          ? cause.message
+          : "The link could not be revoked.",
+      );
     } finally {
       setLinkActionKey(null);
     }
@@ -418,12 +455,11 @@ export function TemplatesDashboard(props: { displayName: string }) {
       setError("");
       setCopiedLinkKey(key);
       if (copyLinkTimerRef.current) clearTimeout(copyLinkTimerRef.current);
-      copyLinkTimerRef.current = setTimeout(
-        () => setCopiedLinkKey(null),
-        1800,
-      );
+      copyLinkTimerRef.current = setTimeout(() => setCopiedLinkKey(null), 1800);
     } catch {
-      setError("Clipboard access was blocked. Select and copy the link manually.");
+      setError(
+        "Clipboard access was blocked. Select and copy the link manually.",
+      );
     }
   }
 
@@ -465,13 +501,15 @@ export function TemplatesDashboard(props: { displayName: string }) {
           ),
         );
         setNotice(
-          `“${template.name}” was archived. Pending assignments were cancelled and submission history was preserved.`,
+          `“${template.name}” was archived. Files, assignments, and submission history were preserved. Restore it from Archive.`,
         );
       }
       await loadData();
     } catch (cause) {
       setError(
-        cause instanceof Error ? cause.message : "The template could not be removed.",
+        cause instanceof Error
+          ? cause.message
+          : "The template could not be removed.",
       );
     } finally {
       setRemovingTemplateId(null);
@@ -512,7 +550,9 @@ export function TemplatesDashboard(props: { displayName: string }) {
       await loadData();
     } catch (cause) {
       setError(
-        cause instanceof Error ? cause.message : "The template could not be restored.",
+        cause instanceof Error
+          ? cause.message
+          : "The template could not be restored.",
       );
     } finally {
       setRemovingTemplateId(null);
@@ -555,95 +595,224 @@ export function TemplatesDashboard(props: { displayName: string }) {
 
   return (
     <AppShell displayName={props.displayName}>
-        <PageHeader
-          title="Templates"
-          description="Create reusable PDF forms, manage recipient access, and review submissions from one workspace."
-          actions={
-            <Button asChild>
-              <Link href="/">
-                <FileText className="size-4" /> New template
-              </Link>
-            </Button>
-          }
+      <PageHeader
+        title="Templates"
+        description="Create reusable PDF forms, manage recipient access, and review submissions from one workspace."
+        actions={
+          <Button asChild>
+            <Link href="/">
+              <FileText className="size-4" /> New template
+            </Link>
+          </Button>
+        }
+      />
+
+      <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <MetricCard
+          label="Active templates"
+          value={templateStats.active}
+          icon={<FolderOpen />}
+          tone="primary"
         />
+        <MetricCard
+          label="Archived templates"
+          value={templateStats.archived}
+          icon={<Archive />}
+          tone="warning"
+        />
+        <MetricCard
+          label="Recipient roles"
+          value={templateStats.recipientRoles}
+          icon={<Link2 />}
+        />
+        <MetricCard
+          label="Submissions"
+          value={submissionTotal}
+          icon={<Inbox />}
+          tone="success"
+        />
+      </section>
 
-        <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <MetricCard label="Active templates" value={templateStats.active} icon={<FolderOpen />} tone="primary" />
-          <MetricCard label="Archived templates" value={templateStats.archived} icon={<Archive />} tone="warning" />
-          <MetricCard label="Recipient roles" value={templateStats.recipientRoles} icon={<Link2 />} />
-          <MetricCard label="Submissions" value={submissionTotal} icon={<Inbox />} tone="success" />
-        </section>
+      {error && (
+        <FeedbackAlert
+          tone="error"
+          title="Something went wrong"
+          description={error}
+        />
+      )}
+      {notice && (
+        <FeedbackAlert
+          tone="success"
+          title="Updated successfully"
+          description={notice}
+        />
+      )}
 
-        {error && (
-          <FeedbackAlert
-            tone="error"
-            title="Something went wrong"
-            description={error}
-          />
-        )}
-        {notice && (
-          <FeedbackAlert
-            tone="success"
-            title="Updated successfully"
-            description={notice}
-          />
-        )}
-
-        <Tabs value={activeView} onValueChange={(value) => { if (isDashboardView(value)) setActiveView(value); }}>
-          <DataView>
-            <DataViewHeader>
-            <TabsList variant="line" className="grid h-auto w-full grid-cols-3 sm:w-auto">
-              <TabsTrigger value="templates"><FolderOpen /> Templates <Badge variant="secondary" className="ml-1 hidden sm:inline-flex">{templateStats.active}</Badge></TabsTrigger>
-              <TabsTrigger value="submissions"><Inbox /> Submissions <Badge variant="secondary" className="ml-1 hidden sm:inline-flex">{submissionTotal}</Badge></TabsTrigger>
-              <TabsTrigger value="archived"><Archive /> Archived <Badge variant="secondary" className="ml-1 hidden sm:inline-flex">{templateStats.archived}</Badge></TabsTrigger>
+      <Tabs
+        value={activeView}
+        onValueChange={(value) => {
+          if (isDashboardView(value)) setActiveView(value);
+        }}
+      >
+        <DataView>
+          <DataViewHeader>
+            <TabsList
+              variant="line"
+              className="grid h-auto w-full grid-cols-3 sm:w-auto"
+            >
+              <TabsTrigger value="templates">
+                <FolderOpen /> Templates{" "}
+                <Badge
+                  variant="secondary"
+                  className="ml-1 hidden sm:inline-flex"
+                >
+                  {templateStats.active}
+                </Badge>
+              </TabsTrigger>
+              <TabsTrigger value="submissions">
+                <Inbox /> Submissions{" "}
+                <Badge
+                  variant="secondary"
+                  className="ml-1 hidden sm:inline-flex"
+                >
+                  {submissionTotal}
+                </Badge>
+              </TabsTrigger>
+              <TabsTrigger value="archived">
+                <Archive /> Archived{" "}
+                <Badge
+                  variant="secondary"
+                  className="ml-1 hidden sm:inline-flex"
+                >
+                  {templateStats.archived}
+                </Badge>
+              </TabsTrigger>
             </TabsList>
-            <Button type="button" variant="outline" size="sm" onClick={() => void loadData()} disabled={loading}><RefreshCw className={loading ? "animate-spin" : ""} /> Refresh</Button>
-            </DataViewHeader>
-            <DataViewContent>
-
-          <TabsContent value="templates">
-            {loading ? <DashboardSkeleton /> : <TemplateTable templates={activeTemplates} generatedLinks={generatedLinks} linkActionKey={linkActionKey} copiedLinkKey={copiedLinkKey} removingTemplateId={removingTemplateId} localTimeZone={localTimeZone} pageMeta={activePageMeta} searchDraft={activeSearchDraft} onSearchDraftChange={setActiveSearchDraft} onSearch={() => { setActivePageMeta((current) => ({ ...current, page: 1 })); setActiveSearch(activeSearchDraft.trim()); }} onPageChange={(page) => setActivePageMeta((current) => ({ ...current, page }))} onPageSizeChange={(pageSize) => setActivePageMeta((current) => ({ ...current, page: 1, pageSize }))} onRegenerate={regenerateLink} onRevoke={revokeLink} onCopy={copyGeneratedLink} onRequestRemove={setTemplatePendingRemoval} />}
-          </TabsContent>
-          <TabsContent value="submissions">
-            {loading ? <DashboardSkeleton /> : <div>
-            <SubmissionFilterPanel
-              templates={templateOptions}
-              draft={filterDraft}
-              applied={appliedFilters}
-              total={submissionTotal}
-              localTimeZone={localTimeZone}
-              onDraftChange={setFilterDraft}
-              onApply={() => {
-                setSubmissionPageMeta((current) => ({ ...current, page: 1 }));
-                setAppliedFilters(filterDraft);
-              }}
-              onClear={() => {
-                setFilterDraft(EMPTY_FILTERS);
-                setAppliedFilters(EMPTY_FILTERS);
-                setSubmissionPageMeta((current) => ({ ...current, page: 1 }));
-              }}
-            />
-            <SubmissionTable submissions={submissions} localTimeZone={localTimeZone} pageMeta={submissionPageMeta} onPageChange={(page) => setSubmissionPageMeta((current) => ({ ...current, page }))} onPageSizeChange={(pageSize) => setSubmissionPageMeta((current) => ({ ...current, page: 1, pageSize }))} />
-            </div>}
-          </TabsContent>
-          <TabsContent value="archived">
-            {loading ? <DashboardSkeleton /> : <ArchivedTemplateTable
-            templates={archivedTemplates}
-            busyTemplateId={removingTemplateId}
-            localTimeZone={localTimeZone}
-            onRestore={(template) => void restoreTemplate(template)}
-            onViewSubmissions={viewTemplateSubmissions}
-            pageMeta={archivedPageMeta}
-            searchDraft={archivedSearchDraft}
-            onSearchDraftChange={setArchivedSearchDraft}
-            onSearch={() => { setArchivedPageMeta((current) => ({ ...current, page: 1 })); setArchivedSearch(archivedSearchDraft.trim()); }}
-            onPageChange={(page) => setArchivedPageMeta((current) => ({ ...current, page }))}
-            onPageSizeChange={(pageSize) => setArchivedPageMeta((current) => ({ ...current, page: 1, pageSize }))}
-            />}
-          </TabsContent>
-            </DataViewContent>
-          </DataView>
-        </Tabs>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => void loadData()}
+              disabled={loading}
+            >
+              <RefreshCw className={loading ? "animate-spin" : ""} /> Refresh
+            </Button>
+          </DataViewHeader>
+          <DataViewContent>
+            <TabsContent value="templates">
+              {loading ? (
+                <DashboardSkeleton />
+              ) : (
+                <TemplateTable
+                  templates={activeTemplates}
+                  generatedLinks={generatedLinks}
+                  linkActionKey={linkActionKey}
+                  copiedLinkKey={copiedLinkKey}
+                  removingTemplateId={removingTemplateId}
+                  localTimeZone={localTimeZone}
+                  pageMeta={activePageMeta}
+                  searchDraft={activeSearchDraft}
+                  onSearchDraftChange={setActiveSearchDraft}
+                  onSearch={() => {
+                    setActivePageMeta((current) => ({ ...current, page: 1 }));
+                    setActiveSearch(activeSearchDraft.trim());
+                  }}
+                  onPageChange={(page) =>
+                    setActivePageMeta((current) => ({ ...current, page }))
+                  }
+                  onPageSizeChange={(pageSize) =>
+                    setActivePageMeta((current) => ({
+                      ...current,
+                      page: 1,
+                      pageSize,
+                    }))
+                  }
+                  onRegenerate={regenerateLink}
+                  onRevoke={revokeLink}
+                  onCopy={copyGeneratedLink}
+                  onRequestRemove={setTemplatePendingRemoval}
+                />
+              )}
+            </TabsContent>
+            <TabsContent value="submissions">
+              {loading ? (
+                <DashboardSkeleton />
+              ) : (
+                <div>
+                  <SubmissionFilterPanel
+                    templates={templateOptions}
+                    draft={filterDraft}
+                    applied={appliedFilters}
+                    total={submissionTotal}
+                    localTimeZone={localTimeZone}
+                    onDraftChange={setFilterDraft}
+                    onApply={() => {
+                      setSubmissionPageMeta((current) => ({
+                        ...current,
+                        page: 1,
+                      }));
+                      setAppliedFilters(filterDraft);
+                    }}
+                    onClear={() => {
+                      setFilterDraft(EMPTY_FILTERS);
+                      setAppliedFilters(EMPTY_FILTERS);
+                      setSubmissionPageMeta((current) => ({
+                        ...current,
+                        page: 1,
+                      }));
+                    }}
+                  />
+                  <SubmissionTable
+                    submissions={submissions}
+                    localTimeZone={localTimeZone}
+                    pageMeta={submissionPageMeta}
+                    onPageChange={(page) =>
+                      setSubmissionPageMeta((current) => ({ ...current, page }))
+                    }
+                    onPageSizeChange={(pageSize) =>
+                      setSubmissionPageMeta((current) => ({
+                        ...current,
+                        page: 1,
+                        pageSize,
+                      }))
+                    }
+                  />
+                </div>
+              )}
+            </TabsContent>
+            <TabsContent value="archived">
+              {loading ? (
+                <DashboardSkeleton />
+              ) : (
+                <ArchivedTemplateTable
+                  templates={archivedTemplates}
+                  busyTemplateId={removingTemplateId}
+                  localTimeZone={localTimeZone}
+                  onRestore={(template) => void restoreTemplate(template)}
+                  onViewSubmissions={viewTemplateSubmissions}
+                  pageMeta={archivedPageMeta}
+                  searchDraft={archivedSearchDraft}
+                  onSearchDraftChange={setArchivedSearchDraft}
+                  onSearch={() => {
+                    setArchivedPageMeta((current) => ({ ...current, page: 1 }));
+                    setArchivedSearch(archivedSearchDraft.trim());
+                  }}
+                  onPageChange={(page) =>
+                    setArchivedPageMeta((current) => ({ ...current, page }))
+                  }
+                  onPageSizeChange={(pageSize) =>
+                    setArchivedPageMeta((current) => ({
+                      ...current,
+                      page: 1,
+                      pageSize,
+                    }))
+                  }
+                />
+              )}
+            </TabsContent>
+          </DataViewContent>
+        </DataView>
+      </Tabs>
       <TemplateRemovalDialog
         template={templatePendingRemoval}
         removing={removingTemplateId !== null}
@@ -657,7 +826,22 @@ export function TemplatesDashboard(props: { displayName: string }) {
 }
 
 function DashboardSkeleton() {
-  return <div className="grid gap-4 p-4 lg:grid-cols-2">{[0, 1].map((item) => <Card key={item} className="shadow-none"><CardHeader><Skeleton className="h-5 w-2/5" /><Skeleton className="h-4 w-3/5" /></CardHeader><CardContent className="space-y-3"><Skeleton className="h-16 w-full" /><Skeleton className="h-16 w-full" /></CardContent></Card>)}</div>;
+  return (
+    <div className="grid gap-4 p-4 lg:grid-cols-2">
+      {[0, 1].map((item) => (
+        <Card key={item} className="shadow-none">
+          <CardHeader>
+            <Skeleton className="h-5 w-2/5" />
+            <Skeleton className="h-4 w-3/5" />
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <Skeleton className="h-16 w-full" />
+            <Skeleton className="h-16 w-full" />
+          </CardContent>
+        </Card>
+      ))}
+    </div>
+  );
 }
 
 function TemplateTable(props: {
@@ -737,7 +921,9 @@ function TemplateTable(props: {
               </Badge>
             ))}
             {template.currentRoles.length > 2 && (
-              <Badge variant="outline">+{template.currentRoles.length - 2}</Badge>
+              <Badge variant="outline">
+                +{template.currentRoles.length - 2}
+              </Badge>
             )}
           </div>
         );
@@ -858,8 +1044,7 @@ function TemplateRowActions(props: {
   removingTemplateId: string | null;
   onRequestRemove: (template: TemplateSummary) => void;
 }) {
-  const willArchive =
-    props.template.assignmentCount > 0 || props.template.submissionCount > 0;
+  const willArchive = true;
   return (
     <div className="flex justify-end gap-1">
       <Button asChild variant="outline" size="sm">
@@ -956,7 +1141,8 @@ function TemplateLinksDialog(props: {
       ),
       cell: ({ row }) => (
         <span className="text-xs">
-          {row.original.submissionCount}/{row.original.maxSubmissions} submissions
+          {row.original.submissionCount}/{row.original.maxSubmissions}{" "}
+          submissions
         </span>
       ),
     },
@@ -1000,7 +1186,9 @@ function TemplateLinksDialog(props: {
               readOnly
               value={url}
               aria-label={`${recipient.roleName} fill link`}
-              className={copied ? "text-success-foreground" : "text-muted-foreground"}
+              className={
+                copied ? "text-success-foreground" : "text-muted-foreground"
+              }
             />
             <InputGroupAddon align="inline-end">
               <InputGroupButton
@@ -1057,11 +1245,7 @@ function TemplateLinksDialog(props: {
                 }
               }}
             >
-              {busy ? (
-                <Spinner />
-              ) : (
-                <RefreshCw />
-              )}
+              {busy ? <Spinner /> : <RefreshCw />}
               {hasGeneratedUrl ? "Regenerate" : "Create link"}
             </Button>
             {recipient.status === "active" && (
@@ -1073,7 +1257,8 @@ function TemplateLinksDialog(props: {
                 className="text-destructive hover:text-destructive"
                 aria-label={`Revoke ${recipient.roleName} link`}
                 onClick={() => {
-                  if (template) void props.onRevoke(template.id, recipient.roleId);
+                  if (template)
+                    void props.onRevoke(template.id, recipient.roleId);
                 }}
               >
                 <Ban />
@@ -1202,48 +1387,48 @@ function ArchivedTemplateTable(props: {
       cell: ({ row }) => {
         const template = row.original;
         return (
-        <div className="flex justify-end gap-1">
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            disabled={props.busyTemplateId !== null}
-            onClick={() => props.onRestore(template)}
-          >
-            {props.busyTemplateId === template.id ? (
-              <Spinner />
-            ) : (
-              <ArchiveRestore />
-            )}
-            Restore
-          </Button>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon-sm"
-                aria-label={`More actions for ${template.name}`}
-              >
-                <EllipsisVertical />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              {template.submissionCount > 0 && (
-                <DropdownMenuItem
-                  onSelect={() => props.onViewSubmissions(template)}
-                >
-                  <Inbox /> View submissions
-                </DropdownMenuItem>
+          <div className="flex justify-end gap-1">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={props.busyTemplateId !== null}
+              onClick={() => props.onRestore(template)}
+            >
+              {props.busyTemplateId === template.id ? (
+                <Spinner />
+              ) : (
+                <ArchiveRestore />
               )}
-              <DropdownMenuItem asChild>
-                <a href={`/api/templates/${template.id}/pdf`}>
-                  <Download /> Download PDF
-                </a>
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
+              Restore
+            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label={`More actions for ${template.name}`}
+                >
+                  <EllipsisVertical />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                {template.submissionCount > 0 && (
+                  <DropdownMenuItem
+                    onSelect={() => props.onViewSubmissions(template)}
+                  >
+                    <Inbox /> View submissions
+                  </DropdownMenuItem>
+                )}
+                <DropdownMenuItem asChild>
+                  <a href={`/api/templates/${template.id}/pdf`}>
+                    <Download /> Download PDF
+                  </a>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
         );
       },
     },
@@ -1258,17 +1443,17 @@ function ArchivedTemplateTable(props: {
         onSearch={props.onSearch}
       />
       <DataTable
-      columns={columns}
-      data={props.templates}
-      getRowId={(template) => template.id}
-      caption="Archived PDF templates"
-      emptyTitle="No archived templates"
-      emptyDescription="Templates you archive will appear here with their assignment and submission history."
-      emptyIcon={<Archive />}
-      enableRowSelection
-      initialPageSize={props.pageMeta.pageSize}
-      hidePagination
-      surface="embedded"
+        columns={columns}
+        data={props.templates}
+        getRowId={(template) => template.id}
+        caption="Archived PDF templates"
+        emptyTitle="No archived templates"
+        emptyDescription="Templates you archive will appear here with their assignment and submission history."
+        emptyIcon={<Archive />}
+        enableRowSelection
+        initialPageSize={props.pageMeta.pageSize}
+        hidePagination
+        surface="embedded"
       />
       <ServerPagination
         meta={props.pageMeta}
@@ -1294,7 +1479,9 @@ function TemplateListSearch(props: {
       }}
     >
       <InputGroup>
-        <InputGroupAddon><Search /></InputGroupAddon>
+        <InputGroupAddon>
+          <Search />
+        </InputGroupAddon>
         <InputGroupInput
           value={props.value}
           onChange={(event) => props.onChange(event.target.value)}
@@ -1302,7 +1489,9 @@ function TemplateListSearch(props: {
           aria-label={props.placeholder}
         />
       </InputGroup>
-      <Button type="submit" variant="outline">Search</Button>
+      <Button type="submit" variant="outline">
+        Search
+      </Button>
     </form>
   );
 }
@@ -1314,9 +1503,7 @@ function TemplateRemovalDialog(props: {
   onConfirm: (template: TemplateSummary) => void;
 }) {
   const template = props.template;
-  const willArchive = Boolean(
-    template && (template.submissionCount > 0 || template.assignmentCount > 0),
-  );
+  const willArchive = true;
   return (
     <AlertDialog open={Boolean(template)} onOpenChange={props.onOpenChange}>
       <AlertDialogContent>
@@ -1331,16 +1518,21 @@ function TemplateRemovalDialog(props: {
             {willArchive ? <Archive /> : <TriangleAlert />}
           </AlertDialogMedia>
           <AlertDialogTitle>
-            {willArchive ? "Archive this template?" : "Delete this template permanently?"}
+            {willArchive
+              ? "Archive this template?"
+              : "Delete this template permanently?"}
           </AlertDialogTitle>
           <AlertDialogDescription className="leading-6">
-            {willArchive && template
-              ? `“${template.name}” has ${template.assignmentCount} assignment${template.assignmentCount === 1 ? "" : "s"} and ${template.submissionCount} submission${template.submissionCount === 1 ? "" : "s"}. Pending assignments will be cancelled, active links will be revoked, and completed submission history will remain available.`
-              : `“${template?.name ?? "This template"}” has no assignments or submissions. Its template record and stored PDF versions will be permanently deleted. This cannot be undone.`}
+            “{template?.name}” will be hidden from active lists. Stored PDFs,
+            existing assigned forms, and submitted forms are preserved. New
+            assignments and public share links are disabled. Restore this
+            template from Archive.
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogCancel disabled={props.removing}>Keep template</AlertDialogCancel>
+          <AlertDialogCancel disabled={props.removing}>
+            Keep template
+          </AlertDialogCancel>
           <AlertDialogAction
             variant={willArchive ? "default" : "destructive"}
             disabled={props.removing || !template}
@@ -1383,7 +1575,8 @@ function SubmissionFilterPanel(props: {
   const filtersChanged = !dashboardFiltersEqual(props.draft, props.applied);
   const exportParams = submissionFilterParams(props.applied);
   exportParams.set("timeZone", props.localTimeZone);
-  const canExport = Boolean(appliedTemplate) && props.total > 0 && !filtersChanged;
+  const canExport =
+    Boolean(appliedTemplate) && props.total > 0 && !filtersChanged;
   const exportDescription = bulkExportDescription({
     filtersChanged,
     templateName: appliedTemplate?.name,
@@ -1416,23 +1609,41 @@ function SubmissionFilterPanel(props: {
         <label className="min-w-0 flex-1">
           <span className="sr-only">Search submissions</span>
           <InputGroup className="h-10">
-            <InputGroupAddon><Search /></InputGroupAddon>
-            <InputGroupInput value={props.draft.search} onChange={(event) => update({ search: event.target.value })} placeholder="Search recipient, email, or template…" />
+            <InputGroupAddon>
+              <Search />
+            </InputGroupAddon>
+            <InputGroupInput
+              value={props.draft.search}
+              onChange={(event) => update({ search: event.target.value })}
+              placeholder="Search recipient, email, or template…"
+            />
           </InputGroup>
         </label>
         <div className="flex shrink-0 gap-2">
-          <Button type="submit" size="sm" className="h-10 min-w-20">Search</Button>
+          <Button type="submit" size="sm" className="h-10 min-w-20">
+            Search
+          </Button>
           <Popover open={filtersOpen} onOpenChange={setFiltersOpen}>
             <PopoverTrigger asChild>
-              <Button type="button" variant="outline" size="sm" className="h-10 min-w-24">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-10 min-w-24"
+              >
                 <SlidersHorizontal className="size-4" />
                 Filters
                 {activeFilterCount > 0 && (
-                  <Badge className="min-w-5 px-1.5 text-[10px]">{activeFilterCount}</Badge>
+                  <Badge className="min-w-5 px-1.5 text-[10px]">
+                    {activeFilterCount}
+                  </Badge>
                 )}
               </Button>
             </PopoverTrigger>
-            <PopoverContent align="end" className="w-[calc(100vw-2rem)] max-w-sm p-0">
+            <PopoverContent
+              align="end"
+              className="w-[calc(100vw-2rem)] max-w-sm p-0"
+            >
               <PopoverHeader className="border-b p-4">
                 <PopoverTitle>Filter submissions</PopoverTitle>
                 <PopoverDescription>
@@ -1441,7 +1652,9 @@ function SubmissionFilterPanel(props: {
               </PopoverHeader>
               <div className="grid gap-4 p-4">
                 <div className="space-y-1.5">
-                  <span className="text-xs font-semibold text-foreground">Template</span>
+                  <span className="text-xs font-semibold text-foreground">
+                    Template
+                  </span>
                   <Select
                     value={props.draft.templateId || "all-templates"}
                     onValueChange={(value) =>
@@ -1455,7 +1668,9 @@ function SubmissionFilterPanel(props: {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent align="start">
-                      <SelectItem value="all-templates">All templates</SelectItem>
+                      <SelectItem value="all-templates">
+                        All templates
+                      </SelectItem>
                       {props.templates.map((template) => (
                         <SelectItem key={template.id} value={template.id}>
                           {template.name}
@@ -1466,7 +1681,9 @@ function SubmissionFilterPanel(props: {
                   </Select>
                 </div>
                 <div className="space-y-1.5">
-                  <span className="text-xs font-semibold text-foreground">Recipient role</span>
+                  <span className="text-xs font-semibold text-foreground">
+                    Recipient role
+                  </span>
                   <Select
                     value={props.draft.roleId || "all-roles"}
                     onValueChange={(value) =>
@@ -1487,10 +1704,14 @@ function SubmissionFilterPanel(props: {
                   </Select>
                 </div>
                 <fieldset>
-                  <legend className="text-xs font-semibold text-foreground">Submitted date</legend>
+                  <legend className="text-xs font-semibold text-foreground">
+                    Submitted date
+                  </legend>
                   <div className="mt-1.5 grid grid-cols-2 gap-3">
                     <div className="space-y-1">
-                      <span className="text-[11px] font-medium text-muted-foreground">From</span>
+                      <span className="text-[11px] font-medium text-muted-foreground">
+                        From
+                      </span>
                       <DatePicker
                         value={props.draft.fromDate}
                         max={props.draft.toDate || undefined}
@@ -1501,7 +1722,9 @@ function SubmissionFilterPanel(props: {
                       />
                     </div>
                     <div className="space-y-1">
-                      <span className="text-[11px] font-medium text-muted-foreground">To</span>
+                      <span className="text-[11px] font-medium text-muted-foreground">
+                        To
+                      </span>
                       <DatePicker
                         value={props.draft.toDate}
                         min={props.draft.fromDate || undefined}
@@ -1515,34 +1738,110 @@ function SubmissionFilterPanel(props: {
                 </fieldset>
               </div>
               <div className="flex items-center justify-between gap-2 border-t p-4">
-                <Button type="button" variant="ghost" size="sm" onClick={() => { props.onClear(); setFiltersOpen(false); }}>Clear all</Button>
-                <Button type="button" size="sm" onClick={() => { props.onApply(); setFiltersOpen(false); }}>Apply filters</Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    props.onClear();
+                    setFiltersOpen(false);
+                  }}
+                >
+                  Clear all
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={() => {
+                    props.onApply();
+                    setFiltersOpen(false);
+                  }}
+                >
+                  Apply filters
+                </Button>
               </div>
             </PopoverContent>
           </Popover>
         </div>
       </form>
       {appliedFilterLabels.length > 0 && (
-        <div className="mt-3 flex flex-wrap items-center gap-2" aria-label="Applied filters">
-          <span className="text-[11px] font-semibold text-muted-foreground">Applied:</span>
+        <div
+          className="mt-3 flex flex-wrap items-center gap-2"
+          aria-label="Applied filters"
+        >
+          <span className="text-[11px] font-semibold text-muted-foreground">
+            Applied:
+          </span>
           {appliedFilterLabels.map((label) => (
-            <Badge key={label} variant="secondary">{label}</Badge>
+            <Badge key={label} variant="secondary">
+              {label}
+            </Badge>
           ))}
-          <Button type="button" variant="ghost" size="xs" className="h-7 text-xs text-muted-foreground" onClick={props.onClear}>Clear</Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="xs"
+            className="h-7 text-xs text-muted-foreground"
+            onClick={props.onClear}
+          >
+            Clear
+          </Button>
         </div>
       )}
       <Separator className="my-4" />
       <div className="flex min-w-0 flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-        <p className="text-xs text-muted-foreground">{props.total} matching submission{props.total === 1 ? "" : "s"}</p>
+        <p className="text-xs text-muted-foreground">
+          {props.total} matching submission{props.total === 1 ? "" : "s"}
+        </p>
         <div className="min-w-0 sm:max-w-xl sm:text-right">
           <p className="text-xs font-bold text-foreground">Bulk export</p>
-          <p id="bulk-export-description" aria-live="polite" className="mt-1 text-xs leading-5 text-muted-foreground">{exportDescription}</p>
+          <p
+            id="bulk-export-description"
+            aria-live="polite"
+            className="mt-1 text-xs leading-5 text-muted-foreground"
+          >
+            {exportDescription}
+          </p>
           <div className="mt-2 grid min-w-0 grid-cols-2 gap-2 sm:flex sm:justify-end">
-            <Button asChild={canExport} disabled={!canExport} variant="outline" size="sm" className="min-w-0" aria-describedby="bulk-export-description">
-              {canExport ? <a href={`/api/submissions/export?${withFormat(exportParams, "xlsx")}`}><FileSpreadsheet className="size-3.5" /> Bulk Excel</a> : <span><FileSpreadsheet className="size-3.5" /> Bulk Excel</span>}
+            <Button
+              asChild={canExport}
+              disabled={!canExport}
+              variant="outline"
+              size="sm"
+              className="min-w-0"
+              aria-describedby="bulk-export-description"
+            >
+              {canExport ? (
+                <a
+                  href={`/api/submissions/export?${withFormat(exportParams, "xlsx")}`}
+                >
+                  <FileSpreadsheet className="size-3.5" /> Bulk Excel
+                </a>
+              ) : (
+                <span>
+                  <FileSpreadsheet className="size-3.5" /> Bulk Excel
+                </span>
+              )}
             </Button>
-            <Button asChild={canExport} disabled={!canExport} variant="outline" size="sm" className="min-w-0" aria-describedby="bulk-export-description">
-              {canExport ? <a href={`/api/submissions/export?${withFormat(exportParams, "csv")}`}><Download className="size-3.5" /> Bulk CSV</a> : <span><Download className="size-3.5" /> Bulk CSV</span>}
+            <Button
+              asChild={canExport}
+              disabled={!canExport}
+              variant="outline"
+              size="sm"
+              className="min-w-0"
+              aria-describedby="bulk-export-description"
+            >
+              {canExport ? (
+                <a
+                  href={`/api/submissions/export?${withFormat(exportParams, "csv")}`}
+                >
+                  <Download className="size-3.5" /> Bulk CSV
+                </a>
+              ) : (
+                <span>
+                  <Download className="size-3.5" /> Bulk CSV
+                </span>
+              )}
             </Button>
           </div>
         </div>
@@ -1638,44 +1937,50 @@ function SubmissionTable(props: {
       cell: ({ row }) => {
         const submission = row.original;
         return (
-        <div className="flex justify-end gap-1">
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            onClick={() => setDetailSubmissionId(submission.id)}
-          >
-            <FileText /> Details
-          </Button>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon-sm"
-                aria-label={`Export submission from ${submission.recipientName}`}
-              >
-                <EllipsisVertical />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem asChild>
-                <a
-                  href={`/api/submissions/${submission.id}/excel?timeZone=${encodeURIComponent(props.localTimeZone)}`}
+          <div className="flex justify-end gap-1">
+            <ArchiveButton
+              type="submission"
+              id={submission.id}
+              label={`submission from ${submission.recipientName}`}
+              onArchived={() => window.location.reload()}
+            />
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => setDetailSubmissionId(submission.id)}
+            >
+              <FileText /> Details
+            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label={`Export submission from ${submission.recipientName}`}
                 >
-                  <FileSpreadsheet /> Download Excel
-                </a>
-              </DropdownMenuItem>
-              {submission.hasCompletedPdf && (
+                  <EllipsisVertical />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
                 <DropdownMenuItem asChild>
-                  <a href={`/api/submissions/${submission.id}/pdf`}>
-                    <Download /> Download PDF
+                  <a
+                    href={`/api/submissions/${submission.id}/excel?timeZone=${encodeURIComponent(props.localTimeZone)}`}
+                  >
+                    <FileSpreadsheet /> Download Excel
                   </a>
                 </DropdownMenuItem>
-              )}
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
+                {submission.hasCompletedPdf && (
+                  <DropdownMenuItem asChild>
+                    <a href={`/api/submissions/${submission.id}/pdf`}>
+                      <Download /> Download PDF
+                    </a>
+                  </DropdownMenuItem>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
         );
       },
     },
@@ -1814,7 +2119,9 @@ function isPublicSubmissionImage(value: unknown): value is {
 }
 
 function isDashboardView(value: string): value is DashboardView {
-  return value === "templates" || value === "submissions" || value === "archived";
+  return (
+    value === "templates" || value === "submissions" || value === "archived"
+  );
 }
 
 function linkStatusTone(status: string): StatusTone {
@@ -1885,6 +2192,7 @@ function bulkExportDescription(options: {
   if (!templateName) {
     return "Select one template and apply filters. Different templates are never mixed in one export.";
   }
-  if (total === 0) return `No matching submissions from “${templateName}” to export.`;
+  if (total === 0)
+    return `No matching submissions from “${templateName}” to export.`;
   return `${total} matching submission${total === 1 ? "" : "s"} from “${templateName}” will be exported.`;
 }

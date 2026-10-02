@@ -43,6 +43,9 @@ type IntakeItem = {
   username: string;
   fileName: string;
   extractionStatus: IntakeStatus;
+  reviewStatus: "verified" | "needs_review";
+  cvCount: number;
+  verifiedCvCount: number;
   accountCreated: boolean;
   confirmed: boolean;
   possibleDuplicate: boolean;
@@ -155,16 +158,13 @@ export function IntakeDashboard({ displayName }: { displayName: string }) {
               onChange={(e) => setSearch(e.target.value)}
             />
             <Select value={status} onValueChange={setStatus}>
-              <SelectTrigger className="w-48" aria-label="AI extraction status">
+              <SelectTrigger className="w-48" aria-label="CV review status">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All AI statuses</SelectItem>
-                {Object.entries(INTAKE_LABELS).map(([value, label]) => (
-                  <SelectItem key={value} value={value}>
-                    {label}
-                  </SelectItem>
-                ))}
+                <SelectItem value="all">All review statuses</SelectItem>
+                <SelectItem value="needs_review">Needs review</SelectItem>
+                <SelectItem value="verified">Verified</SelectItem>
               </SelectContent>
             </Select>
             <Button
@@ -185,7 +185,7 @@ export function IntakeDashboard({ displayName }: { displayName: string }) {
                     "Candidate",
                     "Telegram",
                     "CV",
-                    "AI status",
+                    "CV review",
                     "Login account",
                     "Action",
                   ].map((h) => (
@@ -215,16 +215,22 @@ export function IntakeDashboard({ displayName }: { displayName: string }) {
                     </TableCell>
                     <TableCell className="max-w-64 truncate">
                       {item.fileName}
+                      <p className="text-xs text-muted-foreground">
+                        {item.cvCount} CV{item.cvCount === 1 ? "" : "s"} ·{" "}
+                        {item.verifiedCvCount} verified
+                      </p>
                     </TableCell>
                     <TableCell>
                       <Badge
                         variant={
-                          item.extractionStatus === "failed"
-                            ? "destructive"
+                          item.reviewStatus === "verified"
+                            ? "default"
                             : "secondary"
                         }
                       >
-                        {INTAKE_LABELS[item.extractionStatus]}
+                        {item.reviewStatus === "verified"
+                          ? "Verified"
+                          : "Needs Resume Editor review"}
                       </Badge>
                     </TableCell>
                     <TableCell>

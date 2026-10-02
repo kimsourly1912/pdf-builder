@@ -1,4 +1,15 @@
-import { and, asc, count, desc, eq, inArray, isNull, like, or } from "drizzle-orm";
+import { notArchived } from "@/features/archive/archive";
+import {
+  and,
+  asc,
+  count,
+  desc,
+  eq,
+  inArray,
+  isNull,
+  like,
+  or,
+} from "drizzle-orm";
 import type { SQL } from "drizzle-orm";
 
 import { getDb } from "@/db";
@@ -15,12 +26,13 @@ import {
   user,
 } from "@/db/schema";
 import { createAuditEvent } from "@/features/audit/audit.server";
-import { createPageMeta, parsePageQuery } from "@/features/pagination/pagination";
+import {
+  createPageMeta,
+  parsePageQuery,
+} from "@/features/pagination/pagination";
 import { normalizeEmail } from "@/features/resumes/resume-extraction";
 import { toUtcIsoString } from "@/features/templates/date-time";
-import {
-  isRecipientAccountType,
-} from "@/features/accounts/account.types";
+import { isRecipientAccountType } from "@/features/accounts/account.types";
 import { isStrongAccountPassword } from "@/features/accounts/account-share";
 import type {
   RecipientAccountSummary,
@@ -43,6 +55,7 @@ export async function GET(request: Request) {
     });
     const conditions: SQL[] = [
       eq(recipientProfiles.createdByEmail, ownerEmail),
+      notArchived("account", user.id),
     ];
     const accountType = searchParams.get("accountType");
     if (isRecipientAccountType(accountType)) {
@@ -88,75 +101,88 @@ export async function GET(request: Request) {
         .where(eq(templates.ownerEmail, ownerEmail)),
     ]);
     const accountIds = accountRows.map((account) => account.id);
-    const linkedCandidates = accountIds.length > 0
-      ? await db.select({
-        id: candidates.id,
-        userId: candidates.userId,
-        name: candidates.fullName,
-      }).from(candidates).where(and(
-        eq(candidates.ownerEmail, ownerEmail),
-        inArray(candidates.userId, accountIds),
-      ))
-      : [];
-    const linkedByUser = new Map(linkedCandidates.map((candidate) => [
-      candidate.userId,
-      { id: candidate.id, name: candidate.name },
-    ]));
-    const assignmentRows = accountIds.length > 0
-      ? await db
-        .select({
-          id: formAssignments.id,
-          userId: formAssignments.userId,
-          templateId: formAssignments.templateId,
-          templateName: templates.name,
-          versionNumber: templateVersions.versionNumber,
-          roleId: formAssignments.roleId,
-          roleName: formAssignments.roleName,
-          roleColor: formAssignments.roleColor,
-          status: formAssignments.status,
-          linkStatus: recipientLinks.status,
-          assignedAt: formAssignments.assignedAt,
-          completedAt: formAssignments.completedAt,
-          updatedAt: formAssignments.updatedAt,
-          prefillMode: formAssignments.prefillMode,
-          initialValuesJson: formAssignments.initialValuesJson,
-          availableValuesJson: formAssignments.availableValuesJson,
-          candidateProfileVersionId: formAssignments.candidateProfileVersionId,
-          candidateProfileVersionNumber: candidateProfileVersions.versionNumber,
-          candidateName: candidates.fullName,
-          candidateFileName: resumes.fileName,
-        })
-        .from(formAssignments)
-        .innerJoin(templates, eq(formAssignments.templateId, templates.id))
-        .innerJoin(
-          templateVersions,
-          eq(formAssignments.templateVersionId, templateVersions.id),
-        )
-        .innerJoin(
-          recipientLinks,
-          eq(formAssignments.recipientLinkId, recipientLinks.id),
-        )
-        .leftJoin(
-          candidateProfileVersions,
-          eq(
-            formAssignments.candidateProfileVersionId,
-            candidateProfileVersions.id,
-          ),
-        )
-        .leftJoin(
-          candidates,
-          eq(candidateProfileVersions.candidateId, candidates.id),
-        )
-        .leftJoin(
-          resumes,
-          eq(candidateProfileVersions.resumeId, resumes.id),
-        )
-        .where(and(
-          eq(templates.ownerEmail, ownerEmail),
-          inArray(formAssignments.userId, accountIds),
-        ))
-        .orderBy(desc(formAssignments.assignedAt), desc(formAssignments.id))
-      : [];
+    const linkedCandidates =
+      accountIds.length > 0
+        ? await db
+            .select({
+              id: candidates.id,
+              userId: candidates.userId,
+              name: candidates.fullName,
+            })
+            .from(candidates)
+            .where(
+              and(
+                eq(candidates.ownerEmail, ownerEmail),
+                inArray(candidates.userId, accountIds),
+              ),
+            )
+        : [];
+    const linkedByUser = new Map(
+      linkedCandidates.map((candidate) => [
+        candidate.userId,
+        { id: candidate.id, name: candidate.name },
+      ]),
+    );
+    const assignmentRows =
+      accountIds.length > 0
+        ? await db
+            .select({
+              id: formAssignments.id,
+              userId: formAssignments.userId,
+              templateId: formAssignments.templateId,
+              templateName: templates.name,
+              versionNumber: templateVersions.versionNumber,
+              roleId: formAssignments.roleId,
+              roleName: formAssignments.roleName,
+              roleColor: formAssignments.roleColor,
+              status: formAssignments.status,
+              linkStatus: recipientLinks.status,
+              assignedAt: formAssignments.assignedAt,
+              completedAt: formAssignments.completedAt,
+              updatedAt: formAssignments.updatedAt,
+              prefillMode: formAssignments.prefillMode,
+              initialValuesJson: formAssignments.initialValuesJson,
+              availableValuesJson: formAssignments.availableValuesJson,
+              candidateProfileVersionId:
+                formAssignments.candidateProfileVersionId,
+              candidateProfileVersionNumber:
+                candidateProfileVersions.versionNumber,
+              candidateName: candidates.fullName,
+              candidateFileName: resumes.fileName,
+            })
+            .from(formAssignments)
+            .innerJoin(templates, eq(formAssignments.templateId, templates.id))
+            .innerJoin(
+              templateVersions,
+              eq(formAssignments.templateVersionId, templateVersions.id),
+            )
+            .innerJoin(
+              recipientLinks,
+              eq(formAssignments.recipientLinkId, recipientLinks.id),
+            )
+            .leftJoin(
+              candidateProfileVersions,
+              eq(
+                formAssignments.candidateProfileVersionId,
+                candidateProfileVersions.id,
+              ),
+            )
+            .leftJoin(
+              candidates,
+              eq(candidateProfileVersions.candidateId, candidates.id),
+            )
+            .leftJoin(
+              resumes,
+              eq(candidateProfileVersions.resumeId, resumes.id),
+            )
+            .where(
+              and(
+                eq(templates.ownerEmail, ownerEmail),
+                inArray(formAssignments.userId, accountIds),
+              ),
+            )
+            .orderBy(desc(formAssignments.assignedAt), desc(formAssignments.id))
+        : [];
     const assignmentsByUser = new Map<string, RecipientAssignmentSummary[]>();
     for (const assignment of assignmentRows) {
       const list = assignmentsByUser.get(assignment.userId) ?? [];
@@ -175,21 +201,19 @@ export async function GET(request: Request) {
         assignedAt:
           toUtcIsoString(assignment.assignedAt) ?? assignment.assignedAt,
         completedAt: assignment.completedAt
-          ? toUtcIsoString(assignment.completedAt) ?? assignment.completedAt
+          ? (toUtcIsoString(assignment.completedAt) ?? assignment.completedAt)
           : null,
-        updatedAt:
-          toUtcIsoString(assignment.updatedAt) ?? assignment.updatedAt,
+        updatedAt: toUtcIsoString(assignment.updatedAt) ?? assignment.updatedAt,
         prefillMode:
-          assignment.prefillMode === "suggested"
-          || assignment.prefillMode === "none"
+          assignment.prefillMode === "suggested" ||
+          assignment.prefillMode === "none"
             ? assignment.prefillMode
             : "automatic",
         approvedFieldCount: Object.keys({
           ...parseRecord(assignment.initialValuesJson),
           ...parseRecord(assignment.availableValuesJson),
         }).length,
-        candidateProfileVersionId:
-          assignment.candidateProfileVersionId ?? null,
+        candidateProfileVersionId: assignment.candidateProfileVersionId ?? null,
         candidateProfileVersionNumber:
           assignment.candidateProfileVersionNumber ?? null,
         candidateName: assignment.candidateName ?? "",
@@ -197,16 +221,20 @@ export async function GET(request: Request) {
       });
       assignmentsByUser.set(assignment.userId, list);
     }
-    const accounts: RecipientAccountSummary[] = accountRows.flatMap((account) =>
-      isRecipientAccountType(account.accountType)
-        ? [{
-            ...account,
-            accountType: account.accountType,
-            createdAt: toUtcIsoString(account.createdAt) ?? account.createdAt,
-            linkedCandidate: linkedByUser.get(account.id) ?? null,
-            assignments: assignmentsByUser.get(account.id) ?? [],
-          }]
-        : [],
+    const accounts: RecipientAccountSummary[] = accountRows.flatMap(
+      (account) =>
+        isRecipientAccountType(account.accountType)
+          ? [
+              {
+                ...account,
+                accountType: account.accountType,
+                createdAt:
+                  toUtcIsoString(account.createdAt) ?? account.createdAt,
+                linkedCandidate: linkedByUser.get(account.id) ?? null,
+                assignments: assignmentsByUser.get(account.id) ?? [],
+              },
+            ]
+          : [],
     );
     return Response.json(
       {
@@ -236,7 +264,9 @@ export async function POST(request: Request) {
     const ownerEmail = await requireRequestOwner(request);
     const body = (await request.json()) as Record<string, unknown>;
     const name = String(body.name ?? "").trim();
-    const email = String(body.email ?? "").trim().toLowerCase();
+    const email = String(body.email ?? "")
+      .trim()
+      .toLowerCase();
     const password = String(body.password ?? "");
     const accountType = body.accountType;
     if (!name || name.length > 120) {
@@ -261,21 +291,29 @@ export async function POST(request: Request) {
     createdUserId = created.user.id;
     const now = new Date().toISOString();
     const db = getDb();
-    const [candidate] = accountType === "candidate"
-      ? await db.select({ id: candidates.id, fullName: candidates.fullName }).from(candidates).where(and(
-          eq(candidates.ownerEmail, ownerEmail),
-          eq(candidates.normalizedEmail, normalizeEmail(email)),
-          isNull(candidates.userId),
-        )).orderBy(desc(candidates.updatedAt)).limit(1)
-      : [];
+    const [candidate] =
+      accountType === "candidate"
+        ? await db
+            .select({ id: candidates.id, fullName: candidates.fullName })
+            .from(candidates)
+            .where(
+              and(
+                eq(candidates.ownerEmail, ownerEmail),
+                eq(candidates.normalizedEmail, normalizeEmail(email)),
+                isNull(candidates.userId),
+              ),
+            )
+            .orderBy(desc(candidates.updatedAt))
+            .limit(1)
+        : [];
     const createProfile = db.insert(recipientProfiles).values({
-        userId: created.user.id,
-        accountType,
-        mustChangePassword: true,
-        createdByEmail: ownerEmail,
-        createdAt: now,
-        updatedAt: now,
-      });
+      userId: created.user.id,
+      accountType,
+      mustChangePassword: true,
+      createdByEmail: ownerEmail,
+      createdAt: now,
+      updatedAt: now,
+    });
     const recordCreation = db.insert(auditEvents).values(
       createAuditEvent({
         request,
@@ -292,7 +330,15 @@ export async function POST(request: Request) {
     if (candidate) {
       await db.batch([
         createProfile,
-        db.update(candidates).set({ userId: created.user.id, updatedAt: now }).where(and(eq(candidates.id, candidate.id), eq(candidates.ownerEmail, ownerEmail))),
+        db
+          .update(candidates)
+          .set({ userId: created.user.id, updatedAt: now })
+          .where(
+            and(
+              eq(candidates.id, candidate.id),
+              eq(candidates.ownerEmail, ownerEmail),
+            ),
+          ),
         recordCreation,
       ]);
     } else {
@@ -319,13 +365,17 @@ export async function POST(request: Request) {
     );
   } catch (error) {
     if (createdUserId) {
-      await getDb().delete(user).where(eq(user.id, createdUserId)).catch(() => undefined);
+      await getDb()
+        .delete(user)
+        .where(eq(user.id, createdUserId))
+        .catch(() => undefined);
     }
     if (isResponse(error)) return error;
     console.error("Failed to create recipient account", error);
-    const message = error instanceof Error && /already|exists/iu.test(error.message)
-      ? "An account with this email already exists."
-      : "The account could not be created.";
+    const message =
+      error instanceof Error && /already|exists/iu.test(error.message)
+        ? "An account with this email already exists."
+        : "The account could not be created.";
     return jsonError(message, /already|exists/iu.test(message) ? 409 : 500);
   }
 }
@@ -334,7 +384,7 @@ function parseRecord(value: string): Record<string, unknown> {
   try {
     const parsed = JSON.parse(value) as unknown;
     return parsed && !Array.isArray(parsed) && typeof parsed === "object"
-      ? parsed as Record<string, unknown>
+      ? (parsed as Record<string, unknown>)
       : {};
   } catch {
     return {};

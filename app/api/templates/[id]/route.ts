@@ -1,11 +1,14 @@
-import { and, count, eq, isNull } from "drizzle-orm";
+import {
+  archiveEntity,
+  archivedGroup,
+  restoreEntity,
+} from "@/features/archive/archive.server";
+import { and, eq, isNull } from "drizzle-orm";
 
-import { getDatabaseBinding, getDb } from "@/db";
+import { getDb } from "@/db";
 import {
   auditEvents,
-  formAssignments,
   recipientLinks,
-  submissions,
   templates,
   templateVersions,
 } from "@/db/schema";
@@ -14,7 +17,6 @@ import { toUtcIsoString } from "@/features/templates/date-time";
 import { inspectPdf } from "@/features/templates/file-validation";
 import { defaultLinkExpiration } from "@/features/templates/recipient-link-lifecycle";
 import { validateTemplateDefinition } from "@/features/templates/submission-validation";
-import { templateRemovalDisposition } from "@/features/templates/template-removal";
 import {
   createRecipientToken,
   getFilesBucket,
@@ -23,10 +25,7 @@ import {
   jsonError,
   requireRequestOwner,
 } from "@/features/templates/template.server";
-import {
-  compensateStorageWrites,
-  processStorageCleanupJobs,
-} from "@/features/storage/storage-cleanup.server";
+import { compensateStorageWrites } from "@/features/storage/storage-cleanup.server";
 import {
   parseTemplateJson,
   parseVersionRoles,
@@ -57,12 +56,13 @@ export async function GET(
         description: row.template.description,
         fileName: row.version.fileName,
         versionNumber: row.version.versionNumber,
-        annotations: parseTemplateJson<TemplateAnnotation[]>(
-          row.version.annotationsJson,
-        ) ?? [],
-        pageOrder: parseTemplateJson<TemplatePageEntry[]>(
-          row.version.pageOrderJson,
-        ) ?? [],
+        annotations:
+          parseTemplateJson<TemplateAnnotation[]>(
+            row.version.annotationsJson,
+          ) ?? [],
+        pageOrder:
+          parseTemplateJson<TemplatePageEntry[]>(row.version.pageOrderJson) ??
+          [],
         roles: parseVersionRoles(row.version.rolesJson),
         updatedAt:
           toUtcIsoString(row.template.updatedAt) ?? row.template.updatedAt,
@@ -102,7 +102,10 @@ export async function PUT(
       return jsonError("A PDF file is required.", 400);
     }
     if (!name || name.length > 120) {
-      return jsonError("Template name must be between 1 and 120 characters.", 400);
+      return jsonError(
+        "Template name must be between 1 and 120 characters.",
+        400,
+      );
     }
     if (pdf.size > MAX_PDF_SIZE) {
       return jsonError("The PDF must be 35 MB or smaller.", 400);
@@ -269,229 +272,35 @@ export async function PATCH(
   context: { params: Promise<{ id: string }> },
 ) {
   try {
-    const ownerEmail = await requireRequestOwner(request);
-    const { id } = await context.params;
-    const body = (await request.json()) as Record<string, unknown>;
-    if (body.action !== "restore") {
-      return jsonError("Choose a valid template action.", 400);
-    }
-
-    const db = getDb();
-    const [template] = await db
-      .select({ id: templates.id, archivedAt: templates.archivedAt })
-      .from(templates)
-      .where(and(eq(templates.id, id), eq(templates.ownerEmail, ownerEmail)))
-      .limit(1);
-    if (!template) return jsonError("Template not found.", 404);
-
-    if (template.archivedAt) {
-      const restoredAt = new Date().toISOString();
-      await db.batch([
-        db
-          .update(templates)
-          .set({ archivedAt: null, updatedAt: restoredAt })
-          .where(
-            and(
-              eq(templates.id, id),
-              eq(templates.ownerEmail, ownerEmail),
-              eq(templates.archivedAt, template.archivedAt),
-            ),
-          ),
-        db.insert(auditEvents).values(
-          createAuditEvent({
-            request,
-            ownerEmail,
-            actorType: "owner",
-            actorId: ownerEmail,
-            action: "template.restored",
-            targetType: "template",
-            targetId: id,
-            createdAt: restoredAt,
-          }),
-        ),
-      ]);
-    }
-
+    const owner = await requireRequestOwner(request),
+      { id } = await context.params,
+      body = (await request.json()) as Record<string,unknown>;
+    if (body.action !== "restore") return jsonError("Choose restore.", 400);
+    const { record } = await archivedGroup(owner, "template", id);
+    await restoreEntity(owner, "template", id, record.archived_at);
     return Response.json({
       template: { id, disposition: "restore", archivedAt: null },
     });
   } catch (error) {
     if (isResponse(error)) return error;
-    console.error("Failed to restore template", error);
     return jsonError("The template could not be restored.", 500);
   }
 }
-
 export async function DELETE(
   request: Request,
   context: { params: Promise<{ id: string }> },
 ) {
   try {
-    const ownerEmail = await requireRequestOwner(request);
-    const { id } = await context.params;
-    const db = getDb();
-    const [template] = await db
-      .select({
-        id: templates.id,
-        fileKey: templates.fileKey,
-        archivedAt: templates.archivedAt,
-      })
-      .from(templates)
-      .where(and(eq(templates.id, id), eq(templates.ownerEmail, ownerEmail)))
-      .limit(1);
-    if (!template) return jsonError("Template not found.", 404);
-    if (template.archivedAt) {
-      return Response.json({
-        template: {
-          id,
-          disposition: "archive",
-          archivedAt: template.archivedAt,
-        },
-      });
-    }
-
-    const [versionRows, submissionTotals, assignmentTotals] = await Promise.all([
-      db
-        .select({ fileKey: templateVersions.fileKey })
-        .from(templateVersions)
-        .where(eq(templateVersions.templateId, id)),
-      db
-        .select({ total: count() })
-        .from(submissions)
-        .where(eq(submissions.templateId, id)),
-      db
-        .select({ total: count() })
-        .from(formAssignments)
-        .where(eq(formAssignments.templateId, id)),
-    ]);
-    const disposition = templateRemovalDisposition({
-      assignmentCount: assignmentTotals[0]?.total ?? 0,
-      submissionCount: submissionTotals[0]?.total ?? 0,
-    });
-
-    if (disposition === "archive") {
-      const archivedAt = new Date().toISOString();
-      await archiveOwnedTemplate({ request, id, ownerEmail, archivedAt });
-      return Response.json({
-        template: { id, disposition, archivedAt },
-      });
-    }
-
-    const fileKeys = [
-      ...new Set([template.fileKey, ...versionRows.map((row) => row.fileKey)]),
-    ];
-    const deletedAt = new Date().toISOString();
-    const auditEvent = createAuditEvent({
-      request,
-      ownerEmail,
-      actorType: "owner",
-      actorId: ownerEmail,
-      action: "template.deleted",
-      targetType: "template",
-      targetId: id,
-      metadata: { fileCount: fileKeys.length },
-      createdAt: deletedAt,
-    });
-    const database = getDatabaseBinding();
-    const cleanupStatements = fileKeys.map((fileKey) =>
-      database
-        .prepare(
-          `INSERT OR IGNORE INTO storage_cleanup_jobs (
-            id, object_key, reason, attempt_count, last_error_code,
-            created_at, updated_at
-          )
-          SELECT ?, ?, 'template_deleted', 0, NULL, ?, ?
-          WHERE EXISTS (
-            SELECT 1 FROM templates
-            WHERE id = ? AND owner_email = ?
-              AND NOT EXISTS (
-                SELECT 1 FROM submissions WHERE template_id = ?
-              )
-              AND NOT EXISTS (
-                SELECT 1 FROM form_assignments WHERE template_id = ?
-              )
-          )`,
-        )
-        .bind(
-          crypto.randomUUID(),
-          fileKey,
-          deletedAt,
-          deletedAt,
-          id,
-          ownerEmail,
-          id,
-          id,
-        ),
-    );
-    const deleteStatement = database
-      .prepare(
-        `DELETE FROM templates
-        WHERE id = ? AND owner_email = ?
-          AND NOT EXISTS (
-            SELECT 1 FROM submissions WHERE template_id = ?
-          )
-          AND NOT EXISTS (
-            SELECT 1 FROM form_assignments WHERE template_id = ?
-      )`,
-      )
-      .bind(id, ownerEmail, id, id);
-    const auditStatement = database
-      .prepare(
-        `INSERT INTO audit_events (
-          id, owner_email, actor_type, actor_id, action, target_type,
-          target_id, request_id, metadata_json, created_at
-        )
-        SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
-        WHERE EXISTS (
-          SELECT 1 FROM templates
-          WHERE id = ? AND owner_email = ?
-            AND NOT EXISTS (
-              SELECT 1 FROM submissions WHERE template_id = ?
-            )
-            AND NOT EXISTS (
-              SELECT 1 FROM form_assignments WHERE template_id = ?
-            )
-        )`,
-      )
-      .bind(
-        auditEvent.id,
-        auditEvent.ownerEmail,
-        auditEvent.actorType,
-        auditEvent.actorId,
-        auditEvent.action,
-        auditEvent.targetType,
-        auditEvent.targetId,
-        auditEvent.requestId,
-        auditEvent.metadataJson,
-        auditEvent.createdAt,
-        id,
-        ownerEmail,
-        id,
-        id,
-      );
-    const results = await database.batch([
-      ...cleanupStatements,
-      auditStatement,
-      deleteStatement,
-    ]);
-    if (Number(results.at(-1)?.meta?.changes ?? 0) === 0) {
-      const archivedAt = new Date().toISOString();
-      await archiveOwnedTemplate({ request, id, ownerEmail, archivedAt });
-      return Response.json({
-        template: { id, disposition: "archive", archivedAt },
-      });
-    }
-    await processStorageCleanupJobs({ objectKeys: fileKeys }).catch(
-      () => undefined,
-    );
-
+    const owner = await requireRequestOwner(request),
+      { id } = await context.params;
+    await archiveEntity(owner, "template", id);
+    const { record } = await archivedGroup(owner, "template", id);
     return Response.json({
-      template: { id, disposition, archivedAt: null },
+      template: { id, disposition: "archive", archivedAt: record.archived_at },
     });
   } catch (error) {
     if (isResponse(error)) return error;
-    console.error("Failed to remove template", error);
-    return jsonError("The template could not be removed.", 500);
+    return jsonError("The template could not be archived.", 500);
   }
 }
 
@@ -512,51 +321,4 @@ async function findOwnedTemplateVersion(id: string, ownerEmail: string) {
     )
     .limit(1);
   return row ?? null;
-}
-
-async function archiveOwnedTemplate(options: {
-  request: Request;
-  id: string;
-  ownerEmail: string;
-  archivedAt: string;
-}) {
-  const { request, id, ownerEmail, archivedAt } = options;
-  const db = getDb();
-  await db.batch([
-    db
-      .update(templates)
-      .set({ archivedAt, updatedAt: archivedAt })
-      .where(and(eq(templates.id, id), eq(templates.ownerEmail, ownerEmail))),
-    db
-      .update(recipientLinks)
-      .set({ status: "revoked", revokedAt: archivedAt, updatedAt: archivedAt })
-      .where(
-        and(
-          eq(recipientLinks.templateId, id),
-          eq(recipientLinks.status, "active"),
-        ),
-      ),
-    db
-      .update(formAssignments)
-      .set({ status: "cancelled", updatedAt: archivedAt })
-      .where(
-        and(
-          eq(formAssignments.templateId, id),
-          eq(formAssignments.status, "assigned"),
-        ),
-      ),
-    db.insert(auditEvents).values(
-      createAuditEvent({
-        request,
-        ownerEmail,
-        actorType: "owner",
-        actorId: ownerEmail,
-        action: "template.archived",
-        targetType: "template",
-        targetId: id,
-        metadata: { evidencePreserved: true },
-        createdAt: archivedAt,
-      }),
-    ),
-  ]);
 }
