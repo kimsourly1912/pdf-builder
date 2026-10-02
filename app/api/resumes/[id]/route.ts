@@ -1,3 +1,4 @@
+import { telegramIntakes } from "@/features/telegram/schema";
 import { and, desc, eq, ne, or, type SQL } from "drizzle-orm";
 
 import { getDatabaseBinding, getDb } from "@/db";
@@ -45,7 +46,9 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
     const duplicate = row.resume.duplicateCandidateId
       ? (await getDb().select().from(candidates).where(and(eq(candidates.id, row.resume.duplicateCandidateId), eq(candidates.ownerEmail, ownerEmail))).limit(1))[0] ?? null
       : null;
+    const [intake] = await getDb().select({id:telegramIntakes.id}).from(telegramIntakes).where(and(eq(telegramIntakes.resumeId,id),eq(telegramIntakes.ownerEmail,ownerEmail))).limit(1);
     const detail: ResumeDetail = {
+      intakeId:intake?.id,
       id: row.resume.id,
       fileName: row.resume.fileName,
       fileSize: row.resume.fileSize,

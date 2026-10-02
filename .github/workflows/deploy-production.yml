@@ -28,6 +28,8 @@ jobs:
       # Used only to create or verify the single production owner.
       OWNER_PASSWORD: ${{ secrets.PDF_BUILDER_OWNER_PASSWORD || secrets.OWNER_PASSWORD }}
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      TELEGRAM_WEBHOOK_SECRET: ${{ secrets.TELEGRAM_WEBHOOK_SECRET }}
       MANAGEMENT_EMAIL: kimsur61@gmail.com
 
     steps:

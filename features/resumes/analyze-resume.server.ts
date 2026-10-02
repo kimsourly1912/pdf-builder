@@ -1,3 +1,5 @@
+import { telegramIntakes, intakeExtractionGuards } from "@/features/telegram/schema";
+import { extractResumeProfile } from "@/features/resumes/resume-extraction";
 import { and, desc, eq, ne, or, type SQL } from "drizzle-orm";
 
 import { getDb } from "@/db";
@@ -33,6 +35,7 @@ export async function analyzeResumeForOwner(
   request: Request,
   ownerEmail: string,
   id: string,
+  options: { intakeToken?: string } = {},
 ) {
   try {
     const db = getDb();
@@ -43,6 +46,9 @@ export async function analyzeResumeForOwner(
       .limit(1);
     if (!resume) return jsonError("Resume not found.", 404);
 
+    const [intake] = await db.select().from(telegramIntakes).where(and(eq(telegramIntakes.resumeId,id),eq(telegramIntakes.ownerEmail,ownerEmail))).limit(1);
+    if (intake && (!options.intakeToken || intake.extractionToken !== options.intakeToken)) return jsonError("Open Candidate intake and confirm paid AI extraction first.",409);
+    const [intakeCandidate] = intake && resume.candidateId ? await db.select({updatedAt:candidates.updatedAt}).from(candidates).where(and(eq(candidates.id,resume.candidateId),eq(candidates.ownerEmail,ownerEmail))).limit(1) : [];
     const [latestExtraction] = await db
       .select()
       .from(resumeExtractions)
@@ -59,7 +65,7 @@ export async function analyzeResumeForOwner(
     const nextExtractionVersion = (latestExtraction?.versionNumber ?? 0) + 1;
     const stored = latestExtraction
       ? parseStoredExtraction(latestExtraction.fieldsJson)
-      : null;
+      : intake ? extractResumeProfile(Array.from({length:resume.pageCount},(_,i)=>({pageNumber:i+1,text:""}))) : null;
     if (!stored) {
       return jsonError(
         "This resume has no readable extraction to use as a fallback.",
@@ -269,11 +275,15 @@ export async function analyzeResumeForOwner(
       },
       createdAt: now,
     })));
+    if (intake && options.intakeToken && intakeCandidate) {
+      statements.unshift(db.insert(intakeExtractionGuards).values({intakeId:intake.id,lockToken:options.intakeToken,resumeRevision:resume.updatedAt,candidateRevision:intakeCandidate.updatedAt,checkedAt:new Date().toISOString()}));
+      statements.push(db.update(telegramIntakes).set({extractionStatus:"extracted",extractionToken:null,extractionUntil:null}).where(and(eq(telegramIntakes.id,intake.id),eq(telegramIntakes.extractionToken,options.intakeToken))));
+    }
     await db.batch(statements as [typeof statements[number], ...typeof statements]);
     return Response.json({ resume: { id: resume.id, status } });
   } catch (error) {
     if (isResponse(error)) return error;
-    console.error("Failed to analyze resume", error);
+    console.error("Failed to analyze resume", {errorName:error instanceof Error ? error.name : "Unknown"});
     return jsonError("The resume could not be analyzed.", 500);
   }
 }

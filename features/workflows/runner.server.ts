@@ -1,3 +1,6 @@
+import { telegramIntakes } from "@/features/telegram/schema";
+import { deliverWorkflowInvitation } from "@/features/telegram/delivery.server";
+import { TelegramSendError } from "@/features/telegram/bot.server";
 import "server-only";
 
 import { and, desc, eq, isNull, lt, or } from "drizzle-orm";
@@ -42,9 +45,20 @@ export async function processWorkflowRun(id: string): Promise<void> {
         await checkpoint(row, token, context, nodeId, context.rejection ? "rejected" : "completed", true); return;
       }
       const next = () => nextNode(graph, nodeId, outcome);
+      if (node.kind === "send_telegram") {
+        const outcome = await deliverWorkflowInvitation(row,token,context,nodeId,node.config);
+        if(outcome === "waiting") {
+          context.steps[nodeId] = {status:"waiting",attempts,note:context.waitingFor === "telegram_retry" ? "Telegram delivery will retry." : "Waiting for a confirmed Telegram connection or bot configuration."};
+          await checkpoint(row,token,context,nodeId,"queued");return;
+        }
+        note = "Invitation accepted by Telegram (not a read receipt)";
+      }
       if (node.kind === "extract_resume") {
+        const [intake] = await getDb().select().from(telegramIntakes).where(and(eq(telegramIntakes.resumeId,resume.id),eq(telegramIntakes.ownerEmail,row.ownerEmail))).limit(1);
+        if(intake && intake.extractionStatus !== "extracted") throw new WorkflowStepError("This bot CV requires an explicit paid extraction from Candidate intake. The workflow will not call AI automatically.");
         const [extraction] = await getDb().select().from(resumeExtractions).where(eq(resumeExtractions.resumeId, resume.id)).orderBy(desc(resumeExtractions.versionNumber)).limit(1);
         if (!extraction || extraction.status !== "completed") throw new WorkflowStepError("Resume extraction needs attention. Open the resume, retry extraction, then retry this step.");
+        if (intake && !extraction.engine.startsWith("hybrid:openai:")) throw new WorkflowStepError("The saved intake extraction is unavailable. Open Candidate intake to request extraction.");
         if (!extraction.engine.startsWith("hybrid:openai:")) {
           const response = await analyzeResumeForOwner(new Request("https://workflow.internal/resume", { method: "POST" }), row.ownerEmail, resume.id);
           if (!response.ok) {
@@ -140,7 +154,7 @@ export async function processWorkflowRun(id: string): Promise<void> {
     }
     throw new WorkflowStepError("This workflow exceeded its step limit.");
   } catch (error) {
-    const message = workflowErrorMessage(error);
+    const message = error instanceof TelegramSendError ? error.message : workflowErrorMessage(error);
     context.steps[nodeId] = { ...context.steps[nodeId], status: "failed", attempts: context.steps[nodeId]?.attempts ?? 1 };
     await getDb().update(workflowRuns).set({ status: "failed", currentNodeId: nodeId, contextJson: JSON.stringify(context), errorMessage: message, lockToken: null, lockedUntil: null, updatedAt: new Date().toISOString() }).where(and(eq(workflowRuns.id, row.id), eq(workflowRuns.lockToken, token)));
     await workflowAudit(row.ownerEmail, "workflow.failed", row.id, { stepId: nodeId }).catch(() => undefined);

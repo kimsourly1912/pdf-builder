@@ -126,6 +126,7 @@ export type ResumeSummary = {
 };
 
 export type ResumeDetail = ResumeSummary & {
+  intakeId?: string;
   note: string;
   extraction: ResumeExtractionPayload | null;
   extractionVersion: number | null;

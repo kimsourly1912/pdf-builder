@@ -54,6 +54,18 @@ async function main() {
 
   await ensurePersistentAuthSecret();
   await putWorkerSecret("OPENAI_API_KEY", OPENAI_API_KEY);
+  const telegramToken = process.env.TELEGRAM_BOT_TOKEN?.trim();
+  const telegramSecret = process.env.TELEGRAM_WEBHOOK_SECRET?.trim();
+  if (telegramToken && telegramSecret) {
+    if (!/^[A-Za-z0-9_-]{16,256}$/u.test(telegramSecret)) throw new Error("TELEGRAM_WEBHOOK_SECRET must be 16–256 letters, digits, underscores, or hyphens.");
+    try {
+      const response=await fetch(`https://api.telegram.org/bot${telegramToken}/getMe`, { signal: AbortSignal.timeout(25000) });
+      const result=await response.json();
+      if(!response.ok||!result.ok||result.result.username?.toLowerCase() !== "anghr_bot") throw new Error("Bot identity mismatch.");
+    } catch { throw new Error("Telegram bot verification failed. Supply the BotFather token for @anghr_bot."); }
+    await putWorkerSecret("TELEGRAM_BOT_TOKEN",telegramToken);
+    await putWorkerSecret("TELEGRAM_WEBHOOK_SECRET",telegramSecret);
+  } else console.log("Telegram secrets were not supplied by Actions; existing Worker secrets are preserved.");
   const bootstrapToken = randomSecret();
   await putWorkerSecret("AUTH_BOOTSTRAP_TOKEN", bootstrapToken);
   run("npx", [
@@ -72,6 +84,15 @@ async function main() {
 
   await removeLegacyAccessApplications();
   await verifyDeployment(hostname, authenticatedCookie);
+  if (telegramToken && telegramSecret) {
+    let response;
+    try {
+      response = await fetch(`https://api.telegram.org/bot${telegramToken}/setWebhook`, {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({url:`https://${hostname}/api/telegram/webhook`,secret_token:telegramSecret,allowed_updates:["message"],drop_pending_updates:false}),signal:AbortSignal.timeout(25000)});
+      const result = await response.json();
+      if(!response.ok || !result.ok) throw new Error("Webhook setup was rejected.");
+    } catch { throw new Error("Telegram webhook setup failed. Check the bot token and webhook secret in production secrets."); }
+    console.log("Telegram webhook configured successfully.");
+  }
   const productionUrl = `https://${hostname}`;
   if (process.env.GITHUB_ENV) {
     appendFileSync(process.env.GITHUB_ENV, `PRODUCTION_URL=${productionUrl}\n`, "utf8");
@@ -349,7 +370,7 @@ async function verifyDeployment(hostname, authenticatedCookie) {
     throw new Error(`Authenticated management API failed with HTTP ${authenticatedResponse.status}.`);
   }
 
-  for (const path of ["/api/workflows", "/api/workflow-runs", "/workflows"]) {
+  for (const path of ["/api/workflows", "/api/workflow-runs", "/api/intake", "/workflows", "/intake"]) {
     const response = await fetch(`https://${hostname}${path}`, {
       headers: { Cookie: authenticatedCookie }, redirect: "manual",
     });
@@ -359,7 +380,7 @@ async function verifyDeployment(hostname, authenticatedCookie) {
     if (path.startsWith("/api/")) {
       const body = await response.json();
       if (!Array.isArray(body.items)) throw new Error(`Workflow API ${path} returned an invalid list.`);
-    } else if (!(await response.text()).includes("Workflows")) {
+    } else if (!(await response.text()).includes(path === "/intake" ? "Candidate intake" : "Workflows")) {
       throw new Error("The deployed Workflows page is missing its expected content.");
     }
     console.log(`Authenticated workflow smoke check passed: ${path}`);

@@ -1,3 +1,4 @@
+import { telegramIntakes } from "@/features/telegram/schema";
 import "server-only";
 
 import { and, desc, eq, isNull, or, lt, like, count, gte } from "drizzle-orm";
@@ -14,7 +15,8 @@ export function workflowAudit(ownerEmail: string, action: string, id: string, me
 }
 
 export async function listWorkflows(ownerEmail: string) {
-  return getDb().select({ id: workflows.id, name: workflows.name, active: workflows.active, version: workflows.version, updatedAt: workflows.updatedAt }).from(workflows).where(eq(workflows.ownerEmail, ownerEmail)).orderBy(desc(workflows.updatedAt)).limit(50);
+  const rows = await getDb().select({ id: workflows.id, name: workflows.name, active: workflows.active, version: workflows.version, updatedAt: workflows.updatedAt,publishedJson:workflows.publishedJson }).from(workflows).where(eq(workflows.ownerEmail, ownerEmail)).orderBy(desc(workflows.updatedAt)).limit(50);
+  return rows.map(({publishedJson,...row})=>({...row,hasTelegram:!!publishedJson && (JSON.parse(publishedJson) as WorkflowGraph).nodes.some(n=>n.kind === "send_telegram")}));
 }
 export async function getWorkflow(ownerEmail: string, id: string) {
   const [row] = await getDb().select().from(workflows).where(and(eq(workflows.id, id), eq(workflows.ownerEmail, ownerEmail))).limit(1);
@@ -85,6 +87,8 @@ export async function startWorkflow(ownerEmail: string, workflowId: string, resu
   const [w] = await getDb().select().from(workflows).where(and(eq(workflows.id, workflowId), eq(workflows.ownerEmail, ownerEmail))).limit(1);
   const [r] = await getDb().select({ id: resumes.id }).from(resumes).where(and(eq(resumes.id, resumeId), eq(resumes.ownerEmail, ownerEmail))).limit(1);
   if (!w?.publishedJson || !r) fail("Choose a published workflow and an existing resume.", 422);
+  const [intake] = await getDb().select().from(telegramIntakes).where(and(eq(telegramIntakes.resumeId,resumeId),eq(telegramIntakes.ownerEmail,ownerEmail))).limit(1);
+  if(intake && intake.extractionStatus !== "extracted") fail("Open Candidate intake and explicitly extract this CV with AI before starting a workflow.",422);
   const graph = JSON.parse(w.publishedJson) as WorkflowGraph; const now = new Date().toISOString();
   const id = crypto.randomUUID();
   await getDb().insert(workflowRuns).values({ id, workflowId, ownerEmail, workflowName: w.name, version: w.version, resumeId, graphJson: w.publishedJson, currentNodeId: graph.nodes.find(n => n.kind === "resume_uploaded")!.id, createdAt: now, updatedAt: now }).onConflictDoNothing();

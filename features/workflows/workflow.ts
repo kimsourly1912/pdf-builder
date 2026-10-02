@@ -1,25 +1,25 @@
 import type { ResumeCandidateSummary } from "@/features/resumes/resume.types";
 
-export const STEP_KINDS = ["resume_uploaded", "extract_resume", "review_resume", "create_account", "link_resume", "assign_forms", "condition", "complete", "stop"] as const;
+export const STEP_KINDS = ["resume_uploaded", "extract_resume", "review_resume", "create_account", "link_resume", "assign_forms", "send_telegram", "condition", "complete", "stop"] as const;
 export type StepKind = typeof STEP_KINDS[number];
 export type FormTarget = { templateId: string; roleId: string; versionId?: string; name?: string };
-export type StepConfig = { forms?: FormTarget[]; skipExisting?: boolean; field?: "source" | "appliedPosition"; value?: string };
+export type StepConfig = { forms?: FormTarget[]; skipExisting?: boolean; field?: "source" | "appliedPosition"; value?: string; message?: string };
 export type WorkflowNode = { id: string; kind: StepKind; position: { x: number; y: number }; config: StepConfig };
 export type WorkflowEdge = { id: string; source: string; target: string; outcome: "next" | "approved" | "rejected" | "yes" | "no" };
 export type WorkflowGraph = { nodes: WorkflowNode[]; edges: WorkflowEdge[] };
 export type RunStatus = "queued" | "running" | "waiting_review" | "completed" | "rejected" | "failed";
 export type StepResult = { status: "completed" | "waiting" | "failed"; attempts: number; completedAt?: string; note?: string };
-export type RunContext = { steps: Record<string, StepResult>; userId?: string; candidateId?: string; profileVersionId?: string; reviewedName?: string; reviewedEmail?: string; reviewer?: string; reviewedAt?: string; reviewNote?: string; rejection?: boolean; approvedCandidate?: ResumeCandidateSummary };
+export type RunContext = { steps: Record<string, StepResult>; activationRequired?: boolean; telegramConnectionId?: string; telegramChatId?: string; waitingFor?: "telegram" | "telegram_retry"; userId?: string; candidateId?: string; profileVersionId?: string; reviewedName?: string; reviewedEmail?: string; reviewer?: string; reviewedAt?: string; reviewNote?: string; rejection?: boolean; approvedCandidate?: ResumeCandidateSummary };
 export type WorkflowSummary = { id: string; name: string; active: boolean; version: number; updatedAt: string };
 export type WorkflowDetail = WorkflowSummary & { draft: WorkflowGraph };
 export type WorkflowRun = { id: string; workflowId: string; workflowName: string; version: number; resumeId: string; fileName: string; candidateName: string; status: RunStatus; currentNodeId: string; errorMessage: string | null; createdAt: string; updatedAt: string; graph: WorkflowGraph; context: RunContext };
 export type TemplateOption = { id: string; name: string; roles: { id: string; name: string }[] };
 
 export const STEP_LABELS: Record<StepKind, string> = {
-  resume_uploaded: "Resume uploaded", extract_resume: "Extract resume", review_resume: "Review resume", create_account: "Create candidate account", link_resume: "Link resume", assign_forms: "Assign forms", condition: "Condition", complete: "Complete", stop: "Stop",
+  resume_uploaded: "Resume uploaded", extract_resume: "Extract resume", review_resume: "Review resume", create_account: "Create candidate account", link_resume: "Link resume", assign_forms: "Assign forms", send_telegram: "Send Telegram invitation", condition: "Condition", complete: "Complete", stop: "Stop",
 };
 export const STEP_DESCRIPTIONS: Record<StepKind, string> = {
-  resume_uploaded: "Uploaded by staff", extract_resume: "Reuse AI data or analyze the CV", review_resume: "Pause for manual approval", create_account: "Create or use a reviewed account", link_resume: "Attach the approved resume", assign_forms: "Assign templates with resume mappings", condition: "Branch by source or applied position", complete: "Workflow complete", stop: "End this workflow",
+  resume_uploaded: "Uploaded by staff", extract_resume: "Reuse AI data or analyze the CV", review_resume: "Pause for manual approval", create_account: "Create or use a reviewed account", link_resume: "Attach the approved resume", assign_forms: "Assign templates with resume mappings", send_telegram: "Send account access to a confirmed Telegram contact", condition: "Branch by source or applied position", complete: "Workflow complete", stop: "End this workflow",
 };
 
 export function defaultGraph(): WorkflowGraph {
@@ -63,6 +63,10 @@ export function parseGraph(value: unknown): WorkflowGraph | null {
       }
       config.forms = forms;
       config.skipExisting = n.config.skipExisting !== false;
+    }
+    if (n.kind === "send_telegram") {
+      if (n.config.message !== undefined && (typeof n.config.message !== "string" || !n.config.message.trim() || n.config.message.length > 2000)) return null;
+      config.message = typeof n.config.message === "string" ? n.config.message.trim() : undefined;
     }
     if (n.kind === "condition") {
       if (n.config.field !== "source" && n.config.field !== "appliedPosition") return null;
@@ -113,10 +117,11 @@ export function graphIssues(graph: WorkflowGraph): string[] {
     reached.add(id);
     if (rejected && n.kind !== "stop") issues.add("Rejected reviews must connect directly to Stop.");
     if (n.kind === "review_resume" && !state.has("extract_resume")) issues.add("Extract the resume before manual review.");
-    if (["create_account", "link_resume", "assign_forms"].includes(n.kind) && !state.has("review_resume")) issues.add("Every account or assignment path must pass an approved review.");
+    if (["create_account", "link_resume", "assign_forms", "send_telegram"].includes(n.kind) && !state.has("review_resume")) issues.add("Every account or assignment path must pass an approved review.");
     if (n.kind === "link_resume" && !state.has("create_account")) issues.add("Create or resolve the account before linking the resume.");
+    if (n.kind === "send_telegram" && !state.has("assign_forms")) issues.add("Assign forms before sending a Telegram invitation.");
     if (n.kind === "assign_forms" && !state.has("link_resume")) issues.add("Link the resume before assigning forms.");
-    if (state.has(n.kind) && ["extract_resume", "review_resume", "create_account", "link_resume", "assign_forms"].includes(n.kind)) issues.add("Use each candidate preparation action only once per path.");
+    if (state.has(n.kind) && ["extract_resume", "review_resume", "create_account", "link_resume", "assign_forms", "send_telegram"].includes(n.kind)) issues.add("Use each candidate preparation action only once per path.");
     const nextState = new Set(state); nextState.add(n.kind);
     const nextPath = new Set(path); nextPath.add(id);
     for (const e of graph.edges.filter(e => e.source === id)) walk(e.target, nextPath, nextState, rejected || e.outcome === "rejected");
