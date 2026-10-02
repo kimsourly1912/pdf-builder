@@ -38,7 +38,7 @@ function flowEdges(graph: WorkflowGraph): Edge[] { return graph.edges.map(e => (
 export function WorkflowEditor(props: { displayName: string; workflowId: string }) {
   const [workflow, setWorkflow] = useState<WorkflowDetail | null>(null); const [options, setOptions] = useState<TemplateOption[]>([]); const [error, setError] = useState("");
   useEffect(() => { const controller = new AbortController(); void Promise.all([workflowApi<{ workflow: WorkflowDetail }>(`/api/workflows/${props.workflowId}`, { signal: controller.signal }), workflowApi<{ templates: TemplateOption[] }>("/api/workflows", { signal: controller.signal })]).then(([w, t]) => { setWorkflow(w.workflow); setOptions(t.templates); }).catch(e => { if (!controller.signal.aborted) setError(errorText(e)); }); return () => controller.abort(); }, [props.workflowId]);
-  return <AppShell displayName={props.displayName}>{error && <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>}{workflow ? <ReactFlowProvider><EditorBody initial={workflow} options={options} /></ReactFlowProvider> : <p className="py-20 text-center text-muted-foreground">{error ? "Workflow unavailable." : "Loading workflow…"}</p>}</AppShell>;
+  return <AppShell displayName={props.displayName} fullWidth>{error && <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>}{workflow ? <ReactFlowProvider><EditorBody initial={workflow} options={options} /></ReactFlowProvider> : <p className="py-20 text-center text-muted-foreground">{error ? "Workflow unavailable." : "Loading workflow…"}</p>}</AppShell>;
 }
 
 function EditorBody({ initial, options }: { initial: WorkflowDetail; options: TemplateOption[] }) {

@@ -26,7 +26,7 @@ type ReviewValues = { candidate: ResumeCandidateSummary; checks: boolean[]; note
 export function WorkflowReview(props: { displayName: string; runId: string }) {
   const [data, setData] = useState<ReviewData | null>(null); const [error, setError] = useState(""); const [revision, setRevision] = useState(0);
   useEffect(() => { const controller = new AbortController(); void workflowApi<ReviewData>(`/api/workflow-runs/${props.runId}/review`, { signal: controller.signal }).then(setData).catch(e => { if (!controller.signal.aborted) setError(errorText(e)); }); return () => controller.abort(); }, [props.runId, revision]);
-  return <AppShell displayName={props.displayName}>{error && <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>}{data ? <ReviewBody key={`${data.run.id}-${revision}`} data={data} reload={() => { setData(null); setRevision(v => v + 1); }} /> : <p className="py-20 text-center text-muted-foreground">{error ? "Review unavailable." : "Loading CV review…"}</p>}</AppShell>;
+  return <AppShell displayName={props.displayName} fullWidth>{error && <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>}{data ? <ReviewBody key={`${data.run.id}-${revision}`} data={data} reload={() => { setData(null); setRevision(v => v + 1); }} /> : <p className="py-20 text-center text-muted-foreground">{error ? "Review unavailable." : "Loading CV review…"}</p>}</AppShell>;
 }
 
 const TEXT_FIELDS = [
