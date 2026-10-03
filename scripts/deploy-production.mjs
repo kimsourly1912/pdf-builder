@@ -458,10 +458,11 @@ async function verifyDeployment(hostname, authenticatedCookie) {
     "/candidates",
     "/analyses",
   ]) {
-    const response = await fetch(`https://${hostname}${path}`, {
-      headers: { Cookie: authenticatedCookie },
-      redirect: "manual",
-    });
+    const response = await waitForResponse(
+      `https://${hostname}${path}`,
+      { headers: { Cookie: authenticatedCookie }, redirect: "manual" },
+      (result) => result.status === 200,
+    );
     if (response.status !== 200) {
       throw new Error(
         `Authenticated workflow smoke check ${path} failed with HTTP ${response.status}.`,
