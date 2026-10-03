@@ -2047,3 +2047,18 @@ test("initial update adoption rejects preparation created after the review read"
     assert(intercepted);assert.equal(result.status,409,await result.clone().text());assert.deepEqual(d1.sqlite.prepare('SELECT * FROM candidates WHERE id=?').get(item.id),before);assert.equal(d1.sqlite.prepare('SELECT status FROM candidate_cv_updates WHERE resume_id=?').get(update.resumeId).status,'pending');
   } finally {d1.batch=originalBatch;for(const w of flags)d1.sqlite.prepare('UPDATE workflows SET active=? WHERE id=?').run(w.active,w.id);}
 });
+
+test("legacy HR overrides survive the added explicit-review fact", async () => {
+  const original=await submit(92005,'legacyoverride@example.com');let item=await progressGet(original.candidate_id);
+  await progressService.updateProgress(runtime.MANAGEMENT_EMAIL,item.id,{action:'move',stage:'reviewing',expectedRevision:item.revision});item=await progressGet(item.id);
+  await progressService.updateProgress(runtime.MANAGEMENT_EMAIL,item.id,{action:'move',stage:'new',reason:'Legacy HR override',expectedRevision:item.revision});
+  const metadata=d1.sqlite.prepare('SELECT basis_json FROM candidate_progress WHERE candidate_id=?').get(item.id);
+  // Simulate the exact serialized basis stored by the previous production release.
+  const basis=JSON.parse(metadata.basis_json);delete basis.facts.reviewStarted;
+  d1.sqlite.prepare("UPDATE candidate_progress SET manual_stage='new',basis_json=? WHERE candidate_id=?").run(JSON.stringify(basis),item.id);
+  const legacy=await progressGet(item.id);assert.equal(legacy.stage,'new');assert.equal(legacy.manual,true);assert.equal(legacy.automaticStage,'reviewing');
+  d1.sqlite.prepare("UPDATE candidate_progress SET manual_stage='reviewing' WHERE candidate_id=?").run(item.id);
+  d1.sqlite.prepare('DELETE FROM candidate_cv_reviews WHERE resume_id=?').run(original.resume_id);
+  d1.sqlite.exec(readFileSync(root+'/drizzle/0027_backfill_cv_review_starts.sql','utf8'));
+  const backfilled=await progressGet(item.id);assert.equal(backfilled.stage,'reviewing');assert.equal(backfilled.automaticStage,'reviewing');assert(backfilled.reviewStartedAt);
+});

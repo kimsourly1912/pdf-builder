@@ -48,3 +48,5 @@ HR reviews a separate update draft and can **Approve updated CV** or **Keep curr
 The bot keyboard is stage-aware: update submitted CV before review, request a CV/profile update after review starts, Open forms when an account exists, and Check application status. Confirmation offers Send update to HR or Confirm replacement plus Cancel upload. Old `/add_cv` and `/replace_cv` commands route into the same guarded update flow. Status follows actual progress and distinguishes sending an invitation from reading it. Update decisions and reasons appear in candidate history and bot status; HR decisions do not automatically send Telegram messages.
 
 Migration `0026_candidate_cv_updates.sql` adds isolated update drafts, persistent review starts, transaction guards and replacement/archive protections. CVs referenced by update history cannot be permanently deleted until eligible linked records are resolved.
+
+Migration `0027_backfill_cv_review_starts.sql` retains review starts previously recorded through Kanban stages. Existing HR overrides keep their previous serialized progress basis; introducing a review-start fact does not silently clear them.

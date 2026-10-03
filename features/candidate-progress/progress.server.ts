@@ -225,7 +225,7 @@ async function load(owner: string, resumeId?: string) {
       resumeRevision: cv.resumeRevision,
       profile: cv.approvalId,
       runId: run?.id ?? null,
-      facts,
+      facts: { ...facts, reviewStarted: undefined },
       deliveries: runDeliveries.map((d) => ({ id: d.id, status: d.status })),
       accountBanned: account?.banned ?? null,
       forms: relevant.map((f) => ({
@@ -702,7 +702,7 @@ export async function updateProgress(
         "Provide a short reason for moving this candidate backward (up to 500 characters).",
         422,
       );
-    manualStage = target === "accepted" ? null : target;
+    manualStage = target === "accepted" || body.action === "start_review" || body.startReview ? null : target;
     action = "candidate.progress_stage_changed";
     event = {
       from: STAGE_LABELS[item.stage],
