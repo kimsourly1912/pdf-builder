@@ -1000,6 +1000,39 @@ test("PDF overflow returns an actionable error instead of clipping a saved answe
   assert.match((await response.json()).error, /cannot fit/);
 });
 
+test("direct mapping keeps old definitions compatible and validates explicit exclusions and formatting", async () => {
+  const old = model.definitionSchema.parse(definition);
+  assert.equal(old.mappings[0].textMode, undefined);
+  const styled = { ...definition, mappings: [{ ...definition.mappings[0], color: "#123456", background: "#ffffff", textMode: "single", lineSpacing: 1.6, minFontSize: 10 }] };
+  const parsed = model.definitionSchema.parse(styled);
+  const placement = model.outputPlacements(parsed, { name: "TEST" }).annotations[0];
+  assert.equal(placement.color, "#123456");
+  assert.equal(placement.background, "#ffffff");
+  assert.equal(placement.textMode, "single");
+  assert.equal(placement.minFontSize, 10);
+  assert.equal(model.definitionSchema.safeParse({ ...styled, mappings: [{ ...styled.mappings[0], background: "url(bad)" }] }).success, false);
+  assert.equal(model.definitionSchema.safeParse({ ...styled, mappings: [{ ...styled.mappings[0], minFontSize: 18 }] }).success, false);
+  assert.equal(model.definitionSchema.safeParse({ ...styled, fields: styled.fields.map((f) => f.id === "name" ? { ...f, excludeFromPdf: true } : f) }).success, false);
+  assert.equal(model.definitionSchema.safeParse({ ...styled, mappings: [], fields: styled.fields.map((f) => f.id === "name" ? { ...f, excludeFromPdf: true } : f) }).success, true);
+  const tools = await vite.ssrLoadModule("/features/forms/mapping-tools.ts");
+  const atEdge = tools.clampPlacement(styled.mappings[0], { x: 1, y: 1, width: 0.3, height: 0.1 });
+  assert.equal(atEdge.x, 0.7); assert.equal(atEdge.y, 0.9);
+  const snapped = tools.snapPlacement({ ...atEdge, x: 0.201, y: 0.1 }, [{ ...atEdge, id: "other", x: 0.2, y: 0.4 }], { width: 600, height: 800 });
+  assert.equal(snapped.mapping.x, 0.2);
+  assert.equal(tools.mappingProgress({ ...styled, fields: styled.fields.map((f) => f.id === "photo" ? { ...f, excludeFromPdf: true } : f) }).excluded, 1);
+});
+
+test("single-line PDF output respects minimum size and wrap mode can fit the same long answer", async () => {
+  const mapping = { ...definition.mappings[0], width: 0.2, height: 0.3, fontSize: 12, minFontSize: 12, textMode: "single", color: "#123456", background: "#ffffff" };
+  const values = { name: "This long answer needs several lines in a narrow area" };
+  const response = await call(() => forms.previewPdf(request(`/api/forms/${id}/preview`, "POST", { definition: { ...definition, mappings: [mapping] }, values }), id));
+  assert.equal(response.status, 422);
+  assert.match((await response.json()).error, /cannot fit/);
+  const wrapped = await forms.previewPdf(request(`/api/forms/${id}/preview`, "POST", { definition: { ...definition, mappings: [{ ...mapping, textMode: "wrap", lineSpacing: 1.5 }] }, values }), id);
+  assert.equal(wrapped.status, 200);
+  assert.equal((await PDFDocument.load(await wrapped.arrayBuffer())).getPageCount(), 2);
+});
+
 test("locked autofill is checked against the immutable assignment snapshot on both draft and final saves", async () => {
   const created = await ok(
     await call(() =>

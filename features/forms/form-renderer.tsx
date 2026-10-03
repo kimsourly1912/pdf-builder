@@ -183,13 +183,16 @@ export function FormFieldControl(props: {
   locked?: boolean;
   onMedia?: (file: File | null) => void;
   imageUrl?: string;
+  hideLabel?: boolean;
 }) {
   const { field: definition } = props;
   const controlId = useId();
   if (definition.type === "section")
     return (
       <div className="border-b pb-3">
-        <h2 className="text-lg font-semibold">{definition.label}</h2>
+        <h2 className={props.hideLabel ? "sr-only" : "text-lg font-semibold"}>
+          {definition.label}
+        </h2>
         {definition.help && (
           <p className="mt-1 text-sm text-muted-foreground">
             {definition.help}
@@ -200,7 +203,10 @@ export function FormFieldControl(props: {
   const error = props.errors?.[definition.id]?.message;
   return (
     <div className="space-y-2" data-field-id={definition.id}>
-      <Label htmlFor={controlId}>
+      <Label
+        htmlFor={controlId}
+        className={props.hideLabel ? "sr-only" : undefined}
+      >
         {definition.label}
         {definition.required && (
           <span className="text-destructive" aria-label="required">

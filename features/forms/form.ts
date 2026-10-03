@@ -66,6 +66,7 @@ export const fieldSchema = z
     max: z.number().finite().optional(),
     autofill: z.string().refine(isCandidatePrefillKey).optional(),
     editable: z.boolean().default(true),
+    excludeFromPdf: z.boolean().optional(),
   })
   .strict();
 export const mappingSchema = z
@@ -80,11 +81,27 @@ export const mappingSchema = z
     fontSize: z.number().min(6).max(48).default(12),
     alignment: z.enum(["left", "center", "right"]).default("left"),
     optionValue: z.string().max(120).optional(),
+    color: z
+      .string()
+      .regex(/^#[0-9a-f]{6}$/iu)
+      .optional(),
+    background: z
+      .string()
+      .regex(/^#[0-9a-f]{6}$/iu)
+      .optional(),
+    textMode: z.enum(["single", "wrap"]).optional(),
+    lineSpacing: z.number().min(1).max(3).optional(),
+    minFontSize: z.number().min(6).max(48).optional(),
+    imageFit: z.enum(["contain", "stretch"]).optional(),
   })
   .strict()
   .refine(
     (m) => m.x + m.width <= 1.001 && m.y + m.height <= 1.001,
     "Keep the placement inside the page.",
+  )
+  .refine(
+    (m) => (m.minFontSize ?? 6) <= m.fontSize,
+    "Minimum text size must not exceed the starting size.",
   );
 export const definitionSchema = z
   .object({
@@ -113,6 +130,15 @@ export const definitionSchema = z
           code: "custom",
           path: ["fields", index, "key"],
           message: "Each field needs a unique identity and JSON key.",
+        });
+      if (
+        field.excludeFromPdf &&
+        form.mappings.some((m) => m.fieldId === field.id)
+      )
+        context.addIssue({
+          code: "custom",
+          path: ["fields", index, "excludeFromPdf"],
+          message: "Remove placements before excluding this field from PDF.",
         });
       ids.add(field.id);
       if (field.type !== "section") keys.add(field.key);

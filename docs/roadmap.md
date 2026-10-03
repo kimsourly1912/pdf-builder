@@ -41,3 +41,13 @@ When work ships, move it into the shipped table and update the relevant feature 
 - Independent Telegram upload confirmation and pending HR update review, with approve/keep-current decisions.
 - Stage-aware bot buttons/status, preserved preparation/form history, and no automatic rerun on update approval.
 - Stage explanations, evidence, preparation running/failed notices, HR override wording and approved-edit acknowledgement.
+
+## Form builder interaction update (shipped October 2026)
+
+- Guided Build form → Map PDF (optional) → Preview & test → Publish & assign workspace.
+- Searchable field palette, insertion points, inline selected labels and expandable advanced settings.
+- Direct PDF placement with safe Select/Place/Pan modes, floating formatting, keyboard nudging, snapping, page navigation and mobile field selectors.
+- Explicit PDF exclusions, single-line/wrapped output, text/background color, line spacing, minimum font size and image fit.
+- Sample-answer testing and publish readiness preserve revision-checked autosave and pinned published versions.
+
+Editing original PDF text/layout and automatic recognition of blank or dotted areas are not part of this update.

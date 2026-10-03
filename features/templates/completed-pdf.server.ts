@@ -70,6 +70,9 @@ export async function buildAuthoritativeCompletedPdf(
     const value = options.values[annotation.id];
     const fontSize = Math.max(6, getNumber(annotation.fontSize, 12));
 
+    if (annotation.formOutput === true && typeof annotation.background === "string") {
+      page.drawRectangle({ ...box, color: parseColor(annotation.background) });
+    }
     if (annotation.formOutput === true && annotation.type !== "checkbox") {
       const rotated = rotation === 90 || rotation === 270;
       const displayWidth = rotated ? cropBox.height : cropBox.width;
@@ -80,7 +83,7 @@ export async function buildAuthoritativeCompletedPdf(
         if (image) {
           const embedded = image.contentType === "image/jpeg" ? await output.embedJpg(image.bytes) : await output.embedPng(image.bytes);
           const scale = Math.min(width / embedded.width, height / embedded.height);
-          const imageWidth = embedded.width * scale, imageHeight = embedded.height * scale;
+          const imageWidth = annotation.imageFit === "stretch" ? width : embedded.width * scale, imageHeight = annotation.imageFit === "stretch" ? height : embedded.height * scale;
           const point = normalizedPointToPdf({ x: annotation.x + (width - imageWidth) / 2 / displayWidth, y: annotation.y + (height + imageHeight) / 2 / displayHeight }, cropBox, rotation);
           page.drawImage(embedded, { ...point, width: imageWidth, height: imageHeight, rotate: degrees(rotation) });
         }
@@ -395,8 +398,11 @@ function dataUrlBytes(dataUrl: string): Uint8Array<ArrayBuffer> {
 function drawMappedAnswer(options: { page: PDFPage; font: PDFFont; text: string; annotation: TemplateAnnotation; cropBox: { x: number; y: number; width: number; height: number }; rotation: number; width: number; height: number; displayWidth: number; displayHeight: number; size: number; color: RGB }) {
   if (!options.text) return;
   const availableWidth = Math.max(1, options.width - 8), availableHeight = Math.max(1, options.height - 8);
+  const lineSpacing = getNumber(options.annotation.lineSpacing, 1.2);
+  const minimum = Math.max(6, Math.min(options.size, getNumber(options.annotation.minFontSize, 6)));
   const graphemes = new Intl.Segmenter("km", { granularity: "grapheme" });
   const wrap = (size: number) => {
+    if (options.annotation.textMode === "single") return [options.text.normalize("NFC").replace(/\n/gu, " ")];
     const lines: string[] = [];
     for (const paragraph of options.text.normalize("NFC").split("\n")) {
       let line = "";
@@ -408,12 +414,12 @@ function drawMappedAnswer(options: { page: PDFPage; font: PDFFont; text: string;
     return lines;
   };
   let size = options.size, lines = wrap(size);
-  while (size > 6 && (lines.length * size * 1.2 > availableHeight || lines.some((line) => options.font.widthOfTextAtSize(line, size) > availableWidth))) { size = Math.max(6, size - 0.5); lines = wrap(size); }
-  if (lines.length * size * 1.2 > availableHeight || lines.some((line) => options.font.widthOfTextAtSize(line, size) > availableWidth)) throw new Error("FORM_PDF_OVERFLOW");
+  while (size > minimum && (lines.length * size * lineSpacing > availableHeight || lines.some((line) => options.font.widthOfTextAtSize(line, size) > availableWidth))) { size = Math.max(minimum, size - 0.5); lines = wrap(size); }
+  if (lines.length * size * lineSpacing > availableHeight || lines.some((line) => options.font.widthOfTextAtSize(line, size) > availableWidth)) throw new Error("FORM_PDF_OVERFLOW");
   for (const [index, line] of lines.entries()) {
     const textWidth = options.font.widthOfTextAtSize(line, size);
     const offset = options.annotation.textAlign === "center" ? (availableWidth - textWidth) / 2 : options.annotation.textAlign === "right" ? availableWidth - textWidth : 0;
-    const point = normalizedPointToPdf({ x: options.annotation.x + (4 + offset) / options.displayWidth, y: options.annotation.y + (4 + size + index * size * 1.2) / options.displayHeight }, options.cropBox, options.rotation);
+    const point = normalizedPointToPdf({ x: options.annotation.x + (4 + offset) / options.displayWidth, y: options.annotation.y + (4 + size + index * size * lineSpacing) / options.displayHeight }, options.cropBox, options.rotation);
     options.page.drawText(line, { ...point, size, font: options.font, color: options.color, rotate: degrees(options.rotation) });
   }
 }
