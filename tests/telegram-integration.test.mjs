@@ -2105,6 +2105,8 @@ test("readiness checks are read-only, owner scoped and report missing bot and un
  w.draft.nodes.find(n=>n.kind==='assign_forms').config.forms=[{templateId:'missing',roleId:'form_user'}];
  assert((await readinessService.workflowReadiness(owner,w.id,w.draft)).issues.some(i=>i.message.includes('unavailable')));
  await assert.rejects(readinessService.workflowReadiness('other@example.com',w.id,w.draft),e=>e.status===404);
+ const receive=await workflows.createWorkflow(owner,'telegram_submission','telegram');
+ assert((await readinessService.workflowReadiness(owner,receive.id,receive.draft)).issues.some(i=>i.message.includes('Telegram intake bot')));
  assert.equal(aiCalls,before);assert.equal(messages.length,sent);assert.equal(d1.sqlite.prepare('SELECT count(*) n FROM workflow_runs WHERE workflow_id=?').get(w.id).n,0);
  }finally{runtime.TELEGRAM_BOT_TOKEN=token;}
 });

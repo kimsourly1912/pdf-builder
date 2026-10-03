@@ -142,10 +142,20 @@ export function WorkflowList(props: {
         title="Workflows"
         description="Choose a starting event and automate candidate preparation for that purpose."
         actions={
-          <Button disabled={busy} onClick={() => setCreateOpen(true)}>
-            {busy ? <LoaderCircle className="animate-spin" /> : <Plus />} New
-            workflow
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button asChild>
+              <Link href="/workflows/new">
+                <Plus /> New workflow
+              </Link>
+            </Button>
+            <Button
+              variant="outline"
+              disabled={busy}
+              onClick={() => setCreateOpen(true)}
+            >
+              Advanced canvas setup
+            </Button>
+          </div>
         }
       />
       {error && (
@@ -224,8 +234,10 @@ export function WorkflowList(props: {
                     account, resume linking, and form assignment.
                   </p>
                 </div>
-                <Button onClick={() => setCreateOpen(true)} disabled={busy}>
-                  <Plus /> Create workflow
+                <Button asChild>
+                  <Link href="/workflows/new">
+                    <Plus /> Create workflow
+                  </Link>
                 </Button>
               </CardContent>
             </Card>
@@ -272,6 +284,13 @@ export function WorkflowList(props: {
                       <Link href={`/workflows/${w.id}`}>Open workflow</Link>
                     </Button>
                     <div className="mt-3 flex flex-wrap gap-2">
+                      {!w.version && (
+                        <Button asChild variant="ghost" size="sm">
+                          <Link href={`/workflows/new?draft=${w.id}`}>
+                            Continue guided setup
+                          </Link>
+                        </Button>
+                      )}
                       <Button asChild variant="ghost" size="sm">
                         <Link
                           href={`/workflows/${w.id}?tab=runs${w.latestRunId ? `&run=${w.latestRunId}` : ""}`}
@@ -322,7 +341,9 @@ export function WorkflowList(props: {
           )}
         </TabsContent>
         <TabsContent value="runs" className="mt-5">
-          <WorkflowRunsView preferenceKey={`${props.preferenceKey}:executions`} />
+          <WorkflowRunsView
+            preferenceKey={`${props.preferenceKey}:executions`}
+          />
         </TabsContent>
       </Tabs>
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>

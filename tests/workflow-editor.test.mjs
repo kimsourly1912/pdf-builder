@@ -8,6 +8,7 @@ const tools=await vite.ssrLoadModule('/features/workflows/editor-tools.ts');
 const {parseDraftGraph,parseGraph}=await vite.ssrLoadModule('/features/workflows/workflow.ts');
 const workspace=await vite.ssrLoadModule('/features/workflows/workspace-tools.ts');
 const {executionGuidance}=await vite.ssrLoadModule("/features/workflows/execution-guidance.ts");
+const guide=await vite.ssrLoadModule("/features/workflows/guided-setup.ts");
 function graph(){const g=defaultGraph();g.nodes.find(n=>n.kind==='assign_forms').config.forms=[{templateId:'form-1',roleId:'form_user'}];return g;}
 test('contextual insertion preserves approved branch and does not mutate the saved graph',()=>{
  const original=graph(),before=structuredClone(original),node=tools.newStep('condition',{x:500,y:100},'extra');
@@ -76,4 +77,18 @@ test('execution waiting guidance never calls human review stuck and distinguishe
  delete run.context.waitingFor;run.currentNodeId='account';run.status='queued';assert.equal(executionGuidance(run,now).title,'Processing may be delayed');
  run.updatedAt='2026-10-03T11:59:00Z';assert.equal(executionGuidance(run,now).title,'Waiting for processing');
  run.status='completed';assert.match(executionGuidance(run,now).title,/completed/);
+});
+
+test('guided setup preserves preset review gates and resumes only an unchanged preset structure',()=>{
+ const targets=[{templateId:'form-1',roleId:'form_user',versionId:'old-pin',name:'Old name'}];
+ for(const purpose of ['approval','telegram','manual']) {
+  const g=guide.guidedGraph(purpose,targets);assert.deepEqual(graphIssues(g),[]);assert.equal(guide.guidedPurpose(g),purpose);
+  const assign=g.nodes.find(n=>n.kind==='assign_forms');if(assign)assert.deepEqual(assign.config.forms,[{templateId:'form-1',roleId:'form_user'}]);
+  const changed=structuredClone(g);changed.nodes[0].label='Custom start';assert.equal(guide.guidedPurpose(changed),null);
+  const rewired=structuredClone(g);rewired.edges.pop();assert.equal(guide.guidedPurpose(rewired),null);
+ }
+ const options=[{id:'form-1',name:'Form',roles:[{id:'form_user',name:'User'}]}];
+ assert.equal(guide.guidedFormIssues('approval',targets,options).length,0);
+ assert(guide.guidedFormIssues('manual',[],options).length);assert(guide.guidedFormIssues('manual',[{templateId:'form-1',roleId:'missing'}],options).length);
+ assert(guide.guidedFormIssues('manual',[targets[0],targets[0]],options).length);assert.deepEqual(guide.guidedFormIssues('telegram',[],[]),[]);
 });

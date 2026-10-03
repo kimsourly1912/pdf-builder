@@ -49,3 +49,7 @@ Workflow sample tests are pure browser previews and never call the runner, creat
 ## 2026-10-03: Published workflow history is separate from draft recovery
 
 Publication snapshots are written by a SQLite trigger in the publication update transaction. Restoring a snapshot uses normal owner-scoped, revision-guarded draft saving; it never activates, republishes or mutates existing executions. Restored form targets lose old version pins and are validated/pinned at the next publication. The history migration retains the latest existing publication only; older graph snapshots are unavailable. Integration readiness is read-only configuration feedback, not a delivery or candidate authorization check. Intentional HR/Telegram waits have no inferred failure timeout; processing delay notices describe lack of activity without claiming failure.
+
+## 2026-10-03: Guided setup reuses workflow publication safeguards
+
+The setup guide is an authoring interface over the existing preset graphs and APIs, not a separate runner. It saves inactive drafts and requires explicit publication; sample previews have no server effects. Only unchanged preset structure can resume in the guide; customized, archived or published workflows stay in the editor. URL draft identity is owner-authorized by the existing API and does not grant access. Readiness feedback includes the Telegram intake starting event as well as invitation steps.

@@ -10,6 +10,7 @@ export type ReadinessIssue = {
   nodeId?: string;
   message: string;
   href?: string;
+  actionLabel?: string;
 };
 export async function workflowReadiness(
   owner: string,
@@ -22,12 +23,28 @@ export async function workflowReadiness(
   if (!graph) fail("Choose a valid draft or publish a workflow first.", 422);
   const issues: ReadinessIssue[] = [];
   const bot = botConfiguration();
+  if (
+    graph.nodes.some(
+      (n) =>
+        n.kind === "resume_uploaded" &&
+        n.config.trigger === "telegram_submission",
+    ) &&
+    !bot.configured
+  ) {
+    issues.push({
+      message:
+        "Telegram intake bot configuration is incomplete. Ask your administrator to configure the recruitment bot before candidates submit CVs.",
+      href: "/intake",
+      actionLabel: "Open intake setup",
+    });
+  }
   for (const node of graph.nodes) {
     if (node.kind === "send_telegram" && !bot.configured)
       issues.push({
-        nodeId: node.id,
         message:
-          "Telegram bot configuration is incomplete. An invitation cannot be sent until deployment settings are configured.",
+          "Telegram bot configuration is incomplete. Ask your administrator to configure the recruitment bot before invitations can be sent.",
+        href: "/intake",
+        actionLabel: "Open intake setup",
       });
     if (node.kind !== "assign_forms") continue;
     if (!node.config.forms?.length)

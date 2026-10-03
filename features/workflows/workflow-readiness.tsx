@@ -5,7 +5,12 @@ import { Button } from "@/components/ui/button";
 import { workflowApi, errorText } from "./client";
 import type { WorkflowGraph } from "./workflow";
 type Result = {
-  issues: { nodeId?: string; message: string; href?: string }[];
+  issues: {
+    nodeId?: string;
+    message: string;
+    href?: string;
+    actionLabel?: string;
+  }[];
   checkedAt: string;
   requiresTelegram: boolean;
 };
@@ -96,7 +101,7 @@ export function WorkflowReadiness({
                   )}{" "}
                   {issue.href && (
                     <Link className="underline" href={issue.href}>
-                      Open forms
+                      {issue.actionLabel ?? "Open forms"}
                     </Link>
                   )}
                 </li>

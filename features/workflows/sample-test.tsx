@@ -13,7 +13,7 @@ export function SampleTest({
 }: {
   graph: WorkflowGraph;
   options: TemplateOption[];
-  onFocus: (id: string) => void;
+  onFocus?: (id: string) => void;
 }) {
   const [sample, setSample] = useState<SampleInput>({
     name: "Dara Sok",
@@ -79,13 +79,19 @@ export function SampleTest({
           <h3 className="font-medium">Planned path</h3>
           {result.steps.map((step, i) => (
             <div key={step.id} className="rounded-lg border p-3 text-sm">
-              <Button
-                variant="link"
-                className="h-auto p-0"
-                onClick={() => onFocus(step.id)}
-              >
-                {i + 1}. {step.label}
-              </Button>
+              {onFocus ? (
+                <Button
+                  variant="link"
+                  className="h-auto p-0"
+                  onClick={() => onFocus(step.id)}
+                >
+                  {i + 1}. {step.label}
+                </Button>
+              ) : (
+                <p className="font-medium">
+                  {i + 1}. {step.label}
+                </p>
+              )}
               <p className="mt-1">{step.result}</p>
               {step.forms && (
                 <ul className="mt-2 list-disc pl-5">
