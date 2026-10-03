@@ -53,7 +53,7 @@ function createAuth() {
   emailAndPassword: {
     enabled: true,
     disableSignUp: false,
-    minPasswordLength: 12,
+    minPasswordLength: 8,
   },
   session: {
     expiresIn: 60 * 60 * 24 * 7,

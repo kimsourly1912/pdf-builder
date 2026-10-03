@@ -5,6 +5,11 @@ on:
     branches:
       - codex/pdf-studio-self-host
   workflow_dispatch:
+    inputs:
+      reset_confirmation:
+        description: 'Optional destructive reset: type RESET pdf-builder PRODUCTION'
+        required: false
+        type: string
 
 concurrency:
   # This repository intentionally has one Cloudflare production target.
@@ -30,7 +35,7 @@ jobs:
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
       TELEGRAM_WEBHOOK_SECRET: ${{ secrets.TELEGRAM_WEBHOOK_SECRET }}
-      MANAGEMENT_EMAIL: kimsur61@gmail.com
+      MANAGEMENT_EMAIL: admin@gmail.com
 
     steps:
       - name: Report deployment start
@@ -73,6 +78,12 @@ jobs:
 
       - name: Test production build
         run: npm test
+
+      - name: Reset production data when explicitly requested
+        if: github.event_name == 'workflow_dispatch' && inputs.reset_confirmation == 'RESET pdf-builder PRODUCTION'
+        env:
+          RESET_CONFIRMATION: ${{ inputs.reset_confirmation }}
+        run: node scripts/reset-production.mjs
 
       - name: Provision and deploy production
         run: node scripts/deploy-production.mjs

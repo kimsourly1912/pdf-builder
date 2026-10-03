@@ -12,7 +12,7 @@
     "TELEGRAM_BOT_USERNAME": "anghr_bot",
     "ENVIRONMENT": "production",
     "BETTER_AUTH_URL": "https://pdf-builder.kimsur61.workers.dev",
-    "MANAGEMENT_EMAIL": "kimsur61@gmail.com"
+    "MANAGEMENT_EMAIL": "admin@gmail.com"
   },
   "d1_databases": [
     {

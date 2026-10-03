@@ -10,6 +10,8 @@ Use the root [agent guide](../AGENTS.md) for a short working checklist. Read the
 - [Decision log](decisions.md)
 - [Roadmap and current status](roadmap.md)
 
+- [Production test-data reset](production-reset.md) — destructive, explicitly requested operations only.
+
 ## Feature guides
 
 - [Telegram candidate intake](telegram-candidate-intake.md)

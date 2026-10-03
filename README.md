@@ -59,7 +59,7 @@ Configure these secrets in the GitHub Actions `production` environment:
 
 - `CLOUDFLARE_ACCOUNT_ID`
 - `CLOUDFLARE_API_TOKEN`
-- `PDF_BUILDER_OWNER_PASSWORD` (at least 12 characters)
+- `PDF_BUILDER_OWNER_PASSWORD` (at least 8 characters)
 - `OPENAI_API_KEY` (required for AI field detection)
 
 The owner password is used only by the deployment runner to create or verify
@@ -111,7 +111,7 @@ For a manual production deployment:
 
 Better Auth email/password sessions protect the editor, templates, submissions,
 and their management APIs. Sessions are stored in D1 and only
-`kimsur61@gmail.com` is accepted as the management owner.
+`admin@gmail.com` is accepted as the management owner.
 
 The production workflow removes the former Cloudflare Access applications after
 it proves that owner sign-in works. `/fill*`, `/api/fill*`,
@@ -170,3 +170,5 @@ Source data: https://cambo-gazetteer.manethpak.dev/api/docs
 Start with [AGENTS.md](AGENTS.md) for agent working instructions. The
 [documentation index](docs/README.md) links UI and coding standards, architecture,
 accepted decisions, the roadmap, and detailed candidate feature guides.
+
+For an explicitly requested clean production test run, see [production reset](docs/production-reset.md). Ordinary deployment does not clear data.

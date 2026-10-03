@@ -18,6 +18,7 @@ These accepted decisions describe the current product and technical contracts as
 | D12 | Offer Kanban and List views over one progress model. | HR can choose a working view. Forward moves require actual approval/preparation/submission evidence; backward overrides require a reason and audit history. Ready for HR is not hiring acceptance. |
 | D13 | Derive waiting time from stage events, not general activity. | Retries and metadata changes must not reset waiting time. Unknown legacy timestamps remain explicitly unknown. |
 | D14 | Use a short agent guide with task-specific linked documentation. | Agents receive essential safety and setup context without loading every feature guide. Standards and architecture stay maintainable outside the root guide. |
+| D15 | Permit the requested eight-character test-admin password through secure deployment secrets. | Authentication minimum and sign-in validation are eight characters; recipient activation retains its own stronger validation. Never commit the actual credential. |
 
 Details: [Telegram](telegram-candidate-intake.md), [Workflows](candidate-workflows.md), [Progress](candidate-progress.md), [Archive](archive.md), and [Architecture](architecture.md).
 

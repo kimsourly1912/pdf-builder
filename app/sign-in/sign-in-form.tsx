@@ -67,7 +67,7 @@ export function SignInForm(props: {
           name="password"
           type="password"
           autoComplete="current-password"
-          minLength={12}
+          minLength={8}
           required
           autoFocus
           value={password}
