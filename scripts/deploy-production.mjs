@@ -1,3 +1,4 @@
+import { managementPageReady } from "./deployment-pages.mjs";
 import { spawnSync } from "node:child_process";
 import { appendFileSync, readFileSync, writeFileSync } from "node:fs";
 
@@ -455,6 +456,9 @@ async function verifyDeployment(hostname, authenticatedCookie) {
     "/forms",
     "/submissions",
     "/administration",
+    "/setup",
+    "/setup/preview",
+    "/advanced",
     "/studio",
     "/workflows",
     "/intake",
@@ -465,7 +469,10 @@ async function verifyDeployment(hostname, authenticatedCookie) {
     const response = await waitForResponse(
       `https://${hostname}${path}`,
       { headers: { Cookie: authenticatedCookie }, redirect: "manual" },
-      (result) => result.status === 200,
+      async (result) =>
+        result.status === 200 &&
+        (path.startsWith("/api/") ||
+          managementPageReady(path, await result.clone().text())),
     );
     if (response.status !== 200) {
       throw new Error(
@@ -480,23 +487,9 @@ async function verifyDeployment(hostname, authenticatedCookie) {
         )
       )
         throw new Error(`Workflow API ${path} returned an invalid list.`);
-    } else if (
-      !(await response.text()).includes(
-        {
-          "/forms": "Form Builder",
-          "/intake": "Candidate intake",
-          "/archive": "Archive",
-          "/candidates": "Candidates",
-          "/": "HR Home",
-          "/submissions": "Form review inbox",
-          "/administration": "Administration",
-          "/studio": "Drop your PDF here",
-          "/analyses": "AI analysis history",
-        }[path] ?? "Workflows",
-      )
-    ) {
+    } else if (!managementPageReady(path, await response.text())) {
       throw new Error(
-        "The deployed Workflows page is missing its expected content.",
+        `The deployed management page ${path} is missing its expected heading.`,
       );
     }
     console.log(`Authenticated workflow smoke check passed: ${path}`);
@@ -527,7 +520,7 @@ async function waitForResponse(url, options, accepted) {
   let lastResponse;
   for (let attempt = 1; attempt <= 12; attempt += 1) {
     lastResponse = await fetch(url, options);
-    if (accepted(lastResponse)) return lastResponse;
+    if (await accepted(lastResponse)) return lastResponse;
     if (attempt < 12)
       await new Promise((resolve) => setTimeout(resolve, 5_000));
   }

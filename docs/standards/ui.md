@@ -47,3 +47,5 @@ Preserve search, sorting, filters, page, and view preferences using existing fea
 Provide loading, empty, success, error, and permission states. Prevent duplicate submissions while a mutation is running. Errors should say what failed and what the user can do next; retain entered data where possible. Never display raw exceptions or credentials.
 
 For UI changes, verify desktop and mobile layouts, keyboard access, long names/filenames, empty results, and the affected progress states. Check actual interactions, not only screenshots. Use mocked/local candidate data and external services; production smoke checks should not create applications or send invitations.
+
+When renaming a management page, update the authenticated deployment smoke contract in `scripts/deployment-pages.mjs`. The check must match the real page heading, not a sidebar label or serialized component text. New management entry pages belong in the deployment verification list.
