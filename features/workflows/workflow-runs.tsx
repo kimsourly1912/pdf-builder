@@ -42,6 +42,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { ExecutionCanvas } from "./execution-canvas";
 import { workflowApi, errorText, runDate } from "./client";
 import { STEP_LABELS, type WorkflowRun, type RunStatus } from "./workflow";
 
@@ -133,12 +134,23 @@ export function WorkflowRunsView({ workflowId }: { workflowId?: string }) {
   const selectedId = selected?.id;
   useEffect(() => {
     if (!selectedId) return;
+    const controller = new AbortController();
     const timer = window.setInterval(() => {
-      void workflowApi<{ run: WorkflowRun }>(`/api/workflow-runs/${selectedId}`)
-        .then((d) => setSelected(d.run))
-        .catch((e) => setError(errorText(e)));
+      void workflowApi<{ run: WorkflowRun }>(
+        `/api/workflow-runs/${selectedId}`,
+        { signal: controller.signal },
+      )
+        .then((d) => {
+          if (!controller.signal.aborted) setSelected(d.run);
+        })
+        .catch((e) => {
+          if (!controller.signal.aborted) setError(errorText(e));
+        });
     }, 10000);
-    return () => window.clearInterval(timer);
+    return () => {
+      controller.abort();
+      window.clearInterval(timer);
+    };
   }, [selectedId]);
   async function act(action: "retry" | "return_review") {
     if (!selected) return;
@@ -360,9 +372,9 @@ export function WorkflowRunsView({ workflowId }: { workflowId?: string }) {
           if (!open) setSelected(null);
         }}
       >
-        <SheetContent className="w-full overflow-y-auto sm:max-w-md">
+        <SheetContent className="w-full overflow-y-auto sm:max-w-4xl">
           <SheetHeader>
-            <SheetTitle>Run details</SheetTitle>
+            <SheetTitle>Execution details</SheetTitle>
             <SheetDescription>
               {selected?.candidateName} · Version {selected?.version}
             </SheetDescription>
@@ -385,48 +397,54 @@ export function WorkflowRunsView({ workflowId }: { workflowId?: string }) {
                   void load();
                 }}
               />
-              <ol className="space-y-5">
-                {selected.graph.nodes
-                  .filter(
-                    (n) => n.kind !== "stop" || selected.context.steps[n.id],
-                  )
-                  .map((n) => {
-                    const result = selected.context.steps[n.id];
-                    const Icon =
-                      result?.status === "completed"
-                        ? CheckCircle2
-                        : result?.status === "failed"
-                          ? XCircle
-                          : selected.currentNodeId === n.id
-                            ? Clock3
-                            : Circle;
-                    return (
-                      <li key={n.id} className="flex gap-3">
-                        <Icon
-                          className={`mt-0.5 size-5 shrink-0 ${result?.status === "completed" ? "text-emerald-600" : result?.status === "failed" ? "text-red-600" : "text-muted-foreground"}`}
-                        />
-                        <div>
-                          <p className="text-sm font-medium">
-                            {STEP_LABELS[n.kind]}
-                          </p>
-                          <p className="text-xs text-muted-foreground">
-                            {result?.note ??
-                              (result?.status === "completed"
-                                ? "Completed"
-                                : selected.currentNodeId === n.id
-                                  ? STATUS_LABELS[selected.status]
-                                  : "Not reached")}
-                          </p>
-                          {result?.completedAt && (
-                            <p className="text-xs text-muted-foreground">
-                              {runDate(result.completedAt)}
+              <ExecutionCanvas run={selected} />
+              <details className="rounded-lg border p-3">
+                <summary className="cursor-pointer text-sm font-medium">
+                  Step timeline
+                </summary>
+                <ol className="mt-4 space-y-5">
+                  {selected.graph.nodes
+                    .filter(
+                      (n) => n.kind !== "stop" || selected.context.steps[n.id],
+                    )
+                    .map((n) => {
+                      const result = selected.context.steps[n.id];
+                      const Icon =
+                        result?.status === "completed"
+                          ? CheckCircle2
+                          : result?.status === "failed"
+                            ? XCircle
+                            : selected.currentNodeId === n.id
+                              ? Clock3
+                              : Circle;
+                      return (
+                        <li key={n.id} className="flex gap-3">
+                          <Icon
+                            className={`mt-0.5 size-5 shrink-0 ${result?.status === "completed" ? "text-emerald-600" : result?.status === "failed" ? "text-red-600" : "text-muted-foreground"}`}
+                          />
+                          <div>
+                            <p className="text-sm font-medium">
+                              {STEP_LABELS[n.kind]}
                             </p>
-                          )}
-                        </div>
-                      </li>
-                    );
-                  })}
-              </ol>
+                            <p className="text-xs text-muted-foreground">
+                              {result?.note ??
+                                (result?.status === "completed"
+                                  ? "Completed"
+                                  : selected.currentNodeId === n.id
+                                    ? STATUS_LABELS[selected.status]
+                                    : "Not reached")}
+                            </p>
+                            {result?.completedAt && (
+                              <p className="text-xs text-muted-foreground">
+                                {runDate(result.completedAt)}
+                              </p>
+                            )}
+                          </div>
+                        </li>
+                      );
+                    })}
+                </ol>
+              </details>
               {selected.context.reviewer && (
                 <div className="rounded-lg border p-3 text-sm">
                   <p>Reviewed by {selected.context.reviewer}</p>
@@ -465,7 +483,7 @@ export function WorkflowRunsView({ workflowId }: { workflowId?: string }) {
                     {selected.graph.nodes.find(
                       (n) => n.id === selected.currentNodeId,
                     )?.kind === "assign_forms" && (
-                      <Link className="underline" href="/templates">
+                      <Link className="underline" href="/forms">
                         Review published templates
                       </Link>
                     )}

@@ -4,28 +4,24 @@ The Workflows page automates candidate preparation from staff uploads, Telegram 
 
 ## Configure and run
 
-1. Open **Workflows → Create workflow** and choose its starting event.
-2. Select **Assign forms**, add templates and their recipient roles, and apply
-   the step settings. Existing template resume mappings supply the autofill.
-3. Save a draft or publish the workflow. Publication enables the selected starting event.
-4. Submit or verify a CV according to the selected event, or start the workflow manually. The scheduled worker processes queued runs.
-5. Open **Runs → Review CV**. Compare the PDF with extracted data, correct the
-   fields, and complete the review checklist. Resolve duplicates in the Resume
-   Library before approval.
-6. Confirm an existing candidate account or set and save a temporary password
-   for a new account. Share credentials through the existing staff process.
-7. Approve to create/use the account, link the approved CV, and assign the forms.
-   Rejecting requires a reason and ends the workflow without those actions.
+1. Open **Workflows → Create workflow** and choose a purpose preset or starting event.
+2. Click a step to configure it. For **Assign forms**, choose published forms; legacy PDF templates also require their recipient role. New web forms assign the whole form to the candidate.
+3. Draft changes autosave with revision checks. **Save draft** retries a failed save. Draft edits do not change the active published workflow.
+4. Use the canvas **setup check** to find missing configuration or connections. Publish after resolving them; confirm the activation and preparation effects before publishing.
+5. Submit or approve a CV according to the published starting event, or use **Run published workflow** for an existing CV. This is a real execution using the published version, not a dry run. The scheduled worker processes queued runs.
+6. Open **Executions** to inspect progress and resolve review, account-reuse or delivery issues. CV approval lives in the Resume Editor; AI extraction remains optional and requires explicit confirmation.
 
-**Start with existing CV** runs the published workflow on a stored resume. Each
-resume can run once per workflow; retries continue that run. **Pause new runs**
-disables future upload triggers and does not stop existing runs.
+Each resume can run once per workflow; retries continue that run. **Pause new automatic runs** disables new event-triggered executions without cancelling existing runs. Manual execution remains available for the published version.
 
 ## Editor and execution
 
-- React Flow provides dragging, connection handles, zoom, and the canvas.
-- shadcn/ui supplies panels and form controls; TanStack Form manages editor
-  settings and CV review validation.
+- React Flow provides the full-width canvas, pan/zoom, minimap and connection handles. New purpose presets use a horizontal layout; existing workflows retain their saved positions until **Auto-arrange** is used.
+- Use a node output **+** or an edge insertion button to add a connected step. Inserting preserves the previous target; new branching steps still need their remaining output configured. Search the **Add step** catalog and click or drag a step onto the canvas.
+- Click nodes for immediate draft settings, input/output explanations and accessible connection selectors. On smaller screens settings open in a sheet. Drag output handles to inputs or reconnect existing edges; invalid rejection paths, occupied outputs and cycles are blocked.
+- Undo/redo supports configuration, insertion, deletion and layout changes. Ctrl/Cmd+D duplicates selected steps; Delete removes them, while the starting node is protected. Shortcuts ignore text inputs. **Fit workflow** restores the canvas view.
+- Publication validates the complete graph. Review gates, account reuse, pinned form versions and delivery confirmation remain enforced by the server. Individual preparation steps cannot be executed outside these gates.
+- Execution details display a read-only copy of the run's published graph, with recorded step status, attempts, notes, and review/recovery actions. A completed preparation workflow does not mean the candidate has submitted forms; Telegram sent does not mean read.
+- shadcn/ui supplies panels and controls; TanStack Form remains in CV review validation.
 - Supported steps: purpose-based starting event, optional resume preparation, HR review, candidate account,
   resume link, form assignment, conditions, complete, and stop.
 - Conditions compare resume source or applied position with an exact value,

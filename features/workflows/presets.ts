@@ -1,3 +1,4 @@
+import { arrangeGraph } from "./editor-tools";
 import { defaultGraph, type WorkflowTrigger } from "./workflow";
 export const WORKFLOW_PRESETS = {
   approval: {
@@ -76,5 +77,5 @@ export function presetGraph(preset: WorkflowPreset) {
     .forEach((n, i) => {
       n.position = { x: 80, y: i * 130 };
     });
-  return graph;
+  return arrangeGraph(graph);
 }
