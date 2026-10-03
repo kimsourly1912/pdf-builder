@@ -31,21 +31,21 @@ export function HrHome({
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {[
           {
-            label: "New CVs",
+            label: "CVs to review",
             value: data.counts.newCvs,
-            href: "/candidates?stage=new",
+            href: "/needs-attention?type=cv_review",
             icon: <FileText />,
           },
           {
             label: "Needs attention",
             value: data.counts.attention,
-            href: "/candidates?attention=true",
+            href: "/needs-attention",
             icon: <AlertTriangle />,
           },
           {
             label: "Awaiting forms",
             value: data.counts.awaitingForms,
-            href: "/candidates?stage=awaiting_forms",
+            href: "/needs-attention?type=pending_forms",
             icon: <ClipboardList />,
           },
           {
@@ -78,7 +78,7 @@ export function HrHome({
             </p>
           </div>
           <Button asChild variant="outline">
-            <Link href="/intake">New submissions</Link>
+            <Link href="/needs-attention">View all attention tasks</Link>
           </Button>
         </div>
         <div className="divide-y">

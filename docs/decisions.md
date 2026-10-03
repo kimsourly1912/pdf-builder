@@ -53,3 +53,7 @@ Publication snapshots are written by a SQLite trigger in the publication update 
 ## 2026-10-03: Guided setup reuses workflow publication safeguards
 
 The setup guide is an authoring interface over the existing preset graphs and APIs, not a separate runner. It saves inactive drafts and requires explicit publication; sample previews have no server effects. Only unchanged preset structure can resume in the guide; customized, archived or published workflows stay in the editor. URL draft identity is owner-authorized by the existing API and does not grant access. Readiness feedback includes the Telegram intake starting event as well as invitation steps.
+
+## 2026-10-03: Attention is a read-only task projection
+
+Needs attention and HR Home share one owner-scoped projection of candidate, CV, assignment and submission evidence. Counts describe tasks; linked candidates are counted separately. A candidate may have several independent actions, and manual stages cannot hide required reviews. Historical assignments remain visible while active, but archived CV/run/submission records do not create active tasks. Opening the queue performs no lifecycle mutations or external sends. Unknown wait timestamps stay unknown; waiting on a candidate does not imply overdue or failure.

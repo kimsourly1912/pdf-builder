@@ -180,6 +180,8 @@ async function ownerCookie() {
     .join("; ");
 }
 let intakeRow, workflowId, runId, cookie;
+const attentionRoute=await vite.ssrLoadModule("/app/api/needs-attention/route.ts");
+const attentionService=await vite.ssrLoadModule("/features/hr/attention.server.ts");
 const readinessService=await vite.ssrLoadModule("/features/workflows/readiness.server.ts");
 test("real intake service stores a PDF and candidate but never calls AI or creates a login account", async () => {
   const unauthorized = await webhookRoute.POST(
@@ -2109,4 +2111,21 @@ test("readiness checks are read-only, owner scoped and report missing bot and un
  assert((await readinessService.workflowReadiness(owner,receive.id,receive.draft)).issues.some(i=>i.message.includes('Telegram intake bot')));
  assert.equal(aiCalls,before);assert.equal(messages.length,sent);assert.equal(d1.sqlite.prepare('SELECT count(*) n FROM workflow_runs WHERE workflow_id=?').get(w.id).n,0);
  }finally{runtime.TELEGRAM_BOT_TOKEN=token;}
+});
+
+test("attention queue is owner-scoped, paginated after search and read-only",async()=>{
+ assert.equal((await attentionRoute.GET(new Request("http://localhost:5173/api/needs-attention",{headers:{"x-owner-email":"owner@example.com"}}))).status,401);
+ const owner=runtime.MANAGEMENT_EMAIL,aiBefore=aiCalls,sentBefore=messages.length,runsBefore=count('workflow_runs');
+ const submitted=await submit(93001,'attention-queue@example.com');
+ const readRuns=count('workflow_runs'),readMessages=messages.length;
+ const queue=await attentionService.listAttention(owner,new URLSearchParams({search:'attention-queue@example.com'}));
+ assert(queue.items.some(t=>t.type==='cv_review'&&t.href===`/resumes/${submitted.resume_id}`));assert(queue.items.every(t=>t.candidateId===submitted.candidate_id));
+ assert.equal((await attentionService.listAttention('unrelated@example.com',new URLSearchParams())).total,0);
+ const before=d1.sqlite.prepare('SELECT verification_status FROM resumes WHERE id=?').get(submitted.resume_id);
+ await attentionService.listAttention(owner,new URLSearchParams({page:'2'}));assert.deepEqual(d1.sqlite.prepare('SELECT verification_status FROM resumes WHERE id=?').get(submitted.resume_id),before);
+ assert.equal(aiCalls,aiBefore);assert.equal(count('workflow_runs'),readRuns);assert.equal(messages.length,readMessages);assert(readRuns>=runsBefore);
+ // Intake receipt sends its normal bot acknowledgement; queue reads never send anything.
+ const sentAfter=messages.length;await attentionService.listAttention(owner,new URLSearchParams());assert.equal(messages.length,sentAfter);assert(sentAfter>=sentBefore);
+ await archiveService.archiveEntity(owner,'resume',submitted.resume_id);
+ assert(!(await attentionService.listAttention(owner,new URLSearchParams({search:'attention-queue@example.com'}))).items.some(t=>t.type==='cv_review'));
 });

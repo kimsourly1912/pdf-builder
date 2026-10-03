@@ -48,6 +48,7 @@ const navigationItems = [
     icon: UsersRound,
     children: [
       { href: "/candidates", label: "All candidates" },
+      { href: "/needs-attention", label: "Needs attention" },
       { href: "/intake", label: "New submissions" },
       { href: "/resumes", label: "CV library" },
     ],

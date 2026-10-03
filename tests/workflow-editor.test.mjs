@@ -9,6 +9,7 @@ const {parseDraftGraph,parseGraph}=await vite.ssrLoadModule('/features/workflows
 const workspace=await vite.ssrLoadModule('/features/workflows/workspace-tools.ts');
 const {executionGuidance}=await vite.ssrLoadModule("/features/workflows/execution-guidance.ts");
 const guide=await vite.ssrLoadModule("/features/workflows/guided-setup.ts");
+const attention=await vite.ssrLoadModule("/features/hr/attention.ts");
 function graph(){const g=defaultGraph();g.nodes.find(n=>n.kind==='assign_forms').config.forms=[{templateId:'form-1',roleId:'form_user'}];return g;}
 test('contextual insertion preserves approved branch and does not mutate the saved graph',()=>{
  const original=graph(),before=structuredClone(original),node=tools.newStep('condition',{x:500,y:100},'extra');
@@ -91,4 +92,22 @@ test('guided setup preserves preset review gates and resumes only an unchanged p
  assert.equal(guide.guidedFormIssues('approval',targets,options).length,0);
  assert(guide.guidedFormIssues('manual',[],options).length);assert(guide.guidedFormIssues('manual',[{templateId:'form-1',roleId:'missing'}],options).length);
  assert(guide.guidedFormIssues('manual',[targets[0],targets[0]],options).length);assert.deepEqual(guide.guidedFormIssues('telegram',[],[]),[]);
+});
+
+test('attention tasks use evidence rather than manual stages, keep contact actions unique and preserve archived history',()=>{
+ const item={id:'c1',name:'TEST Dara',email:'dara@example.test',selectedCv:{id:'cv1',fileName:'CV.pdf',receivedAt:'2026-10-01T00:00:00Z',archived:false},facts:{verified:false,reviewStarted:false,preparationCurrent:false},issues:[],activity:[],forms:[],run:null,stage:'accepted'};
+ assert.deepEqual(attention.candidateAttention(item).map(t=>t.type),['cv_review']);
+ item.facts.verified=true;assert.deepEqual(attention.candidateAttention(item),[]);
+ item.issues=[{key:'contact',message:'Confirm contact',action:'Confirm contact',href:'/intake/i1#contact'},{key:'telegram',message:'Connect',action:'Connect',href:'/workflows/w1'}];item.run={id:'run1',workflowId:'w1',status:'failed',updatedAt:'2026-10-02T00:00:00Z',archived:false};
+ let tasks=attention.candidateAttention(item);assert.equal(tasks.filter(t=>t.type==='telegram').length,1);assert.equal(tasks.find(t=>t.type==='telegram').since,null);assert(tasks.some(t=>t.type==='preparation'&&t.href.includes('run=run1')));
+ item.run.archived=true;assert(!attention.candidateAttention(item).some(t=>t.type==='preparation'));
+ item.issues=[];item.facts.preparationCurrent=true;item.forms=[{id:'f1',name:'Form',status:'assigned',assignedAt:'2026-10-01T00:00:00Z'},{id:'f2',status:'completed'},{id:'f3',status:'expired'}];
+ tasks=attention.candidateAttention(item);assert.equal(tasks.filter(t=>t.type==='pending_forms').length,1);assert.match(tasks[0].reason,/1 assigned form/);
+ item.forms[0].status='completed';assert.deepEqual(attention.candidateAttention(item),[]);
+});
+test('attention pagination searches before paging, sorts unknown clocks last and counts tasks separately from candidates',()=>{
+ const tasks=Array.from({length:61},(_,i)=>({id:'task'+i,type:'cv_review',candidateId:'one',name:'TEST Dara',email:'test@example.test',detail:'CV.pdf',reason:'Needs review',since:i===0?null:'2026-10-01T00:00:00Z',urgent:false}));
+ const page=attention.attentionPage(tasks,new URLSearchParams({page:'2',search:'Dara'}));assert.equal(page.total,61);assert.equal(page.items.length,25);assert.equal(page.candidates,1);
+ assert.equal(attention.attentionPage(tasks,new URLSearchParams({page:'999'})).page,3);assert.equal(attention.attentionPage(tasks,new URLSearchParams({type:'telegram'})).total,0);
+ assert.equal(attention.attentionPage(tasks,new URLSearchParams({sort:'oldest',page:'3'})).items.at(-1).id,'task0');assert.equal(attention.attentionAge(null),'Start time unknown');
 });

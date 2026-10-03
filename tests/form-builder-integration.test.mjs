@@ -1232,6 +1232,11 @@ test("candidate progress connects manual assignments, HR acceptance and correcti
  const summary=await home.hrHome(runtime.MANAGEMENT_EMAIL);
  assert.equal(summary.tasks.some(t=>t.id==='candidate:hr-candidate'),false);
  assert.ok(summary.counts.review>0);
+ const attention=await vite.ssrLoadModule('/features/hr/attention.server.ts');
+ const tasks=await attention.attentionTasks(runtime.MANAGEMENT_EMAIL);
+ assert(tasks.some(t=>t.type==='submission_review'));assert.equal(summary.total,tasks.length);
+ assert(!tasks.some(t=>t.id===`submission:${submittedId}`&&t.type==='submission_review')||db.sqlite.prepare("SELECT COALESCE(h.status,'pending') status FROM submissions s LEFT JOIN submission_reviews h ON h.submission_id=s.id WHERE s.id=?").get(submittedId).status==='pending');
+ assert.equal((await attention.attentionTasks('unrelated@example.com')).length,0);
  assert.equal((await progress.progressOverview('another-owner@example.com')).length,0);
 });
 test("archived form responses disappear from active lists while protected submission and assignment evidence remains",async()=>{
@@ -1241,6 +1246,8 @@ test("archived form responses disappear from active lists while protected submis
   assert.equal(responses.items.some(r=>r.id===submittedId),false);
   assert.match(await archive.deletionBlocker(runtime.MANAGEMENT_EMAIL,"submission",submittedId),/protected evidence/);
   assert.equal(db.sqlite.prepare("SELECT count(*) n FROM submissions WHERE id=?").get(submittedId).n,1);
+  const attention=await vite.ssrLoadModule('/features/hr/attention.server.ts');
+  assert(!(await attention.attentionTasks(runtime.MANAGEMENT_EMAIL)).some(t=>t.id===`submission:${submittedId}`));
   await archive.archiveEntity(runtime.MANAGEMENT_EMAIL,"template",id);
   assert.equal((await call(()=>forms.getForm(request(`/api/forms/${id}`),id))).status,404);
   assert.match(await archive.deletionBlocker(runtime.MANAGEMENT_EMAIL,"template",id),/history must be preserved/);

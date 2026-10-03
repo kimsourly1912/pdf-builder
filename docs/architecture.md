@@ -62,3 +62,11 @@ There is currently one production target. `main` is not the application deployme
 The additive [web form builder](form-builder.md) lives in `features/forms`, with `/forms` management routes and shared `/fill` account authorization. It uses versioned template storage and existing assignment/workflow history, with separate draft-response and leased PDF-artifact tables. Legacy PDF templates continue to use their existing editor.
 
 [HR workspace](hr-workspace.md) adds task-based Home and unified profiles. Submission reviews are separate records; correction requests rotate the existing assignment to a new link in a guarded batch while retaining immutable submission/version history.
+
+## Needs attention queue (shipped October 2026)
+
+`/needs-attention` is the owner-scoped daily task page under Candidates. It combines the existing evidence-based candidate progress model, active unlinked staff CVs and pending owned form submissions. HR Home uses the same task source for counts, the first 20 tasks and direct action destinations. The page supports search, issue type, priority/oldest order and 25-task pagination. Filters persist per owner in URL/session storage; refresh runs every minute and retains the last loaded tasks on failure.
+
+CV review and CV update tasks open the editor. Contact/setup tasks reuse existing confirmation and execution screens. Failed runs open their saved execution; archived runs are excluded. Pending active assignments include preserved form history, while cancelled/expired assignments remain separate blockers. Each unreviewed submission opens its existing HR review screen; accepted/correction-requested and archived submissions are excluded. A candidate can have multiple independent tasks. Manual Kanban stages do not replace operational evidence.
+
+Waiting clocks use CV receipt, update receipt, assignment and submission timestamps. Contact waits use recorded approval when available. Failed runs show Last run update rather than inventing a failure start time; missing evidence remains unknown. Waiting forms are not labelled overdue and no reminders, resends, approvals, workflow runs or AI processing occur when opening this page. Task actions navigate to existing guarded operations.
