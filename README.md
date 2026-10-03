@@ -164,3 +164,9 @@ calls the external service directly, so templates and recipient links use the
 same stable contract.
 
 Source data: https://cambo-gazetteer.manethpak.dev/api/docs
+
+## Project guides and standards
+
+Start with [AGENTS.md](AGENTS.md) for agent working instructions. The
+[documentation index](docs/README.md) links UI and coding standards, architecture,
+accepted decisions, the roadmap, and detailed candidate feature guides.
