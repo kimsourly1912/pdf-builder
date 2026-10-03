@@ -92,6 +92,13 @@ async function main() {
 
   let authenticatedCookie;
   try {
+    // A replaced maintenance Worker can still serve requests briefly after upload.
+    // Wait for the real authentication API before attempting owner mutations.
+    await waitForResponse(
+      `https://${hostname}/api/auth/get-session`,
+      { redirect: "manual", signal: AbortSignal.timeout(10000) },
+      (response) => response.status === 200,
+    );
     authenticatedCookie = await bootstrapAndSignInOwner(
       hostname,
       bootstrapToken,
