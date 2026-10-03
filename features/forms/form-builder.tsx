@@ -469,10 +469,16 @@ export function FormBuilder(props: { id: string; displayName: string }) {
                 ? void publish()
                 : step === "map"
                   ? openPreview()
-                  : setStep(step === "build" ? "map" : "publish")
+                  : step === "build"
+                    ? openPreview()
+                    : setStep("publish")
             }
           >
-            {step === "publish" ? "Publish" : "Next"}
+            {step === "publish"
+              ? "Publish form"
+              : step === "preview"
+                ? "Review for publishing"
+                : "Preview candidate form"}
           </Button>
         </div>
       </div>
@@ -483,9 +489,9 @@ export function FormBuilder(props: { id: string; displayName: string }) {
         {(
           [
             ["build", "Build form"],
-            ["map", "Map PDF (optional)"],
-            ["preview", "Preview & test"],
-            ["publish", "Publish & assign"],
+            ["preview", "Preview candidate form"],
+            ["publish", "Publish form"],
+            ["map", "PDF output (optional)"],
           ] as const
         ).map(([value, label], i) => (
           <Button
@@ -497,10 +503,25 @@ export function FormBuilder(props: { id: string; displayName: string }) {
               value === "preview" ? openPreview() : setStep(value)
             }
           >
-            {i + 1}. {label}
+            {value === "map" ? label : `${i + 1}. ${label}`}
           </Button>
         ))}
       </nav>
+      {document && step === "build" && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-card p-4 text-sm">
+          <p>
+            Add questions, preview what the candidate sees, then publish. Need a
+            filled PDF too?
+          </p>
+          <Button
+            variant="outline"
+            disabled={busy}
+            onClick={() => setStep("map")}
+          >
+            Generate a completed PDF (optional)
+          </Button>
+        </div>
+      )}
       {error && (
         <div
           role="alert"
@@ -867,7 +888,7 @@ export function FormBuilder(props: { id: string; displayName: string }) {
       {document && step === "preview" && (
         <section aria-label="Preview form" className="space-y-4">
           <div>
-            <h2 className="text-lg font-semibold">Preview & test</h2>
+            <h2 className="text-lg font-semibold">Preview candidate form</h2>
             <p className="text-sm text-muted-foreground">
               Try sample answers and validation. This does not create a
               response.
@@ -888,15 +909,19 @@ export function FormBuilder(props: { id: string; displayName: string }) {
                 Mobile
               </Button>
             </div>
-            <Button
-              variant="outline"
-              disabled={!history.present.pageCount || busy}
-              onClick={() => void previewPdf()}
-            >
-              Preview completed PDF
-            </Button>
+            {history.present.pageCount > 0 && (
+              <Button
+                variant="outline"
+                disabled={busy}
+                onClick={() => void previewPdf()}
+              >
+                Preview completed PDF
+              </Button>
+            )}
           </div>
-          <div className="grid min-w-0 grid-cols-1 gap-5 lg:grid-cols-2">
+          <div
+            className={`grid min-w-0 grid-cols-1 gap-5 ${history.present.pageCount ? "lg:grid-cols-2" : "mx-auto w-full max-w-3xl"}`}
+          >
             <div
               className={`mx-auto w-full rounded-xl border bg-card p-5 ${mobile ? "max-w-[360px]" : ""}`}
             >
@@ -915,59 +940,63 @@ export function FormBuilder(props: { id: string; displayName: string }) {
                 />
               )}
             </div>
-            <div className="min-w-0 overflow-auto rounded-lg border bg-muted/20 p-3">
-              {pdfUrl ? (
-                <Suspense fallback={<p>Loading PDF…</p>}>
-                  <div>
-                    <div className="mb-3 flex items-center gap-3">
-                      <Button
-                        variant="outline"
-                        disabled={pdfPage <= 1}
-                        onClick={() => setPdfPage((p) => p - 1)}
-                      >
-                        Previous page
-                      </Button>
-                      <span>
-                        Page {pdfPage} / {history.present.pageCount}
-                      </span>
-                      <Button
-                        variant="outline"
-                        disabled={pdfPage >= history.present.pageCount}
-                        onClick={() => setPdfPage((p) => p + 1)}
-                      >
-                        Next page
-                      </Button>
+            {history.present.pageCount > 0 && (
+              <div className="min-w-0 overflow-auto rounded-lg border bg-muted/20 p-3">
+                {pdfUrl ? (
+                  <Suspense fallback={<p>Loading PDF…</p>}>
+                    <div>
+                      <div className="mb-3 flex items-center gap-3">
+                        <Button
+                          variant="outline"
+                          disabled={pdfPage <= 1}
+                          onClick={() => setPdfPage((p) => p - 1)}
+                        >
+                          Previous page
+                        </Button>
+                        <span>
+                          Page {pdfPage} / {history.present.pageCount}
+                        </span>
+                        <Button
+                          variant="outline"
+                          disabled={pdfPage >= history.present.pageCount}
+                          onClick={() => setPdfPage((p) => p + 1)}
+                        >
+                          Next page
+                        </Button>
+                      </div>
+                      {(pdfFingerprint !== sampleFingerprint ||
+                        pdfMedia !== sampleMedia) && (
+                        <p
+                          role="status"
+                          className="mb-3 rounded border border-amber-400 bg-amber-50 p-3 text-sm text-amber-900 dark:bg-amber-950 dark:text-amber-200"
+                        >
+                          Sample answers changed. Use Preview completed PDF to
+                          refresh this document.
+                        </p>
+                      )}
+                      <PdfPage url={pdfUrl} page={pdfPage} />
                     </div>
-                    {(pdfFingerprint !== sampleFingerprint ||
-                      pdfMedia !== sampleMedia) && (
-                      <p
-                        role="status"
-                        className="mb-3 rounded border border-amber-400 bg-amber-50 p-3 text-sm text-amber-900 dark:bg-amber-950 dark:text-amber-200"
-                      >
-                        Sample answers changed. Use Preview completed PDF to
-                        refresh this document.
-                      </p>
-                    )}
-                    <PdfPage url={pdfUrl} page={pdfPage} />
-                  </div>
-                </Suspense>
-              ) : (
-                <p className="p-6 text-sm text-muted-foreground">
-                  Fill in sample answers, then preview the completed PDF.
-                </p>
-              )}
-            </div>
+                  </Suspense>
+                ) : (
+                  <p className="p-6 text-sm text-muted-foreground">
+                    Fill in sample answers, then preview the completed PDF.
+                  </p>
+                )}
+              </div>
+            )}
           </div>
-          <p className="text-sm text-muted-foreground">
-            {
-              history.present.fields.filter(
-                (f) =>
-                  f.type !== "section" &&
-                  !history.present.mappings.some((m) => m.fieldId === f.id),
-              ).length
-            }{" "}
-            fields are not mapped to PDF. All answers are still saved as JSON.
-          </p>
+          {history.present.pageCount > 0 && (
+            <p className="text-sm text-muted-foreground">
+              {
+                history.present.fields.filter(
+                  (f) =>
+                    f.type !== "section" &&
+                    !history.present.mappings.some((m) => m.fieldId === f.id),
+                ).length
+              }{" "}
+              fields are not mapped to PDF. All answers are still saved as JSON.
+            </p>
+          )}
         </section>
       )}
       {document && step === "publish" && (
@@ -977,8 +1006,10 @@ export function FormBuilder(props: { id: string; displayName: string }) {
         >
           <h2 className="text-xl font-semibold">Review and publish</h2>
           <p className="text-sm text-muted-foreground">
-            Publish a version, then assign the whole form to candidate accounts.
-            Existing assignments keep their published version.
+            Publishing makes this form available to assign. It does not assign
+            it or send an invitation. Existing assignments keep their original
+            form. Next, open a candidate’s Forms tab to assign it and share
+            access.
           </p>
           <div className="rounded-lg border bg-muted/30 p-4">
             <p className="font-medium">

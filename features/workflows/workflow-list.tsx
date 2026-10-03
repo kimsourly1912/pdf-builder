@@ -139,8 +139,8 @@ export function WorkflowList(props: {
   return (
     <AppShell displayName={props.displayName} fullWidth={tab === "runs"}>
       <PageHeader
-        title="Workflows"
-        description="Choose a starting event and automate candidate preparation for that purpose."
+        title="Automation"
+        description="Configure when candidate preparation starts and what happens next. Daily review and form work stays in the candidate profile."
         actions={
           <div className="flex flex-wrap gap-2">
             <Button asChild>
@@ -158,6 +158,15 @@ export function WorkflowList(props: {
           </div>
         }
       />
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-card p-4 text-sm">
+        <p>
+          Looking for today’s HR work? Start with candidate actions. Use
+          automation to configure preparation or investigate an execution.
+        </p>
+        <Button asChild variant="outline">
+          <Link href="/needs-attention?responsibility=hr">Your HR actions</Link>
+        </Button>
+      </div>
       {error && (
         <Alert variant="destructive">
           <AlertDescription>{error}</AlertDescription>
@@ -230,8 +239,8 @@ export function WorkflowList(props: {
                     Create your first candidate workflow
                   </h2>
                   <p className="mt-2 max-w-md text-sm text-muted-foreground">
-                    Choose a starting event, prepare CV data, review, create an
-                    account, resume linking, and form assignment.
+                    Choose a purpose and published forms. Preview the result
+                    before enabling account preparation and invitations.
                   </p>
                 </div>
                 <Button asChild>
@@ -268,6 +277,21 @@ export function WorkflowList(props: {
                     </CardDescription>
                   </CardHeader>
                   <CardContent>
+                    {w.businessSummary && (
+                      <div className="mb-4 rounded-lg bg-muted/40 p-3 text-sm">
+                        <p className="font-medium">
+                          Then
+                          {w.businessSummary.conditional
+                            ? " (when approved / conditions match)"
+                            : ""}
+                        </p>
+                        <ul className="mt-2 space-y-1 text-muted-foreground">
+                          {w.businessSummary.actions.map((action) => (
+                            <li key={action}>{action}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
                     {w.latestRunStatus && (
                       <div className="mb-3 space-y-2">
                         <p className="text-xs text-muted-foreground">

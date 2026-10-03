@@ -10,16 +10,29 @@ import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useUrlFilters } from "@/features/candidate-progress/use-url-filters";
 import { workflowApi, errorText } from "@/features/workflows/client";
-import { ATTENTION_TYPES, attentionAge, type AttentionPage } from "./attention";
-const DEFAULTS = { search: "", type: "all", sort: "priority", page: "1" };
+import {
+  ATTENTION_TYPES,
+  attentionAge,
+  attentionResponsibility,
+  type AttentionPage,
+} from "./attention";
+const DEFAULTS = {
+  responsibility: "all",
+  search: "",
+  type: "all",
+  sort: "priority",
+  page: "1",
+};
 function validFilter(key: keyof typeof DEFAULTS, value: string) {
-  return key === "search"
-    ? value.length <= 200
-    : key === "type"
-      ? value === "all" || Object.hasOwn(ATTENTION_TYPES, value)
-      : key === "sort"
-        ? ["priority", "oldest"].includes(value)
-        : /^\d{1,7}$/u.test(value) && Number(value) > 0;
+  return key === "responsibility"
+    ? ["all", "hr", "candidate"].includes(value)
+    : key === "search"
+      ? value.length <= 200
+      : key === "type"
+        ? value === "all" || Object.hasOwn(ATTENTION_TYPES, value)
+        : key === "sort"
+          ? ["priority", "oldest"].includes(value)
+          : /^\d{1,7}$/u.test(value) && Number(value) > 0;
 }
 export function AttentionDashboard({
   displayName,
@@ -71,7 +84,7 @@ export function AttentionDashboard({
     <AppShell displayName={displayName}>
       <PageHeader
         title="Needs attention"
-        description="See HR reviews, preparation issues and forms waiting on candidates. Each task opens the existing screen for the next action."
+        description="Choose your next HR action, or check forms waiting on candidates."
         actions={
           <Button
             variant="outline"
@@ -89,6 +102,32 @@ export function AttentionDashboard({
           : "Loading tasks…"}{" "}
         · One candidate can have more than one task.
       </p>
+      <div
+        role="group"
+        aria-label="Who acts next"
+        className="flex flex-wrap gap-2"
+      >
+        {[
+          ["hr", "Your actions"],
+          ["candidate", "Waiting on candidates"],
+          ["all", "All tasks"],
+        ].map(([key, label]) => (
+          <Button
+            key={key}
+            variant={filters.responsibility === key ? "default" : "outline"}
+            aria-pressed={filters.responsibility === key}
+            disabled={!ready}
+            onClick={() =>
+              setFilters({ responsibility: key, type: "all", page: "1" })
+            }
+          >
+            {label}
+            {data && key !== "all"
+              ? ` (${data.responsibilityCounts[key as "hr" | "candidate"]})`
+              : ""}
+          </Button>
+        ))}
+      </div>
       <div className="flex flex-wrap gap-3 rounded-xl border bg-card p-4">
         <Input
           aria-label="Search attention tasks"
@@ -105,7 +144,7 @@ export function AttentionDashboard({
           value={filters.type}
           onChange={(e) => setFilters({ type: e.target.value, page: "1" })}
         >
-          <option value="all">All issue types</option>
+          <option value="all">All task types</option>
           {Object.entries(ATTENTION_TYPES).map(([key, label]) => (
             <option key={key} value={key}>
               {label}
@@ -186,6 +225,11 @@ export function AttentionDashboard({
                   >
                     {ATTENTION_TYPES[task.type]}
                   </Badge>
+                  <p className="text-xs font-medium text-muted-foreground">
+                    {attentionResponsibility(task) === "candidate"
+                      ? "Waiting for candidate answers"
+                      : "HR action needed"}
+                  </p>
                   <p className="break-words font-medium">
                     {task.candidateId ? (
                       <Link

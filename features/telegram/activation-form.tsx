@@ -72,8 +72,8 @@ export function ActivationForm() {
         <CardHeader>
           <CardTitle>Set your password</CardTitle>
           <CardDescription>
-            Create a password to activate your candidate account and open your
-            assigned forms.
+            Step 1 of 2: set your password. Next, you’ll open My forms to
+            complete the documents requested by HR.
           </CardDescription>
         </CardHeader>
         <CardContent>

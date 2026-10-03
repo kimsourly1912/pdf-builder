@@ -16,6 +16,12 @@ export default async function Page() {
       <div className="grid gap-5 sm:grid-cols-2">
         {[
           {
+            title: "Workspace setup",
+            description:
+              "Check Telegram, published forms, and candidate preparation. Preview the candidate journey before inviting anyone.",
+            href: "/setup",
+          },
+          {
             title: "Account access",
             description:
               "Manage candidate and internal form accounts, activation, and access.",

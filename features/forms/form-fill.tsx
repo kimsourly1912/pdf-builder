@@ -122,7 +122,19 @@ function FormFill(props: { token: string; payload: TemplateFillPayload }) {
           Version {props.payload.template.versionNumber} ·{" "}
           {props.payload.identity?.email}
         </p>
-        {props.payload.correction && <div className="mt-5 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-100"><h2 className="font-semibold">Corrections requested by HR</h2><p className="mt-2 whitespace-pre-wrap break-words">{props.payload.correction.reason}</p><p className="mt-2 text-xs">Your original submission remains saved. Check the answers and upload photos or signatures again before submitting this new attempt.</p></div>}
+        {props.payload.correction && (
+          <div className="mt-5 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-100">
+            <h2 className="font-semibold">Corrections requested by HR</h2>
+            <p className="mt-2 whitespace-pre-wrap break-words">
+              {props.payload.correction.reason}
+            </p>
+            <p className="mt-2 text-xs">
+              Your original submission remains saved. Check the answers and
+              upload photos or signatures again before submitting this new
+              attempt.
+            </p>
+          </div>
+        )}
         {error && (
           <p
             role="alert"
@@ -139,8 +151,13 @@ function FormFill(props: { token: string; payload: TemplateFillPayload }) {
         {submitted ? (
           <div className="mt-8 space-y-4">
             <h2 className="font-semibold">
-              Thank you. Your response is saved.
+              Thank you. Your answers are saved for HR review.
             </h2>
+            <p className="text-sm text-muted-foreground">
+              Return to My forms to complete any remaining forms. If HR needs
+              corrections, their instructions will appear there. You do not need
+              to submit this response again.
+            </p>
             <Button asChild>
               <Link href="/portal">Back to my forms</Link>
             </Button>

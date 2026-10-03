@@ -250,14 +250,14 @@ export function IntakeDetail({
             href="/intake"
           >
             <ArrowLeft className="size-4" />
-            Candidate intake
+            Incoming candidates
           </Link>
           <h1 className="mt-2 text-2xl font-semibold">
             {data?.contact.fullName ?? "Candidate overview"}
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Details received through Telegram. Review and approve the CV in the
-            Resume Editor.
+            Original details received through Telegram. Open the candidate
+            profile to review the CV, prepare forms, and follow progress.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -267,9 +267,9 @@ export function IntakeDetail({
           </Button>
           {data && !data.archived && (
             <>
-              <Button asChild variant="outline">
+              <Button asChild>
                 <Link href={`/candidates/${data.candidate.id}`}>
-                  Candidate progress
+                  Open candidate
                 </Link>
               </Button>
               <ArchiveButton

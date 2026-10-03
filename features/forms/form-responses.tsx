@@ -36,6 +36,7 @@ export function FormResponses(props: { id: string; displayName: string }) {
   const [items, setItems] = useState<Item[]>([]),
     [name, setName] = useState("Form responses"),
     [published, setPublished] = useState(false),
+    [assignedLink, setAssignedLink] = useState(""),
     [email, setEmail] = useState(""),
     [error, setError] = useState(""),
     [message, setMessage] = useState(""),
@@ -79,6 +80,7 @@ export function FormResponses(props: { id: string; displayName: string }) {
     setBusy(true);
     setError("");
     setMessage("");
+    setAssignedLink("");
     try {
       const result = await formApi<{ assignment: { id: string } }>(
         `/api/forms/${props.id}/assign`,
@@ -89,12 +91,10 @@ export function FormResponses(props: { id: string; displayName: string }) {
         },
       );
       setMessage(
-        `Assigned to ${email}. The form is available in their account portal.`,
+        `Assigned to ${email}. Available in My forms. No invitation was sent.`,
       );
       if (result.assignment?.id)
-        setMessage(
-          `Assigned to ${email}. Share this account-protected link: ${window.location.origin}/fill/assigned_${result.assignment.id}`,
-        );
+        setAssignedLink(`/fill/assigned_${result.assignment.id}`);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Assignment failed.");
     } finally {
@@ -136,7 +136,7 @@ export function FormResponses(props: { id: string; displayName: string }) {
     <AppShell displayName={props.displayName}>
       <PageHeader
         title={name}
-        description="Assign the published form and collect independent responses with JSON and PDF output."
+        description="Assign this form, share access, and review saved answers. PDF output is optional."
         actions={
           <Button asChild variant="outline">
             <Link href={`/forms/${props.id}`}>Edit form</Link>
@@ -179,13 +179,51 @@ export function FormResponses(props: { id: string; displayName: string }) {
           </p>
         )}
         <p className="mt-3 text-xs text-muted-foreground">
-          One user completes all fields. Each assignment is pinned to the
-          published version. New users need a managed account first.{" "}
+          Check the account email before assigning. The user completes the
+          entire form. Assignment does not send a message. For candidate review
+          and first-time invitations, use the candidate profile. New users need
+          an account first.{" "}
           <Link href="/accounts" className="underline">
-            Open Accounts
+            Account access
           </Link>
         </p>
       </div>
+      {assignedLink && (
+        <section
+          aria-label="Share assigned form"
+          className="rounded-xl border bg-card p-5"
+        >
+          <h2 className="font-semibold">Next: share access</h2>
+          <p className="mt-2 text-sm text-muted-foreground">
+            Share this account-protected link with the assigned user. They must
+            sign in; first-time candidate activation is handled by their
+            preparation invitation.
+          </p>
+          <div className="mt-4 flex flex-wrap gap-2">
+            <Button
+              variant="outline"
+              onClick={() => {
+                void navigator.clipboard
+                  .writeText(window.location.origin + assignedLink)
+                  .then(() =>
+                    setMessage("Form link copied. No message was sent."),
+                  )
+                  .catch(() =>
+                    setError("Copy failed. Select and copy the link below."),
+                  );
+              }}
+            >
+              Copy form link
+            </Button>
+            <Button asChild variant="outline">
+              <Link href="/candidates">Open candidates</Link>
+            </Button>
+          </div>
+          <p className="mt-3 break-all text-xs text-muted-foreground">
+            {assignedLink}
+          </p>
+        </section>
+      )}
       {error && (
         <p
           role="alert"
@@ -229,7 +267,12 @@ export function FormResponses(props: { id: string; displayName: string }) {
                     {item.email}
                   </span>
                   <span className="mt-2 block text-xs text-muted-foreground">
-                    {item.reviewStatus === "accepted" ? "Accepted by HR" : item.reviewStatus === "corrections_requested" ? "Corrections requested" : "Awaiting HR review"} · {new Date(item.submittedAt).toLocaleString()} ·{" "}
+                    {item.reviewStatus === "accepted"
+                      ? "Accepted by HR"
+                      : item.reviewStatus === "corrections_requested"
+                        ? "Corrections requested"
+                        : "Awaiting HR review"}{" "}
+                    · {new Date(item.submittedAt).toLocaleString()} ·{" "}
                     {item.pdfStatus === "ready"
                       ? "PDF ready"
                       : item.pdfStatus === "failed"
@@ -255,7 +298,13 @@ export function FormResponses(props: { id: string; displayName: string }) {
           {selected ? (
             <>
               <div className="mb-5 flex flex-wrap gap-2">
-                <Button asChild><Link href={`/submissions/${selected.id}/review`}>{selected.reviewStatus === "pending" ? "Review submission" : "View HR decision"}</Link></Button>
+                <Button asChild>
+                  <Link href={`/submissions/${selected.id}/review`}>
+                    {selected.reviewStatus === "pending"
+                      ? "Review submission"
+                      : "View HR decision"}
+                  </Link>
+                </Button>
                 <ArchiveButton
                   type="submission"
                   id={selected.id}

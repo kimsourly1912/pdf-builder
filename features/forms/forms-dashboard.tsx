@@ -1,5 +1,5 @@
 "use client";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Plus, FileText, Pencil, Send } from "lucide-react";
 import { useRouter } from "next/navigation";
@@ -31,24 +31,39 @@ export function FormsDashboard(props: { displayName: string }) {
     [meta, setMeta] = useState<PageMeta>(
       createPageMeta(0, { page: 1, pageSize: 25 }),
     );
-  const load = useCallback(
-    () =>
-      formApi<{ items: Item[] } & PageMeta>(
+  const requestId = useRef(0);
+  const load = useCallback(async () => {
+    const id = ++requestId.current;
+    setLoading(true);
+    try {
+      const data = await formApi<{ items: Item[] } & PageMeta>(
         `/api/forms?page=${page}&search=${encodeURIComponent(search)}`,
-      )
-        .then((data) => {
-          setItems(data.items);
-          setMeta(data);
-        })
-        .catch((e: Error) => setError(e.message))
-        .finally(() => setLoading(false)),
-    [page, search],
-  );
+      );
+      if (id === requestId.current) {
+        setItems(data.items);
+        setMeta(data);
+        setError("");
+      }
+    } catch (e) {
+      if (id === requestId.current)
+        setError(e instanceof Error ? e.message : "Could not load forms.");
+    } finally {
+      if (id === requestId.current) setLoading(false);
+    }
+  }, [page, search]);
+  const invalidateRequests = useCallback(() => {
+    ++requestId.current;
+  }, []);
   useEffect(() => {
-    void load();
-  }, [load]);
+    const timer = setTimeout(() => void load(), 200);
+    return () => {
+      clearTimeout(timer);
+      invalidateRequests();
+    };
+  }, [load, invalidateRequests]);
   async function create() {
     setBusy(true);
+    setError("");
     try {
       const result = await formApi<{ id: string }>("/api/forms", {
         method: "POST",
@@ -64,8 +79,8 @@ export function FormsDashboard(props: { displayName: string }) {
   return (
     <AppShell displayName={props.displayName}>
       <PageHeader
-        title="Form Builder"
-        description="Build a clean web form, map answers to a PDF, then assign it to a user."
+        title="Form templates"
+        description="Create reusable forms, publish them, and assign them to candidates. A completed PDF is optional."
         actions={
           <Button disabled={busy} onClick={() => void create()}>
             <Plus />
@@ -73,13 +88,6 @@ export function FormsDashboard(props: { displayName: string }) {
           </Button>
         }
       />
-      <div className="rounded-lg border bg-card p-4 text-sm text-muted-foreground">
-        The current{" "}
-        <Link href="/templates" className="font-medium text-primary underline">
-          PDF Templates
-        </Link>{" "}
-        remain available while you try the new builder.
-      </div>
       <Input
         aria-label="Search forms"
         placeholder="Search forms…"
@@ -92,7 +100,15 @@ export function FormsDashboard(props: { displayName: string }) {
       />
       {error && (
         <p role="alert" className="text-sm text-destructive">
-          {error}
+          {error}{" "}
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={loading}
+            onClick={() => void load()}
+          >
+            Retry loading forms
+          </Button>
         </p>
       )}
       {loading ? (
@@ -110,9 +126,14 @@ export function FormsDashboard(props: { displayName: string }) {
           <Button
             className="mt-5"
             disabled={busy}
-            onClick={() => void create()}
+            onClick={() => {
+              if (search) {
+                setSearch("");
+                setPage(1);
+              } else void create();
+            }}
           >
-            Create form
+            {search ? "Clear search" : "Create form"}
           </Button>
         </div>
       ) : (
@@ -127,7 +148,7 @@ export function FormsDashboard(props: { displayName: string }) {
                   {item.name}
                 </h2>
                 <span className="shrink-0 rounded-md bg-muted px-2 py-1 text-xs">
-                  {item.versionId ? "Published" : "Draft"}
+                  {item.versionId ? "Ready to assign" : "Draft"}
                 </span>
               </div>
               <p className="mb-3 line-clamp-2 min-h-10 text-sm text-muted-foreground">
@@ -149,7 +170,7 @@ export function FormsDashboard(props: { displayName: string }) {
                 <Button asChild variant="outline" size="sm">
                   <Link href={`/forms/${item.id}/responses`}>
                     <Send />
-                    Assign / responses
+                    Assignments & answers
                   </Link>
                 </Button>
                 <ArchiveButton

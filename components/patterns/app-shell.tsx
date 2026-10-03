@@ -49,7 +49,7 @@ const navigationItems = [
     children: [
       { href: "/candidates", label: "All candidates" },
       { href: "/needs-attention", label: "Needs attention" },
-      { href: "/intake", label: "New submissions" },
+      { href: "/intake", label: "Incoming candidates" },
       { href: "/resumes", label: "CV library" },
     ],
   },
@@ -59,18 +59,26 @@ const navigationItems = [
     icon: Files,
     children: [
       { href: "/forms", label: "Form templates" },
-      { href: "/submissions", label: "Review inbox" },
+      { href: "/submissions", label: "Submitted forms" },
+    ],
+  },
+  { href: "/workflows", label: "Automation", icon: Workflow, children: [] },
+  {
+    href: "/advanced",
+    label: "Advanced tools",
+    icon: FileText,
+    children: [
       { href: "/templates", label: "PDF templates" },
       { href: "/studio", label: "PDF studio" },
     ],
   },
-  { href: "/workflows", label: "Automation", icon: Workflow, children: [] },
   {
     href: "/administration",
     label: "Administration",
     icon: Archive,
     children: [
       { href: "/administration", label: "Settings & integrations" },
+      { href: "/setup", label: "Workspace setup" },
       { href: "/accounts", label: "Account access" },
       { href: "/analyses", label: "AI history" },
       { href: "/activity", label: "Activity" },

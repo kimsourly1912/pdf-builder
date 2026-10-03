@@ -1,16 +1,24 @@
 import "server-only";
 import { attentionTasks } from "./attention.server";
-import { attentionPage } from "./attention";
+import { attentionPage, attentionResponsibility } from "./attention";
 export async function hrHome(owner: string) {
   const tasks = await attentionTasks(owner);
   return {
     counts: {
       newCvs: tasks.filter((t) => t.type === "cv_review").length,
-      attention: tasks.length,
+      attention: tasks.filter((t) => attentionResponsibility(t) === "hr")
+        .length,
       awaitingForms: tasks.filter((t) => t.type === "pending_forms").length,
       review: tasks.filter((t) => t.type === "submission_review").length,
     },
-    tasks: attentionPage(tasks, new URLSearchParams())
+    waiting: attentionPage(
+      tasks,
+      new URLSearchParams({ responsibility: "candidate" }),
+    ).items.slice(0, 5),
+    waitingTotal: tasks.filter(
+      (t) => attentionResponsibility(t) === "candidate",
+    ).length,
+    tasks: attentionPage(tasks, new URLSearchParams({ responsibility: "hr" }))
       .items.slice(0, 20)
       .map((t) => ({
         id: t.id,
@@ -22,6 +30,6 @@ export async function hrHome(owner: string) {
         at: t.since,
         urgent: t.urgent,
       })),
-    total: tasks.length,
+    total: tasks.filter((t) => attentionResponsibility(t) === "hr").length,
   };
 }

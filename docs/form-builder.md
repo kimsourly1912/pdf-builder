@@ -47,3 +47,11 @@ Libraries are pinned in the lockfile. This release uses the current `@dnd-kit/re
 Integration tests cover authorization, definition validation, revisions, private media, pinned versions, idempotency, concurrent revocation, JSON-only submission, Khmer/rotated PDF output, overflow and PDF retries. Browser verification covers builder interactions, mapping, responsive preview and the candidate submission path.
 
 The account-protected email assignment model is intentional: unauthenticated Google Forms-style public collection, bulk emailing, conditional sections, and retirement/migration of legacy templates need separate product decisions. This guide does not claim those capabilities exist.
+
+## Simplified authoring path (October 2026)
+
+The template list is **Form templates**; published forms are labeled **Ready to assign**. The default editor path is **Build form → Preview candidate form → Publish form**. **PDF output (optional)** remains directly accessible, including the full mapping workspace. Forms without a PDF show only the candidate form preview, with no empty PDF panel or mapping warning.
+
+The mapper explains Choose a question → Place its answer → Check the result and gives contextual placement instructions. Existing drag/resize, keyboard alternatives, snapping, formatting and output validation remain intact. Publishing explicitly makes a version available for assignment; it does not assign or notify users. Candidate Forms shows a recipient/CV check and a separate Share access section. Standalone Assignments & answers supplies a copyable account-protected link after assignment and explains first-time activation separately.
+
+Lists retain safe errors and allow retry/clear search. Request identity guards prevent an older form-list search response from replacing newer results.

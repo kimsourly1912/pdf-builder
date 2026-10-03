@@ -25,6 +25,10 @@ import {
 import { workflowApi, errorText, runDate } from "@/features/workflows/client";
 import { ResumeDetailView } from "@/features/resumes/resume-detail";
 import { DISCARD_EDITS } from "@/features/resumes/use-unsaved-changes";
+import {
+  candidateWork,
+  candidateJourney,
+} from "@/features/hr/candidate-journey";
 import { CandidateForms } from "@/features/hr/candidate-forms";
 import {
   CandidatePreparation,
@@ -39,7 +43,11 @@ import { stageAge, statusColor, runStatusLabel } from "./presentation";
 import { candidateNextAction } from "./submission-progress";
 import { CvUpdatePanel } from "./cv-update-panel";
 import { ResumePdfPreview } from "@/features/resumes/resume-pdf-preview";
-import { stageEvidence, preparationLabel, STAGE_DESCRIPTIONS } from "./stage-evidence";
+import {
+  stageEvidence,
+  preparationLabel,
+  STAGE_DESCRIPTIONS,
+} from "./stage-evidence";
 import { MoveMenu, MoveDialog } from "./progress-actions";
 const PROFILE_TABS = [
   { id: "overview", label: "Overview" },
@@ -84,7 +92,10 @@ export function ProgressDetail({
         setError("");
       }
     } catch (e) {
-      if (version === requestVersion.current) { setError(errorText(e)); if(errorText(e).includes("active CV not found"))setItem(null); }
+      if (version === requestVersion.current) {
+        setError(errorText(e));
+        if (errorText(e).includes("active CV not found")) setItem(null);
+      }
     }
   }, [candidateId]);
   useEffect(() => {
@@ -117,15 +128,34 @@ export function ProgressDetail({
   }
   async function startReview() {
     if (!item || busy) return;
-    setBusy(true); setError("");
+    setBusy(true);
+    setError("");
     try {
-      await workflowApi(`/api/candidates/${candidateId}`, {method: "PATCH", body: JSON.stringify({action: "start_review", expectedRevision: item.revision})});
-      await load(); changeTab("documents");
-    } catch(e) {setError(errorText(e));} finally {setBusy(false);}
+      await workflowApi(`/api/candidates/${candidateId}`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          action: "start_review",
+          expectedRevision: item.revision,
+        }),
+      });
+      await load();
+      changeTab("documents");
+    } catch (e) {
+      setError(errorText(e));
+    } finally {
+      setBusy(false);
+    }
   }
   async function select(action: "select_cv" | "select_run", value: string) {
     if (!item || !leaveDraft()) return;
-    if (action === "select_cv" && value !== item.selectedCv.id && !window.confirm(`Use ${item.cvs.find(c => c.id === value)?.fileName ?? "this CV"} for a new preparation? Progress will track this CV. Previous approval, account access, assigned forms and answers remain in history. This does not start a workflow or resend an invitation.`)) return;
+    if (
+      action === "select_cv" &&
+      value !== item.selectedCv.id &&
+      !window.confirm(
+        `Use ${item.cvs.find((c) => c.id === value)?.fileName ?? "this CV"} for a new preparation? Progress will track this CV. Previous approval, account access, assigned forms and answers remain in history. This does not start a workflow or resend an invitation.`,
+      )
+    )
+      return;
     ++requestVersion.current;
     setBusy(true);
     setError("");
@@ -157,9 +187,23 @@ export function ProgressDetail({
   function nextAction() {
     if (!item) return null;
     if (!item.selectedCv.verified)
-      return !item.facts.reviewStarted && item.facts.runStatus !== "waiting_review"
-        ? <Button disabled={busy} onClick={() => void startReview()}>Start CV review</Button>
-        : <Button onClick={() => {setPreviewId(null);changeTab("documents");}}>Review and approve CV</Button>;
+      return !item.facts.reviewStarted &&
+        item.facts.runStatus !== "waiting_review" ? (
+        <Button disabled={busy} onClick={() => void startReview()}>
+          Start CV review
+        </Button>
+      ) : (
+        <Button
+          onClick={() => {
+            setPreviewId(null);
+            changeTab("documents");
+            if (tab === "documents")
+              document.getElementById("selected-cv")?.focus();
+          }}
+        >
+          Review and approve CV
+        </Button>
+      );
     const issue = item.issues[0];
     if (issue?.key === "contact" && item.selectedCv.intakeId)
       return (
@@ -190,7 +234,17 @@ export function ProgressDetail({
       );
     if (!item.facts.preparationCurrent)
       return item.accountCreated ? (
-        <Button onClick={() => changeTab("forms")}>Assign forms</Button>
+        <Button
+          onClick={() => {
+            changeTab("forms");
+            if (tab === "forms")
+              document
+                .getElementById("assign-forms")
+                ?.scrollIntoView({ behavior: "smooth", block: "start" });
+          }}
+        >
+          Assign forms
+        </Button>
       ) : (
         <CandidatePreparation item={item} onChanged={() => void load()} />
       );
@@ -242,7 +296,14 @@ export function ProgressDetail({
       />
       {error && (
         <Alert variant="destructive">
-          <AlertDescription>{error}{error.includes("active CV not found") && <Button asChild variant="outline" className="mt-3"><Link href="/archive">Open archive to restore a CV</Link></Button>}</AlertDescription>
+          <AlertDescription>
+            {error}
+            {error.includes("active CV not found") && (
+              <Button asChild variant="outline" className="mt-3">
+                <Link href="/archive">Open archive to restore a CV</Link>
+              </Button>
+            )}
+          </AlertDescription>
         </Alert>
       )}
       {!item && !error && <p role="status">Loading candidate profile…</p>}
@@ -260,7 +321,8 @@ export function ProgressDetail({
             </span>
             {item.manual && (
               <Badge variant="outline">
-                HR override · actual progress: {STAGE_LABELS[item.automaticStage]}
+                HR override · actual progress:{" "}
+                {STAGE_LABELS[item.automaticStage]}
               </Badge>
             )}
             <Badge variant="secondary">
@@ -268,8 +330,85 @@ export function ProgressDetail({
               submitted
             </Badge>
           </div>
-          <p className="text-sm text-muted-foreground">{STAGE_DESCRIPTIONS[item.stage]} {stageEvidence(item)}</p>
-          {preparationLabel(item) && <Alert variant={item.run?.status === "failed" ? "destructive" : "default"}><AlertDescription className="flex flex-wrap items-center justify-between gap-3"><span>{preparationLabel(item)} · {item.run?.name}</span><Button asChild variant="outline" size="sm"><Link href={runUrl}>{item.run?.status === "failed" ? "Resolve issue" : "View progress"}</Link></Button></AlertDescription></Alert>}
+          <p className="text-sm text-muted-foreground">
+            {STAGE_DESCRIPTIONS[item.stage]} {stageEvidence(item)}
+          </p>
+          {preparationLabel(item) && (
+            <Alert
+              variant={
+                item.run?.status === "failed" ? "destructive" : "default"
+              }
+            >
+              <AlertDescription className="flex flex-wrap items-center justify-between gap-3">
+                <span>
+                  {preparationLabel(item)} · {item.run?.name}
+                </span>
+                <Button asChild variant="outline" size="sm">
+                  <Link href={runUrl}>
+                    {item.run?.status === "failed"
+                      ? "Resolve issue"
+                      : "View progress"}
+                  </Link>
+                </Button>
+              </AlertDescription>
+            </Alert>
+          )}
+          <section
+            aria-label="Candidate next step"
+            className="rounded-xl border bg-card p-4 sm:p-5"
+          >
+            <div className="flex min-w-0 flex-col justify-between gap-4 sm:flex-row sm:items-center">
+              <div className="min-w-0">
+                <h2 className="font-semibold">
+                  {candidateWork(item).owner === "Candidate"
+                    ? "Waiting on candidate"
+                    : candidateWork(item).owner === "Automation"
+                      ? "Preparation in progress"
+                      : candidateWork(item).owner === "Complete"
+                        ? "Documents complete"
+                        : "Your next action"}
+                </h2>
+                <p className="mt-1 max-w-3xl break-words text-sm text-muted-foreground">
+                  {candidateWork(item).message}
+                </p>
+                {!item.selectedCv.verified && (
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    AI is optional. Approving the CV may start your published
+                    approval workflow.
+                  </p>
+                )}
+              </div>
+              <div className="shrink-0 self-start">{nextAction()}</div>
+            </div>
+            <ol
+              aria-label="Candidate journey"
+              className="mt-4 grid gap-2 border-t pt-4 sm:grid-cols-3 xl:grid-cols-6"
+            >
+              {candidateJourney(item).map((step) => (
+                <li
+                  key={step.label}
+                  className="flex items-center gap-2 text-xs"
+                >
+                  <span
+                    aria-label={
+                      step.done
+                        ? "Complete"
+                        : step.optional
+                          ? "Optional"
+                          : "Pending"
+                    }
+                    className={`flex size-5 shrink-0 items-center justify-center rounded-full border ${step.done ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
+                  >
+                    {step.done ? "✓" : "·"}
+                  </span>
+                  <span>
+                    {step.label}
+                    {step.optional && !step.done ? " (if needed)" : ""}
+                  </span>
+                </li>
+              ))}
+            </ol>
+          </section>
           <Tabs value={tab} onValueChange={changeTab}>
             <div className="min-w-0 overflow-x-auto pb-1">
               <TabsList variant="line" className="w-max">
@@ -281,33 +420,7 @@ export function ProgressDetail({
               </TabsList>
             </div>
             <TabsContent value="overview" className="mt-5 space-y-5">
-              <div className="grid min-w-0 gap-5 lg:grid-cols-2">
-                <Card>
-                  <CardHeader>
-                    <CardTitle role="heading" aria-level={2}>
-                      Next action
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    <p className="text-sm text-muted-foreground">
-                      {!item.selectedCv.verified
-                        ? "Check the candidate’s details against the selected CV. Save unfinished work or explicitly approve the information. AI extraction is optional."
-                        : item.automaticStage === "accepted"
-                          ? "HR accepted all required documents. This is document completion, not a hiring decision."
-                          : item.automaticStage === "ready"
-                            ? "Required forms are submitted. Review their answers, accept each form or request corrections."
-                            : (item.issues[0]?.message ??
-                              (!item.facts.preparationCurrent
-                                ? "CV information is approved. Prepare account access and assign onboarding forms."
-                                : "Preparation and form completion are tracked here. Open Forms to see what is still missing."))}
-                    </p>
-                    {nextAction()}
-                    <p className="text-xs text-muted-foreground">
-                      CV approval may start your published approval workflow
-                      automatically.
-                    </p>
-                  </CardContent>
-                </Card>
+              <div className="grid min-w-0 gap-5">
                 <Card>
                   <CardHeader>
                     <CardTitle role="heading" aria-level={2}>
@@ -445,7 +558,9 @@ export function ProgressDetail({
                     </div>
                   )}
                   <p className="text-xs text-muted-foreground">
-                    Each preparation keeps its approved CV and information snapshot. Previewing another CV does not change progress. Choosing a CV for a new preparation is a separate decision.
+                    Each preparation keeps its approved CV and information
+                    snapshot. Previewing another CV does not change progress.
+                    Choosing a CV for a new preparation is a separate decision.
                   </p>
                   {item.run ? (
                     <Button asChild variant="outline">
@@ -463,60 +578,115 @@ export function ProgressDetail({
               </Card>
             </TabsContent>
             <TabsContent value="documents" className="mt-5 space-y-5">
-              <CvUpdatePanel item={item} onChanged={() => void load()} onDirtyChange={setDirty} canOpenReview={leaveDraft} onReviewingChange={setReviewingUpdate} />
-              {!item.selectedCv.verified && !item.facts.reviewStarted && item.facts.runStatus !== "waiting_review" && <Button disabled={busy} onClick={() => void startReview()}>Start CV review</Button>}
-              {!reviewingUpdate && <section className="rounded-xl border bg-card p-5">
-                <label htmlFor="selected-cv" className="text-sm font-medium">
-                  Currently viewing CV
-                </label>
-                <Select
-                  value={previewId ?? item.selectedCv.id}
-                  onValueChange={(v) => {
-                    if (v && leaveDraft()) setPreviewId(v);
-                  }}
-                  disabled={busy}
-                >
-                  <SelectTrigger
-                    id="selected-cv"
-                    aria-label="Selected candidate CV"
-                    className="mt-2 w-full min-w-0"
+              {((item.cvUpdates?.length ?? 0) > 0 ||
+                (item.currentCv &&
+                  item.currentCv.id !== item.selectedCv.id)) && (
+                <CvUpdatePanel
+                  item={item}
+                  onChanged={() => void load()}
+                  onDirtyChange={setDirty}
+                  canOpenReview={leaveDraft}
+                  onReviewingChange={setReviewingUpdate}
+                />
+              )}
+              {!reviewingUpdate && (
+                <section className="rounded-xl border bg-card p-5">
+                  <label htmlFor="selected-cv" className="text-sm font-medium">
+                    Currently viewing CV
+                  </label>
+                  <Select
+                    value={previewId ?? item.selectedCv.id}
+                    onValueChange={(v) => {
+                      if (v && leaveDraft()) setPreviewId(v);
+                    }}
+                    disabled={busy}
                   >
-                    <SelectValue className="min-w-0 flex-1 !block truncate text-left" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {item.cvs.map((c) => (
-                      <SelectItem key={c.id} value={c.id} disabled={c.archived}>
-                        {c.fileName} ·{" "}
-                        {item.cvs.find((cv) => !cv.archived)?.id === c.id
-                          ? "Latest submission · "
-                          : ""}
-                        {c.archived
-                          ? "Archived"
-                          : c.verified
-                            ? "Approved"
-                            : "Needs review"}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <p className="mt-3 break-words text-sm text-muted-foreground">
-                  {item.cvs.find(c => c.id === (previewId ?? item.selectedCv.id))?.fileName} · Currently viewing
-                </p>
-                <p className="mt-2 text-xs text-muted-foreground">
-                  Viewing a CV does not change the application CV or progress. CV approval verifies information; it does not mark the candidate as hired.
-                </p>
-              </section>}
-              {!reviewingUpdate && (previewId && previewId !== item.selectedCv.id ? <section className="space-y-4">
-                <p className="text-sm text-muted-foreground">Preview only. Current preparation uses {item.selectedCv.fileName}.</p>
-                <div className="h-[32rem]"><ResumePdfPreview resumeId={previewId} fileName={item.cvs.find(c => c.id === previewId)?.fileName ?? "CV.pdf"} contained /></div>
-                <div className="flex flex-wrap gap-2"><Button variant="outline" onClick={() => setPreviewId(null)}>Return to preparation CV</Button><Button disabled={busy || item.cvs.find(c => c.id === previewId)?.archived} onClick={() => void select("select_cv", previewId)}>Use this CV for a new preparation</Button></div>
-              </section> : <ResumeDetailView
-                key={item.selectedCv.id}
-                resumeId={item.selectedCv.id}
-                embedded
-                onChanged={() => void load()}
-                onDirtyChange={setDirty}
-              />)}
+                    <SelectTrigger
+                      id="selected-cv"
+                      aria-label="Selected candidate CV"
+                      className="mt-2 w-full min-w-0"
+                    >
+                      <SelectValue className="min-w-0 flex-1 !block truncate text-left" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {item.cvs.map((c) => (
+                        <SelectItem
+                          key={c.id}
+                          value={c.id}
+                          disabled={c.archived}
+                        >
+                          {c.fileName} ·{" "}
+                          {item.cvs.find((cv) => !cv.archived)?.id === c.id
+                            ? "Latest submission · "
+                            : ""}
+                          {c.archived
+                            ? "Archived"
+                            : c.verified
+                              ? "Approved"
+                              : "Needs review"}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="mt-3 break-words text-sm text-muted-foreground">
+                    {
+                      item.cvs.find(
+                        (c) => c.id === (previewId ?? item.selectedCv.id),
+                      )?.fileName
+                    }{" "}
+                    · Currently viewing
+                  </p>
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    Viewing a CV does not change the application CV or progress.
+                    CV approval verifies information; it does not mark the
+                    candidate as hired.
+                  </p>
+                </section>
+              )}
+              {!reviewingUpdate &&
+                (previewId && previewId !== item.selectedCv.id ? (
+                  <section className="space-y-4">
+                    <p className="text-sm text-muted-foreground">
+                      Preview only. Current preparation uses{" "}
+                      {item.selectedCv.fileName}.
+                    </p>
+                    <div className="h-[32rem]">
+                      <ResumePdfPreview
+                        resumeId={previewId}
+                        fileName={
+                          item.cvs.find((c) => c.id === previewId)?.fileName ??
+                          "CV.pdf"
+                        }
+                        contained
+                      />
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <Button
+                        variant="outline"
+                        onClick={() => setPreviewId(null)}
+                      >
+                        Return to preparation CV
+                      </Button>
+                      <Button
+                        disabled={
+                          busy ||
+                          item.cvs.find((c) => c.id === previewId)?.archived
+                        }
+                        onClick={() => void select("select_cv", previewId)}
+                      >
+                        Use this CV for a new preparation
+                      </Button>
+                    </div>
+                  </section>
+                ) : (
+                  <ResumeDetailView
+                    key={item.selectedCv.id}
+                    resumeId={item.selectedCv.id}
+                    embedded
+                    onChanged={() => void load()}
+                    onDirtyChange={setDirty}
+                  />
+                ))}
             </TabsContent>
             <TabsContent value="forms" className="mt-5">
               <CandidateForms item={item} onChanged={() => void load()} />

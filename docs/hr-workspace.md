@@ -36,3 +36,15 @@ Each submission can be decided once. Concurrent, superseded, archived, disabled-
 This release organizes existing recruitment/document preparation. It does not introduce hiring decisions, jobs/interviews, employee records, payroll, multiple management roles or automatic reminder sending. Management authorization remains scoped to the configured owner. Legacy PDF templates remain available.
 
 CV updates require candidate confirmation and an HR decision. Previewing another PDF does not change progress. Existing preparations retain their original CV/information snapshot after update approval. [Candidate progress](candidate-progress.md#protected-cv-updates-and-explicit-review) describes these safeguards and the explicit Start CV review action.
+
+## Guided daily journey (October 2026)
+
+The daily path is Receive → Review → Prepare → Invite → Review answers → Accept documents. **Home** separates **Your actions** from **Waiting on candidates**, using the same task projection as Needs attention. The attention page adds a responsibility filter, preserves it per owner, and applies it before type/search pagination. Pending forms remain candidate waiting; independent contact, account, CV and execution blockers still appear as HR tasks.
+
+The sidebar uses **Incoming candidates** for Telegram CV intake and **Submitted forms** for HR answer review. Existing PDF templates/studio remain under **Advanced tools** at `/advanced`; their URLs and assignments are unchanged. Linked CV-library and attention actions open the candidate’s CV & documents tab. Unlinked staff CVs retain their standalone editor. Original Telegram receipts remain accessible from Communication.
+
+A next-step panel and evidence-based journey remain above every candidate tab. They identify whether HR, the candidate, or automation acts next. Manual Kanban overrides do not mark journey milestones complete. The Forms tab shows the recipient, selected template and approved CV before assignment, then separates account availability from actual Telegram delivery. Copying a sign-in/form link never records an invitation or generates an activation capability. First-time Telegram activation and uncertain-send recovery retain the existing preparation safeguards.
+
+`/setup` checks Telegram configuration, owned published web forms and active preparation graphs with available form targets. Configuration checks do not prove a live webhook or message delivery; administrators must test the bot before sharing it. `/setup/preview` uses an owner-authorized published form snapshot, including its title/instructions. Sample validation and receipt stay in the browser, without account creation, AI, assignments or submissions. Setup and preview do not mark a candidate reviewed or prepared.
+
+Candidate-facing My forms removes template version jargon, names corrections directly and explains draft saving, submission receipts and the wait for HR review. Hiring decisions, team permissions, automatic reminders and candidate due dates remain outside this change.

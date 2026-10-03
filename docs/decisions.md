@@ -57,3 +57,9 @@ The setup guide is an authoring interface over the existing preset graphs and AP
 ## 2026-10-03: Attention is a read-only task projection
 
 Needs attention and HR Home share one owner-scoped projection of candidate, CV, assignment and submission evidence. Counts describe tasks; linked candidates are counted separately. A candidate may have several independent actions, and manual stages cannot hide required reviews. Historical assignments remain visible while active, but archived CV/run/submission records do not create active tasks. Opening the queue performs no lifecycle mutations or external sends. Unknown wait timestamps stay unknown; waiting on a candidate does not imply overdue or failure.
+
+## 2026-10-03: Task guidance is separate from lifecycle evidence
+
+Candidate profile is the common workspace for linked candidate work. Home and attention responsibility filters separate HR actions from candidate waiting without removing independent blockers. The visible journey derives from approval, preparation, delivery and form-review evidence; manual stages cannot complete it. Account availability, copying a link and actual invitation delivery remain separate facts. No new direct-send or activation endpoint is introduced by this UX revision.
+
+Workspace setup is an owner-scoped read-only check. Candidate preview uses immutable published question/title/instruction snapshots and browser-only validation. Setup readiness does not attest webhook health, candidate authorization or delivery. New web forms default to preview/publication without PDF mapping; legacy PDF tools stay available under Advanced tools.

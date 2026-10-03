@@ -14,6 +14,7 @@ import {
 import { formApi } from "@/features/forms/client";
 import type { CandidateProgress } from "@/features/candidate-progress/progress";
 import { reviewLabel } from "./submission-review";
+import { CandidateAccess } from "./candidate-access";
 import { CandidatePreparation } from "./candidate-preparation";
 type Form = { id: string; name: string; versionId: string | null };
 export function CandidateForms({
@@ -91,21 +92,26 @@ export function CandidateForms({
   const assignments = item.assignments ?? item.forms;
   return (
     <div className="space-y-5">
-      <section className="rounded-xl border bg-card p-5">
+      <section
+        id="assign-forms"
+        className="scroll-mt-24 rounded-xl border bg-card p-5"
+      >
         <h2 className="font-semibold">Assign forms</h2>
         <p className="mt-2 text-sm text-muted-foreground">
-          The candidate completes every field. Assignments retain their
-          published version and approved CV snapshot.
+          1. Choose a form → 2. Check the candidate → 3. Assign and share
+          access. The candidate completes the entire form. Existing assignments
+          keep their original published form.
         </p>
         {item.accountCreated && !item.accountDisabled ? (
           <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-end">
             <div className="min-w-0 flex-1">
-              <Label>Published form</Label>
+              <Label htmlFor="candidate-form-template">Published form</Label>
               <Select
                 value={selected}
+                disabled={loading || busy}
                 onValueChange={(v) => setSelected(v ?? "")}
               >
-                <SelectTrigger className="w-full">
+                <SelectTrigger id="candidate-form-template" className="w-full">
                   <SelectValue
                     placeholder={
                       loading ? "Loading forms…" : "Choose a form template"
@@ -120,6 +126,25 @@ export function CandidateForms({
                   ))}
                 </SelectContent>
               </Select>
+              {selected && (
+                <div className="mt-3 rounded-lg border bg-muted/30 p-4 text-sm">
+                  <h3 className="font-medium">Check before assigning</h3>
+                  <p className="mt-2 break-words">
+                    {templates.find((f) => f.id === selected)?.name} →{" "}
+                    {item.name}
+                  </p>
+                  <p className="mt-1 break-all">Account: {item.accountEmail}</p>
+                  <p className="mt-1 break-words">
+                    CV (
+                    {item.selectedCv.verified ? "approved" : "review needed"}):{" "}
+                    {item.selectedCv.fileName}
+                  </p>
+                  <p className="mt-2 text-muted-foreground">
+                    Assignment will make this form available in My forms. No
+                    message is sent by this action.
+                  </p>
+                </div>
+              )}
             </div>
             <Button
               disabled={
@@ -169,6 +194,7 @@ export function CandidateForms({
           {notice}
         </p>
       )}
+      <CandidateAccess item={item} />
       <section
         id="required-forms"
         className="scroll-mt-24 rounded-xl border bg-card p-5"

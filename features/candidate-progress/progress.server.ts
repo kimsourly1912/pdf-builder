@@ -266,7 +266,7 @@ async function load(owner: string, resumeId?: string) {
       issue(
         "contact",
         "Confirm contact",
-        `/intake/${cv.intakeId}#contact`,
+        `/candidates/${id}?tab=communication`,
         "Confirm this Telegram contact before preparing its invitation.",
       );
     if (account?.banned)
@@ -287,7 +287,7 @@ async function load(owner: string, resumeId?: string) {
       issue(
         "rejected",
         "Review CV",
-        `/resumes/${cv.resumeId}`,
+        `/candidates/${id}?tab=documents`,
         "CV review was rejected in this preparation.",
       );
     if (context.waitingFor === "telegram")
@@ -315,7 +315,7 @@ async function load(owner: string, resumeId?: string) {
       issue(
         "changed_cv",
         "Review changed CV",
-        `/resumes/${cv.resumeId}`,
+        `/candidates/${id}?tab=documents`,
         "CV details changed after this preparation. Previous forms remain preserved.",
       );
     if (

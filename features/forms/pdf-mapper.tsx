@@ -219,6 +219,38 @@ export function PdfMapper(props: {
         }
       }}
     >
+      <div
+        aria-label="PDF mapping guide"
+        className="grid gap-3 rounded-lg border bg-card p-4 text-sm sm:grid-cols-3"
+      >
+        <p>
+          <strong>1. Choose a question</strong>
+          <span className="mt-1 block text-muted-foreground">
+            Choose the answer you want to print.
+          </span>
+        </p>
+        <p>
+          <strong>2. Place its answer</strong>
+          <span className="mt-1 block text-muted-foreground">
+            Use Place field, then click or draw on a blank space, dotted line,
+            or table cell.
+          </span>
+        </p>
+        <p>
+          <strong>3. Check the result</strong>
+          <span className="mt-1 block text-muted-foreground">
+            Move or resize the box, then test the completed PDF. Your original
+            PDF stays intact.
+          </span>
+        </p>
+      </div>
+      <div role="status" className="rounded-lg bg-muted/40 px-4 py-2 text-sm">
+        {mode === "place"
+          ? `Place ${field?.label || "the selected answer"} on page ${page}. Click for a box or drag to draw its size.`
+          : mapping
+            ? `Editing ${field?.label || "answer placement"}. Drag to move, or use its handles to resize.`
+            : "Choose a question, then select Place field to put its answer on the PDF."}
+      </div>
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-card p-3">
         <div
           className="flex flex-wrap items-center gap-1"

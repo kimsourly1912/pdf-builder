@@ -125,7 +125,7 @@ export function IntakeDashboard({
   return (
     <AppShell displayName={displayName}>
       <PageHeader
-        title="Candidate intake"
+        title="Incoming candidates"
         description="Candidate details and CVs received through Telegram. Login accounts are created only after HR approval."
         actions={
           <Button
@@ -289,7 +289,11 @@ export function IntakeDashboard({
                     </TableCell>
                     <TableCell>
                       <Button asChild variant="outline" size="sm">
-                        <Link href={`/candidates/${item.candidateId}?tab=documents`}>Review candidate</Link>
+                        <Link
+                          href={`/candidates/${item.candidateId}?tab=documents`}
+                        >
+                          Review candidate
+                        </Link>
                       </Button>
                     </TableCell>
                   </TableRow>

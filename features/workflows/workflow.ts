@@ -29,7 +29,7 @@ export type WorkflowTrigger = (typeof WORKFLOW_TRIGGERS)[number];
 export const TRIGGER_LABELS: Record<WorkflowTrigger, string> = {
   staff_upload: "Staff uploads a CV",
   telegram_submission: "Telegram candidate submits a CV",
-  resume_verified: "HR verifies a CV",
+  resume_verified: "HR approves a CV",
   manual: "HR starts manually",
 };
 export type ResumeEditorApproval = {
@@ -68,7 +68,12 @@ export type WorkflowEdge = {
 };
 export type WorkflowGraph = { nodes: WorkflowNode[]; edges: WorkflowEdge[] };
 export type RunStatus =
-  "queued" | "running" | "waiting_review" | "completed" | "rejected" | "failed";
+  | "queued"
+  | "running"
+  | "waiting_review"
+  | "completed"
+  | "rejected"
+  | "failed";
 export type StepResult = {
   status: "completed" | "waiting" | "failed";
   attempts: number;
@@ -98,6 +103,7 @@ export type RunContext = {
   approvedCandidate?: ResumeCandidateSummary;
 };
 export type WorkflowSummary = {
+  businessSummary?: { when: string; actions: string[]; conditional: boolean };
   trigger?: WorkflowTrigger;
   id: string;
   name: string;

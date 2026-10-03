@@ -10,6 +10,8 @@ const workspace=await vite.ssrLoadModule('/features/workflows/workspace-tools.ts
 const {executionGuidance}=await vite.ssrLoadModule("/features/workflows/execution-guidance.ts");
 const guide=await vite.ssrLoadModule("/features/workflows/guided-setup.ts");
 const attention=await vite.ssrLoadModule("/features/hr/attention.ts");
+const { candidateWork, candidateJourney } = await vite.ssrLoadModule('/features/hr/candidate-journey.ts');
+const { workflowBusinessSummary } = await vite.ssrLoadModule('/features/workflows/business-summary.ts');
 function graph(){const g=defaultGraph();g.nodes.find(n=>n.kind==='assign_forms').config.forms=[{templateId:'form-1',roleId:'form_user'}];return g;}
 test('contextual insertion preserves approved branch and does not mutate the saved graph',()=>{
  const original=graph(),before=structuredClone(original),node=tools.newStep('condition',{x:500,y:100},'extra');
@@ -110,4 +112,27 @@ test('attention pagination searches before paging, sorts unknown clocks last and
  const page=attention.attentionPage(tasks,new URLSearchParams({page:'2',search:'Dara'}));assert.equal(page.total,61);assert.equal(page.items.length,25);assert.equal(page.candidates,1);
  assert.equal(attention.attentionPage(tasks,new URLSearchParams({page:'999'})).page,3);assert.equal(attention.attentionPage(tasks,new URLSearchParams({type:'telegram'})).total,0);
  assert.equal(attention.attentionPage(tasks,new URLSearchParams({sort:'oldest',page:'3'})).items.at(-1).id,'task0');assert.equal(attention.attentionAge(null),'Start time unknown');
+});
+
+test('attention responsibility separates candidate waiting from HR work before filtering and pagination', () => {
+  const tasks = [{id:'waiting', type:'pending_forms', name:'TEST Dara', candidateId:'c1', detail:'Form', reason:'Waiting', since:null, urgent:false}, {id:'review', type:'cv_review', name:'TEST Dara', candidateId:'c1', detail:'CV', reason:'Review', since:null, urgent:false}];
+  const hr = attention.attentionPage(tasks, new URLSearchParams({ responsibility:'hr' }));
+  assert.deepEqual(hr.items.map(t=>t.id), ['review']);
+  assert.deepEqual(hr.responsibilityCounts, {hr:1, candidate:1});
+  assert.equal(attention.attentionPage(tasks,new URLSearchParams({responsibility:'candidate',type:'cv_review'})).total,0);
+  assert.equal(attention.attentionPage(tasks,new URLSearchParams({responsibility:'candidate',search:'missing'})).total,0);
+  assert.equal(attention.attentionPage(tasks,new URLSearchParams({responsibility:'invalid'})).total,2);
+});
+test('candidate journey names the actual actor without treating manual stages, assigned forms or sent messages as completion', () => {
+  const item={facts:{verified:false,required:2,assigned:2,completed:0,accepted:0,preparationCurrent:false,invitationRequired:true,invitationSent:false,runStatus:null},issues:[],accountCreated:false,automaticStage:'new',stage:'accepted',run:null};
+  assert.equal(candidateWork(item).owner,'HR');assert.equal(candidateJourney(item).find(s=>s.label==='Documents accepted').done,false);
+  item.facts={...item.facts,verified:true,preparationCurrent:true,runStatus:'completed'};item.automaticStage='awaiting_forms';
+  assert.equal(candidateWork(item).owner,'Candidate');assert.equal(candidateJourney(item).find(s=>s.label==='Invitation sent').done,false);
+  item.issues=[{message:'Confirm contact'}];assert.equal(candidateWork(item).owner,'HR');assert.equal(candidateWork(item).message,'Confirm contact');
+  item.issues=[];item.run={status:'running'};assert.equal(candidateWork(item).owner,'Automation');
+  item.run=null;item.automaticStage='accepted';item.facts={...item.facts,completed:2,accepted:2};assert.equal(candidateWork(item).owner,'Complete');
+});
+test('business summary reflects graph actions and preserves branching and no-paid-AI language', () => {
+  const summary=workflowBusinessSummary(graph());assert.equal(summary.conditional,true);assert(summary.actions.includes('Reuse saved CV data (no paid AI)'));assert(!summary.actions.includes('Send Telegram invitation'));
+  const draft=graph();draft.nodes.push(tools.newStep('send_telegram',{x:0,y:0},'send'));assert(workflowBusinessSummary(draft).actions.includes('Send Telegram invitation'));
 });

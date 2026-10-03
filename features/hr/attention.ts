@@ -61,8 +61,8 @@ export function candidateAttention(item: CandidateProgress): AttentionTask[] {
       item.facts.reviewStarted
         ? "CV review has started. Approval is still needed."
         : "This CV needs HR review. AI extraction is optional.",
-      "Open CV editor",
-      `/resumes/${item.selectedCv.id}`,
+      "Review candidate CV",
+      `/candidates/${item.id}?tab=documents`,
       item.selectedCv.receivedAt,
     );
   for (const update of item.cvUpdates ?? [])
@@ -72,7 +72,7 @@ export function candidateAttention(item: CandidateProgress): AttentionTask[] {
         "cv_review",
         `CV update needs review: ${update.fileName}. Existing preparation and forms stay linked to the reviewed CV.`,
         "Review CV update",
-        `/resumes/${update.resumeId}`,
+        `/candidates/${item.id}?tab=documents#cv-updates`,
         update.createdAt,
       );
   const activeRun = item.run && !item.run.archived ? item.run : null;
@@ -152,16 +152,28 @@ export function candidateAttention(item: CandidateProgress): AttentionTask[] {
   }
   return tasks;
 }
+export function attentionResponsibility(task: AttentionTask) {
+  return task.type === "pending_forms" ? "candidate" : "hr";
+}
 export function attentionPage(tasks: AttentionTask[], query: URLSearchParams) {
   const search = (query.get("search") ?? "").trim().slice(0, 200).toLowerCase();
   const type = query.get("type") ?? "all",
     sort = query.get("sort") === "oldest" ? "oldest" : "priority";
+  const responsibility = query.get("responsibility") ?? "all";
+  const responsibilityCounts = {
+    hr: tasks.filter((t) => attentionResponsibility(t) === "hr").length,
+    candidate: tasks.filter((t) => attentionResponsibility(t) === "candidate")
+      .length,
+  };
   const searched = tasks.filter(
     (t) =>
-      !search ||
-      `${t.name} ${t.email} ${t.detail} ${t.reason}`
-        .toLowerCase()
-        .includes(search),
+      (responsibility === "all" ||
+        !["hr", "candidate"].includes(responsibility) ||
+        attentionResponsibility(t) === responsibility) &&
+      (!search ||
+        `${t.name} ${t.email} ${t.detail} ${t.reason}`
+          .toLowerCase()
+          .includes(search)),
   );
   const counts = Object.fromEntries(
     Object.keys(ATTENTION_TYPES).map((key) => [
@@ -195,6 +207,7 @@ export function attentionPage(tasks: AttentionTask[], query: URLSearchParams) {
     page,
     counts,
     overallTotal: tasks.length,
+    responsibilityCounts,
     candidates: new Set(tasks.map((t) => t.candidateId).filter(Boolean)).size,
   };
 }

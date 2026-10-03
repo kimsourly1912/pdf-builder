@@ -28,6 +28,19 @@ export function HrHome({
           </Button>
         }
       />
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-card p-4">
+        <div>
+          <h2 className="font-semibold">
+            Receive → Review → Prepare → Invite → Accept documents
+          </h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            New here? Check your setup and preview what candidates will see.
+          </p>
+        </div>
+        <Button asChild variant="outline">
+          <Link href="/setup">Workspace setup</Link>
+        </Button>
+      </div>
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {[
           {
@@ -37,15 +50,15 @@ export function HrHome({
             icon: <FileText />,
           },
           {
-            label: "Needs attention",
+            label: "Your actions",
             value: data.counts.attention,
-            href: "/needs-attention",
+            href: "/needs-attention?responsibility=hr",
             icon: <AlertTriangle />,
           },
           {
-            label: "Awaiting forms",
+            label: "Waiting on candidates",
             value: data.counts.awaitingForms,
-            href: "/needs-attention?type=pending_forms",
+            href: "/needs-attention?responsibility=candidate",
             icon: <ClipboardList />,
           },
           {
@@ -70,7 +83,7 @@ export function HrHome({
       >
         <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h2 className="font-semibold">Work needing attention</h2>
+            <h2 className="font-semibold">Your actions</h2>
             <p className="mt-1 text-sm text-muted-foreground">
               {data.total
                 ? `${data.total} tasks · Issues first, then longest waiting. Showing up to 20.`
@@ -78,7 +91,9 @@ export function HrHome({
             </p>
           </div>
           <Button asChild variant="outline">
-            <Link href="/needs-attention">View all attention tasks</Link>
+            <Link href="/needs-attention?responsibility=hr">
+              View all your actions
+            </Link>
           </Button>
         </div>
         <div className="divide-y">
@@ -115,6 +130,50 @@ export function HrHome({
               <Link href="/forms">Create a form template</Link>
             </Button>
           </div>
+        )}
+      </section>
+      <section
+        aria-label="Waiting on candidates"
+        className="rounded-xl border bg-card p-5 sm:p-6"
+      >
+        <div className="flex flex-wrap justify-between gap-3">
+          <div>
+            <h2 className="font-semibold">
+              Waiting on candidates · {data.waitingTotal}
+            </h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Assigned forms awaiting answers. Check Your actions for any
+              contact or preparation blockers before following up.
+            </p>
+          </div>
+          <Button asChild variant="outline">
+            <Link href="/needs-attention?responsibility=candidate">
+              View waiting candidates
+            </Link>
+          </Button>
+        </div>
+        <div className="mt-3 divide-y">
+          {data.waiting.map((task) => (
+            <div
+              key={task.id}
+              className="flex min-w-0 flex-col justify-between gap-3 py-4 sm:flex-row sm:items-center"
+            >
+              <div className="min-w-0">
+                <p className="break-words font-medium">{task.name}</p>
+                <p className="break-words text-sm text-muted-foreground">
+                  {task.detail}
+                </p>
+              </div>
+              <Button asChild variant="outline" className="shrink-0 self-start">
+                <Link href={task.href}>Check forms</Link>
+              </Button>
+            </div>
+          ))}
+        </div>
+        {!data.waitingTotal && (
+          <p className="mt-4 text-sm text-muted-foreground">
+            No candidates are waiting to submit assigned forms.
+          </p>
         )}
       </section>
       <div className="grid gap-4 sm:grid-cols-2">

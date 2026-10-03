@@ -1234,7 +1234,7 @@ test("candidate progress connects manual assignments, HR acceptance and correcti
  assert.ok(summary.counts.review>0);
  const attention=await vite.ssrLoadModule('/features/hr/attention.server.ts');
  const tasks=await attention.attentionTasks(runtime.MANAGEMENT_EMAIL);
- assert(tasks.some(t=>t.type==='submission_review'));assert.equal(summary.total,tasks.length);
+ assert(tasks.some(t=>t.type==='submission_review'));assert.equal(summary.total + summary.waitingTotal,tasks.length);
  assert(!tasks.some(t=>t.id===`submission:${submittedId}`&&t.type==='submission_review')||db.sqlite.prepare("SELECT COALESCE(h.status,'pending') status FROM submissions s LEFT JOIN submission_reviews h ON h.submission_id=s.id WHERE s.id=?").get(submittedId).status==='pending');
  assert.equal((await attention.attentionTasks('unrelated@example.com')).length,0);
  assert.equal((await progress.progressOverview('another-owner@example.com')).length,0);
@@ -1252,4 +1252,24 @@ test("archived form responses disappear from active lists while protected submis
   assert.equal((await call(()=>forms.getForm(request(`/api/forms/${id}`),id))).status,404);
   assert.match(await archive.deletionBlocker(runtime.MANAGEMENT_EMAIL,"template",id),/history must be preserved/);
   assert.equal(db.sqlite.prepare("SELECT count(*) n FROM form_assignments WHERE template_id=?").get(id).n,2);
+});
+
+test('workspace setup checks owned published forms and usable preparation without mutations or external effects', async () => {
+  const setup = await vite.ssrLoadModule('/features/hr/setup.server.ts');
+  const workflowService = await vite.ssrLoadModule('/features/workflows/workflow.server.ts');
+  const workflowModel = await vite.ssrLoadModule('/features/workflows/workflow.ts');
+  const created = await ok(await call(()=>forms.createForm(request('/api/forms','POST',{name:'TEST setup form'}))),201);
+  const before = await setup.workspaceSetup(runtime.MANAGEMENT_EMAIL);
+  assert(!before.forms.some(f=>f.id===created.id));
+  await ok(await call(()=>forms.saveForm(request(`/api/forms/${created.id}/publish`,'POST',{name:'TEST setup form',description:'',revision:created.revision,definition:{format:1,fields:[field('setup','short_text')],pageCount:0,mappings:[]}}),created.id,true)));
+  const w=await workflowService.createWorkflow(runtime.MANAGEMENT_EMAIL);
+  const graph=workflowModel.defaultGraph();graph.nodes.find(n=>n.kind==='assign_forms').config.forms=[{templateId:created.id,roleId:model.FORM_ASSIGNMENT_ROLE.id}];
+  await workflowService.saveWorkflow(runtime.MANAGEMENT_EMAIL,w.id,{action:'publish',expectedUpdatedAt:w.updatedAt,name:'TEST preparation',graph});
+  const runsBefore=db.sqlite.prepare('SELECT count(*) n FROM workflow_runs').get().n;
+  const result=await setup.workspaceSetup(runtime.MANAGEMENT_EMAIL);
+  assert(result.forms.some(f=>f.id===created.id));assert.equal(result.preparationId,w.id);assert.equal(result.bot.configured,false);
+  const foreign=await setup.workspaceSetup('unrelated@example.com');assert.equal(foreign.forms.length,0);assert.equal(foreign.preparationId,null);
+  assert.equal(db.sqlite.prepare('SELECT count(*) n FROM workflow_runs').get().n,runsBefore);
+  const archive=await vite.ssrLoadModule('/features/archive/archive.server.ts');await archive.archiveEntity(runtime.MANAGEMENT_EMAIL,'template',created.id);
+  const archived=await setup.workspaceSetup(runtime.MANAGEMENT_EMAIL);assert(!archived.forms.some(f=>f.id===created.id));assert.equal(archived.preparationId,null);
 });

@@ -84,3 +84,16 @@ Advanced canvas setup remains available. Published, archived or customized draft
 CV review and CV update tasks open the editor. Contact/setup tasks reuse existing confirmation and execution screens. Failed runs open their saved execution; archived runs are excluded. Pending active assignments include preserved form history, while cancelled/expired assignments remain separate blockers. Each unreviewed submission opens its existing HR review screen; accepted/correction-requested and archived submissions are excluded. A candidate can have multiple independent tasks. Manual Kanban stages do not replace operational evidence.
 
 Waiting clocks use CV receipt, update receipt, assignment and submission timestamps. Contact waits use recorded approval when available. Failed runs show Last run update rather than inventing a failure start time; missing evidence remains unknown. Waiting forms are not labelled overdue and no reminders, resends, approvals, workflow runs or AI processing occur when opening this page. Task actions navigate to existing guarded operations.
+
+## Application journey revision (shipped October 2026)
+
+- Home and Needs attention separate HR actions from candidate waiting, with preserved responsibility filters and shared counts.
+- Incoming candidates and Submitted forms have distinct names. Existing PDF tools remain accessible under Advanced tools.
+- Candidate next-action and evidence-based journey guidance remain visible across profile tabs; linked CV actions converge on the profile.
+- Form creation defaults to build/preview/publish; PDF output is optional, with guided mapping and no blank PDF pane for web-only forms.
+- Assignment screens identify the recipient/CV, distinguish account availability from notification, and provide explicit access sharing/recovery paths.
+- Automation shows business behavior from actual draft/published graphs while retaining the interactive canvas and existing execution safeguards.
+- Workspace setup and a browser-only published candidate-form preview provide an entry path for new HR users.
+- Candidate My forms and receipts explain completion, corrections and HR review in task language.
+
+A first-time HR usability trial remains necessary to establish comprehension without coaching. Automated checks demonstrate behavior and responsive layout, not that every user understands the application.

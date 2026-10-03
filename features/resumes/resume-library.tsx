@@ -704,7 +704,13 @@ function ResumeLibrary(props: { displayName: string }) {
                         </TableCell>
                         <TableCell className="py-2.5 pr-4 text-right">
                           <Button asChild variant="outline" size="sm">
-                            <Link href={`/resumes/${item.id}`}>
+                            <Link
+                              href={
+                                item.candidate
+                                  ? `/candidates/${item.candidate.id}?tab=documents`
+                                  : `/resumes/${item.id}`
+                              }
+                            >
                               <FileSearch /> Review
                             </Link>
                           </Button>

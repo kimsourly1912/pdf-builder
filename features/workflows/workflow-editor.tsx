@@ -1,4 +1,5 @@
 "use client";
+import { BusinessSummaryCard } from "./business-summary-card";
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import {
@@ -844,6 +845,21 @@ function EditorBody({
         <Alert>
           <AlertDescription>{notice}</AlertDescription>
         </Alert>
+      )}
+      {tab === "editor" && (
+        <div className="grid min-w-0 gap-3 lg:grid-cols-2">
+          <BusinessSummaryCard graph={graph} title="Draft behavior" />
+          {workflow.published && (
+            <BusinessSummaryCard
+              graph={workflow.published}
+              title={
+                workflow.active
+                  ? "Published behavior"
+                  : "Published behavior (automatic runs paused)"
+              }
+            />
+          )}
+        </div>
       )}
       <Tabs value={tab} onValueChange={setTab}>
         <TabsList>

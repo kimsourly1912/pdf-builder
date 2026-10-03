@@ -75,9 +75,9 @@ test("next action opens the selected CV, contact confirmation or active preparat
   };
   assert.equal(candidateNextAction(item).href, "/candidates/candidate-1?tab=documents");
   item.facts = { ...facts, preparationCurrent: false };
-  assert.equal(candidateNextAction(item).href, "/intake/intake-2#contact");
+  assert.equal(candidateNextAction(item).href, "/candidates/candidate-1?tab=communication");
   item.contactConfirmed = true;
-  assert.equal(candidateNextAction(item).href, "/intake/intake-2#preparation");
+  assert.equal(candidateNextAction(item).href, "/candidates/candidate-1?tab=overview");
   item.run = { id: "run-1", workflowId: "workflow-1", status: "failed" };
   assert.deepEqual(candidateNextAction(item), {
     next: "Resolve issue",

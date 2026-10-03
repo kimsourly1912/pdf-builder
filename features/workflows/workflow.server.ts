@@ -1,3 +1,4 @@
+import { workflowBusinessSummary } from "./business-summary";
 import { presetGraph, WORKFLOW_PRESETS, type WorkflowPreset } from "./presets";
 import { isArchived } from "@/features/archive/archive.server";
 import { notArchived } from "@/features/archive/archive";
@@ -96,6 +97,9 @@ export async function listWorkflows(ownerEmail: string) {
     .limit(50);
   return rows.map(({ publishedJson, draftJson, ...row }) => ({
     ...row,
+    businessSummary: workflowBusinessSummary(
+      JSON.parse(publishedJson ?? draftJson) as WorkflowGraph,
+    ),
     trigger: publishedJson
       ? workflowTrigger(JSON.parse(publishedJson) as WorkflowGraph)
       : workflowTrigger(JSON.parse(draftJson) as WorkflowGraph),

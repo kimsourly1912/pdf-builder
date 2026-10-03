@@ -2119,7 +2119,7 @@ test("attention queue is owner-scoped, paginated after search and read-only",asy
  const submitted=await submit(93001,'attention-queue@example.com');
  const readRuns=count('workflow_runs'),readMessages=messages.length;
  const queue=await attentionService.listAttention(owner,new URLSearchParams({search:'attention-queue@example.com'}));
- assert(queue.items.some(t=>t.type==='cv_review'&&t.href===`/resumes/${submitted.resume_id}`));assert(queue.items.every(t=>t.candidateId===submitted.candidate_id));
+ assert(queue.items.some(t=>t.type==='cv_review'&&t.href===`/candidates/${submitted.candidate_id}?tab=documents`));assert(queue.items.every(t=>t.candidateId===submitted.candidate_id));
  assert.equal((await attentionService.listAttention('unrelated@example.com',new URLSearchParams())).total,0);
  const before=d1.sqlite.prepare('SELECT verification_status FROM resumes WHERE id=?').get(submitted.resume_id);
  await attentionService.listAttention(owner,new URLSearchParams({page:'2'}));assert.deepEqual(d1.sqlite.prepare('SELECT verification_status FROM resumes WHERE id=?').get(submitted.resume_id),before);

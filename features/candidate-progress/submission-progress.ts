@@ -32,8 +32,14 @@ export function submissionProgress(item: CandidateProgress) {
   const f = item.facts;
   if (!f.verified)
     return {
-      label: f.reviewStarted || f.runStatus === "waiting_review" ? "Reviewing CV" : "Needs review",
-      next: f.reviewStarted || f.runStatus === "waiting_review" ? "Review and approve CV" : "Start CV review",
+      label:
+        f.reviewStarted || f.runStatus === "waiting_review"
+          ? "Reviewing CV"
+          : "Needs review",
+      next:
+        f.reviewStarted || f.runStatus === "waiting_review"
+          ? "Review and approve CV"
+          : "Start CV review",
       href: `/candidates/${item.id}?tab=documents`,
     };
   if (!f.preparationCurrent)
@@ -44,7 +50,7 @@ export function submissionProgress(item: CandidateProgress) {
           ? "Confirm contact"
           : "Prepare candidate",
       href: item.selectedCv.intakeId
-        ? `/intake/${item.selectedCv.intakeId}${!item.contactConfirmed ? "#contact" : "#preparation"}`
+        ? `/candidates/${item.id}?tab=${!item.contactConfirmed ? "communication" : "overview"}`
         : `/candidates/${item.id}`,
     };
 
@@ -106,7 +112,7 @@ export function submissionProgress(item: CandidateProgress) {
           ? "Confirm contact"
           : "Prepare candidate",
       href: item.selectedCv.intakeId
-        ? `/intake/${item.selectedCv.intakeId}${!item.contactConfirmed ? "#contact" : "#preparation"}`
+        ? `/candidates/${item.id}?tab=${!item.contactConfirmed ? "communication" : "overview"}`
         : `/candidates/${item.id}`,
     };
   return {

@@ -23,7 +23,7 @@ export default async function Page({
   return (
     <AppShell displayName={owner.displayName}>
       <PageHeader
-        title="Form review inbox"
+        title="Submitted forms"
         description="Review submitted answers, accept documents, or request a corrected attempt."
       />
       <div className="flex flex-wrap gap-2">
