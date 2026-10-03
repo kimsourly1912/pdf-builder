@@ -707,7 +707,7 @@ function ResumeLibrary(props: { displayName: string }) {
                             <Link
                               href={
                                 item.candidate
-                                  ? `/candidates/${item.candidate.id}?tab=documents`
+                                  ? `/candidates/${item.candidate.id}?tab=documents&cv=${encodeURIComponent(item.id)}`
                                   : `/resumes/${item.id}`
                               }
                             >

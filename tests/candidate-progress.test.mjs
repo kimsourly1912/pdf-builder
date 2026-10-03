@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { stageSince } from "../features/candidate-progress/stage-since.ts";
-import { stageAge } from "../features/candidate-progress/presentation.ts";
+import { stageAge, candidateCvPreview } from "../features/candidate-progress/presentation.ts";
 import { candidateNextAction } from "../features/candidate-progress/submission-progress.ts";
 import {
   automaticStage,
@@ -145,4 +145,15 @@ test("document acceptance requires HR decisions and cannot be created by Kanban 
 
 test("correction requests start a new waiting clock while preserving preparation history",()=>{
  assert.equal(stageSince('awaiting_forms',{receivedAt:'2026-10-01',approvedAt:'2026-10-01',approvalCurrent:true,cvChangedAt:'2026-10-01',candidateChangedAt:'2026-10-01',preparationCompletedAt:'2026-10-01',formCompletedAt:[],formCorrectionAt:['2026-10-03']}),'2026-10-03');
+});
+
+test("CV navigation previews only active CVs in the candidate projection and never changes preparation selection", () => {
+  const selected = {id:"current",archived:false,fileName:"current.pdf"};
+  const older = {id:"older",archived:false,fileName:"older.pdf"};
+  const item = {selectedCv:selected,cvs:[selected,older,{id:"archived",archived:true}],facts:{verified:true}};
+  assert.equal(candidateCvPreview(item,"older"),older);
+  assert.equal(candidateCvPreview(item,"foreign"),selected);
+  assert.equal(candidateCvPreview(item,"archived"),selected);
+  assert.equal(candidateCvPreview(item,null),selected);
+  assert.equal(item.selectedCv,selected);assert.equal(item.facts.verified,true);
 });

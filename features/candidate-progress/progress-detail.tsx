@@ -39,7 +39,12 @@ import {
   type CandidateProgress,
   type CandidateStage,
 } from "./progress";
-import { stageAge, statusColor, runStatusLabel } from "./presentation";
+import {
+  stageAge,
+  statusColor,
+  runStatusLabel,
+  candidateCvPreview,
+} from "./presentation";
 import { candidateNextAction } from "./submission-progress";
 import { CvUpdatePanel } from "./cv-update-panel";
 import { ResumePdfPreview } from "@/features/resumes/resume-pdf-preview";
@@ -73,7 +78,7 @@ export function ProgressDetail({
     [error, setError] = useState(""),
     [busy, setBusy] = useState(false),
     [dirty, setDirty] = useState(false),
-    [previewId, setPreviewId] = useState<string | null>(null),
+    [previewId, setPreviewId] = useState<string | null>(() => search.get("cv")),
     [reviewingUpdate, setReviewingUpdate] = useState(false),
     [move, setMove] = useState<{
       item: CandidateProgress;
@@ -181,6 +186,7 @@ export function ProgressDetail({
       setBusy(false);
     }
   }
+  const viewingCv = item ? candidateCvPreview(item, previewId) : null;
   const runUrl = item?.run
     ? `/workflows/${item.run.workflowId}?tab=runs&run=${item.run.id}`
     : "/workflows";
@@ -595,7 +601,7 @@ export function ProgressDetail({
                     Currently viewing CV
                   </label>
                   <Select
-                    value={previewId ?? item.selectedCv.id}
+                    value={viewingCv?.id ?? item.selectedCv.id}
                     onValueChange={(v) => {
                       if (v && leaveDraft()) setPreviewId(v);
                     }}
@@ -629,12 +635,7 @@ export function ProgressDetail({
                     </SelectContent>
                   </Select>
                   <p className="mt-3 break-words text-sm text-muted-foreground">
-                    {
-                      item.cvs.find(
-                        (c) => c.id === (previewId ?? item.selectedCv.id),
-                      )?.fileName
-                    }{" "}
-                    · Currently viewing
+                    {viewingCv?.fileName} · Currently viewing
                   </p>
                   <p className="mt-2 text-xs text-muted-foreground">
                     Viewing a CV does not change the application CV or progress.
@@ -644,7 +645,7 @@ export function ProgressDetail({
                 </section>
               )}
               {!reviewingUpdate &&
-                (previewId && previewId !== item.selectedCv.id ? (
+                (viewingCv && viewingCv.id !== item.selectedCv.id ? (
                   <section className="space-y-4">
                     <p className="text-sm text-muted-foreground">
                       Preview only. Current preparation uses{" "}
@@ -652,11 +653,8 @@ export function ProgressDetail({
                     </p>
                     <div className="h-[32rem]">
                       <ResumePdfPreview
-                        resumeId={previewId}
-                        fileName={
-                          item.cvs.find((c) => c.id === previewId)?.fileName ??
-                          "CV.pdf"
-                        }
+                        resumeId={viewingCv.id}
+                        fileName={viewingCv.fileName}
                         contained
                       />
                     </div>
@@ -668,11 +666,8 @@ export function ProgressDetail({
                         Return to preparation CV
                       </Button>
                       <Button
-                        disabled={
-                          busy ||
-                          item.cvs.find((c) => c.id === previewId)?.archived
-                        }
-                        onClick={() => void select("select_cv", previewId)}
+                        disabled={busy || viewingCv.archived}
+                        onClick={() => void select("select_cv", viewingCv.id)}
                       >
                         Use this CV for a new preparation
                       </Button>

@@ -1,4 +1,4 @@
-import type { CandidateStage } from "./progress";
+import type { CandidateStage, CandidateProgress } from "./progress";
 
 export const STATUS_COLORS = {
   neutral:
@@ -82,4 +82,13 @@ export function stageAge(
     return `${label} · start time unknown`;
   const days = Math.floor(Math.max(0, now - Date.parse(since)) / 86400000);
   return `${label} ${days ? `for ${days} day${days === 1 ? "" : "s"}` : "since today"}`;
+}
+
+export function candidateCvPreview(
+  item: CandidateProgress,
+  resumeId: string | null,
+) {
+  return (
+    item.cvs.find((cv) => cv.id === resumeId && !cv.archived) ?? item.selectedCv
+  );
 }
