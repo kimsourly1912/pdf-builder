@@ -663,3 +663,23 @@ export const auditEvents = sqliteTable(
     index("audit_events_action_created_idx").on(table.action, table.createdAt),
   ],
 );
+
+// CV updates keep their review draft separate from the active application profile.
+export const candidateCvUpdates = sqliteTable("candidate_cv_updates", {
+  resumeId: text("resume_id").primaryKey().references(() => resumes.id, { onDelete: "cascade" }),
+  candidateId: text("candidate_id").notNull().references(() => candidates.id, { onDelete: "cascade" }),
+  ownerEmail: text("owner_email").notNull(),
+  baseResumeId: text("base_resume_id").notNull().references(() => resumes.id, { onDelete: "restrict" }),
+  status: text("status").notNull().default("awaiting_confirmation"),
+  draftJson: text("draft_json").notNull().default("{}"),
+  reason: text("reason"),
+  reviewedBy: text("reviewed_by"),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+}, t => [index("candidate_cv_updates_owner_candidate_idx").on(t.ownerEmail, t.candidateId), check("candidate_cv_updates_status_check", sql`${t.status} IN ('awaiting_confirmation','pending','reviewing','accepted','declined','cancelled','replaced')`)]);
+export const candidateCvReviews = sqliteTable("candidate_cv_reviews", {
+  resumeId: text("resume_id").primaryKey().references(() => resumes.id, { onDelete: "cascade" }),
+  ownerEmail: text("owner_email").notNull(),
+  startedBy: text("started_by").notNull(),
+  startedAt: text("started_at").notNull(),
+});

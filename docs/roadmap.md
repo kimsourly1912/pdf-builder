@@ -33,3 +33,11 @@ These ideas are not implemented or scheduled by this roadmap. They need their ow
 ## Maintenance
 
 When work ships, move it into the shipped table and update the relevant feature guide and decisions. Keep proposals concrete; do not assign invented completion dates or call a proposal approved because it appears here. Record detailed validation evidence in the commit/PR and GitHub Actions rather than maintaining duplicate test counts in this page.
+
+### Shipped: protected CV updates and progress clarity
+
+- Explicit Start CV review with reviewer/time evidence.
+- Preview-only CV browsing and confirmed selection for a new preparation.
+- Independent Telegram upload confirmation and pending HR update review, with approve/keep-current decisions.
+- Stage-aware bot buttons/status, preserved preparation/form history, and no automatic rerun on update approval.
+- Stage explanations, evidence, preparation running/failed notices, HR override wording and approved-edit acknowledgement.

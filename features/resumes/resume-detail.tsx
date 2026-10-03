@@ -63,7 +63,7 @@ import type {
 
 type CandidateDraft = Omit<ResumeCandidateSummary, "id" | "verificationStatus">;
 
-export function ResumeDetailView(props: { resumeId: string; embedded?: boolean; onChanged?: () => void; onDirtyChange?: (dirty: boolean) => void }) {
+export function ResumeDetailView(props: { resumeId: string; embedded?: boolean; hidePdfPreview?: boolean; onChanged?: () => void; onDirtyChange?: (dirty: boolean) => void }) {
   const [resume, setResume] = useState<ResumeDetail | null>(null);
   const [draft, setDraft] = useState<CandidateDraft | null>(null);
   const [loading, setLoading] = useState(true);
@@ -71,6 +71,7 @@ export function ResumeDetailView(props: { resumeId: string; embedded?: boolean; 
   const [deleteOpen, setArchiveOpen] = useState(false);
   const [aiOpen, setAiOpen] = useState(false),
     [confirmTelegram, setConfirmTelegram] = useState(false);
+  const [decision, setDecision] = useState<"approve" | "save" | null>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
 
@@ -125,9 +126,10 @@ export function ResumeDetailView(props: { resumeId: string; embedded?: boolean; 
     return () => window.clearTimeout(timer);
   }, [loadResume]);
 
-  async function saveCandidate(approve = false) {
+  async function saveCandidate(approve = false, confirmed = false) {
     if (!draft) return;
-
+    if (!confirmed && (approve || (resume?.verificationStatus === "verified" && !resume.cvUpdate))) {setDecision(approve ? "approve" : "save");return;}
+    setDecision(null);
     setBusy(true);
     setError("");
     setNotice("");
@@ -138,6 +140,8 @@ export function ResumeDetailView(props: { resumeId: string; embedded?: boolean; 
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           action: approve ? "approve_cv" : "save_changes",
+          updateRevision: resume?.cvUpdate?.revision,
+          confirmInvalidateApproval: !approve && confirmed,
           candidate: draft,
           confirmTelegram,
           resumeRevision: resume?.updatedAt,
@@ -154,8 +158,8 @@ export function ResumeDetailView(props: { resumeId: string; embedded?: boolean; 
 
       setNotice(
         approve
-          ? "CV approved. Published approval workflows may now start."
-          : "Changes saved. This CV still needs approval; no workflow was started.",
+          ? resume?.cvUpdate ? "CV update approved. Existing preparation, account access and forms are unchanged. No workflow was started." : "CV approved. Published approval workflows may now start."
+          : resume?.cvUpdate ? "Update draft saved. The current application is unchanged." : "Changes saved. This CV still needs approval; no workflow was started.",
       );
       await loadResume();
       props.onChanged?.();
@@ -336,7 +340,7 @@ export function ResumeDetailView(props: { resumeId: string; embedded?: boolean; 
             <Button
               variant="outline"
               size="sm"
-              disabled={busy}
+              disabled={busy || !!resume.cvUpdate && !["pending", "reviewing"].includes(resume.cvUpdate.status)}
               onClick={() => setAiOpen(true)}
             >
               <RefreshCw className={busy ? "animate-spin" : ""} />
@@ -355,6 +359,7 @@ export function ResumeDetailView(props: { resumeId: string; embedded?: boolean; 
         </div>
       </header>
 
+      {!props.embedded && resume.candidate && <div className="mx-auto max-w-7xl px-4 pt-4"><Alert><AlertDescription className="flex flex-wrap items-center justify-between gap-3"><span>This editor uses the same CV approval as the candidate profile. Follow overall progress and forms from the profile.</span><Button asChild variant="outline" size="sm"><Link href={`/candidates/${resume.candidate.id}?tab=documents`}>Open candidate profile</Link></Button></AlertDescription></Alert></div>}
       <div className={props.embedded ? "min-w-0 py-5" : "mx-auto max-w-[1500px] px-4 py-5 sm:px-6"}>
         {resume.archived && (
           <Alert className="mb-4">
@@ -423,10 +428,10 @@ export function ResumeDetailView(props: { resumeId: string; embedded?: boolean; 
           </Alert>
         )}
 
-        <div className={props.embedded ? "grid min-w-0 items-start gap-5 xl:grid-cols-2" : "grid items-start gap-5 xl:grid-cols-[minmax(500px,1fr)_minmax(430px,560px)]"}>
-          <Card className="gap-0 overflow-hidden py-0 xl:sticky xl:top-20">
+        <div className={props.hidePdfPreview ? "grid min-w-0 gap-5" : props.embedded ? "grid min-w-0 items-start gap-5 xl:grid-cols-2" : "grid items-start gap-5 xl:grid-cols-[minmax(500px,1fr)_minmax(430px,560px)]"}>
+          {!props.hidePdfPreview && <Card className="gap-0 overflow-hidden py-0 xl:sticky xl:top-20">
             <ResumePdfPreview resumeId={resume.id} fileName={resume.fileName} />
-          </Card>
+          </Card>}
 
           <section className="space-y-4">
             <ResumeMeta resume={resume} />
@@ -457,7 +462,7 @@ export function ResumeDetailView(props: { resumeId: string; embedded?: boolean; 
                       void saveCandidate();
                     }}
                   >
-                    <fieldset disabled={busy}>
+                    <fieldset disabled={busy || resume.archived || !!resume.cvUpdate && !["pending", "reviewing"].includes(resume.cvUpdate.status)}>
                       <p
                         role="status"
                         className="mb-4 text-sm text-muted-foreground"
@@ -597,12 +602,7 @@ export function ResumeDetailView(props: { resumeId: string; embedded?: boolean; 
                         )}
                         Save changes
                       </Button>
-                      <p className="mt-3 text-sm text-muted-foreground">
-                        Saving unfinished work keeps it pending review.
-                        Approving saves the current details and confirms this
-                        CV.{" "}
-                        <strong>This may start your published workflow.</strong>
-                      </p>
+                      <p className="mt-3 text-sm text-muted-foreground">{resume.cvUpdate ? "This update has a separate information draft. Approving makes it the current CV while preserving the existing preparation snapshot, account, forms and answers. No workflow starts automatically." : <>Saving changes requires approval again. Approving saves the current details and confirms this CV. <strong>This may start your published workflow.</strong></>}</p>
                       <Button
                         type="button"
                         className="mt-3 w-full"
@@ -616,7 +616,7 @@ export function ResumeDetailView(props: { resumeId: string; embedded?: boolean; 
                         onClick={() => void saveCandidate(true)}
                       >
                         <UserCheck />
-                        Approve CV
+                        {resume.cvUpdate ? "Approve updated CV" : "Approve CV"}
                       </Button>
                     </fieldset>
                   </form>
@@ -637,6 +637,12 @@ export function ResumeDetailView(props: { resumeId: string; embedded?: boolean; 
         </div>
       </div>
 
+      <AlertDialog open={!!decision} onOpenChange={open => {if (!open && !busy) setDecision(null);}}>
+        <AlertDialogContent><AlertDialogHeader><AlertDialogTitle>{decision === "save" ? "Save changes and require approval again?" : resume.cvUpdate ? "Approve this CV update?" : "Approve this CV?"}</AlertDialogTitle><AlertDialogDescription>
+          <span className="block break-words font-medium">{resume.fileName}</span>
+          {decision === "save" ? "The CV will need approval again. Existing preparation, account access and submitted answers remain preserved." : resume.cvUpdate ? "This becomes the current CV with its own approved information snapshot. Existing preparation, account access, assigned forms and submitted answers keep their original data. No workflow will rerun or invitation be resent." : "Confirm that you checked the candidate information against this CV. This may start your published workflow."}
+        </AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel disabled={busy}>Cancel</AlertDialogCancel><AlertDialogAction disabled={busy} onClick={() => void saveCandidate(decision === "approve", true)}>{decision === "save" ? "Save and require approval" : resume.cvUpdate ? "Approve updated CV" : "Approve CV"}</AlertDialogAction></AlertDialogFooter></AlertDialogContent>
+      </AlertDialog>
       {!props.embedded && resume.candidate && (
         <Button asChild variant="outline">
           <Link href={`/candidates/${resume.candidate.id}`}>

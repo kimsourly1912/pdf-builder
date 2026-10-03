@@ -36,6 +36,13 @@
       "when": 1791014970414,
       "tag": "0025_hr_submission_review",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1791021435595,
+      "tag": "0026_candidate_cv_updates",
+      "breakpoints": true
     }
   ]
 }

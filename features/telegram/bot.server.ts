@@ -88,7 +88,7 @@ export function sendBotMessage(
   text: string,
   url?: string,
   button?: string,
-  intakeMenu = false,
+  intakeMenu: boolean | string[] = false,
 ) {
   return botRequest<{ message_id: number }>("sendMessage", {
     chat_id: chatId,
@@ -103,10 +103,7 @@ export function sendBotMessage(
       : intakeMenu
         ? {
             reply_markup: {
-              keyboard: [
-                [{ text: "Add another CV" }, { text: "Replace unreviewed CV" }],
-                [{ text: "Check application status" }],
-              ],
+              keyboard: (Array.isArray(intakeMenu) ? intakeMenu : ["Request a CV update", "Check application status"]).map(text => [{text}]),
               resize_keyboard: true,
               is_persistent: true,
             },

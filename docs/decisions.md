@@ -37,3 +37,7 @@ Drafts and published versions are separate. Published form presentation, fields,
 - CV verification and document acceptance are separate from hiring decisions.
 - Correction requests create a new account-protected attempt with the same pinned version and approved snapshot. Original answers/artifacts remain immutable; new draft media cannot own original submission media.
 - Form acceptance is evidence-derived and cannot be substituted by a Kanban move. Management remains owner-scoped pending a separate team-permissions design.
+
+## 2026-10-03: CV updates do not restart an active application
+
+A Telegram CV update has an independent confirmation and HR review draft. Once review starts, the application PDF is protected from candidate replacement. Accepting an update creates a new approved snapshot while preserving the preparation CV and all existing form data. No account/form preparation or Telegram invitation is rerun automatically. CV preview is navigation; choosing a CV for a future preparation is explicit. Both Resume detail and Candidate detail expose one shared approval operation.

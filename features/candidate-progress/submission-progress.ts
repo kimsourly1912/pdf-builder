@@ -32,9 +32,9 @@ export function submissionProgress(item: CandidateProgress) {
   const f = item.facts;
   if (!f.verified)
     return {
-      label: "Needs review",
-      next: "Review CV",
-      href: `/resumes/${item.selectedCv.id}`,
+      label: f.reviewStarted || f.runStatus === "waiting_review" ? "Reviewing CV" : "Needs review",
+      next: f.reviewStarted || f.runStatus === "waiting_review" ? "Review and approve CV" : "Start CV review",
+      href: `/candidates/${item.id}?tab=documents`,
     };
   if (!f.preparationCurrent)
     return {

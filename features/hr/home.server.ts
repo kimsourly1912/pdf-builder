@@ -28,7 +28,7 @@ export async function hrHome(owner: string) {
       }>(),
   ]);
   const candidateTasks = items
-    .filter((i) => !["ready", "accepted"].includes(i.automaticStage))
+    .filter((i) => i.issues.length || !["ready", "accepted"].includes(i.automaticStage))
     .map((i) => ({
       id: `candidate:${i.id}`,
       name: i.name,

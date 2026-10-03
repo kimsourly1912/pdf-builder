@@ -450,8 +450,8 @@ function deletionRule(type: ArchiveType) {
   }
   if (type === "resume") {
     query =
-      "SELECT id FROM workflow_runs WHERE resume_id=? AND status IN ('queued','running','waiting_review') LIMIT 1";
-    reason = "This CV is still used by an active workflow run.";
+      "SELECT id FROM workflow_runs WHERE resume_id=? AND status IN ('queued','running','waiting_review') UNION ALL SELECT resume_id FROM candidate_cv_updates WHERE base_resume_id=? OR (resume_id=? AND status='accepted') LIMIT 1";
+    reason = "This CV is used by an active workflow or protected CV update/approval history.";
   }
   if (type === "ai_run") {
     query =

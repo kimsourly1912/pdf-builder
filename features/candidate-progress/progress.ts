@@ -17,6 +17,7 @@ export const STAGE_LABELS: Record<CandidateStage, string> = {
 };
 export type ProgressFacts = {
   verified: boolean;
+  reviewStarted?: boolean;
   preparationCurrent: boolean;
   runStatus: string | null;
   assigned: number;
@@ -43,7 +44,7 @@ export function automaticStage(f: ProgressFacts): CandidateStage {
   )
     return "awaiting_forms";
   if (f.verified) return "approved";
-  if (f.runStatus === "waiting_review") return "reviewing";
+  if (f.reviewStarted || f.runStatus === "waiting_review") return "reviewing";
   return "new";
 }
 export function transitionRequirement(
@@ -129,6 +130,11 @@ export type CandidateProgress = {
   revision: string;
   selectedCv: ProgressCv;
   cvs: ProgressCv[];
+  currentCv?: ProgressCv;
+  cvUpdates?: {resumeId: string; baseResumeId: string; fileName: string; status: string; createdAt: string; updatedAt: string; reason: string | null}[];
+  approvalBy?: string | null;
+  reviewStartedAt?: string | null;
+  reviewStartedBy?: string | null;
   run: ProgressRun | null;
   runs: ProgressRun[];
   facts: ProgressFacts;

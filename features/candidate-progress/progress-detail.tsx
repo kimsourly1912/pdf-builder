@@ -37,6 +37,9 @@ import {
 } from "./progress";
 import { stageAge, statusColor, runStatusLabel } from "./presentation";
 import { candidateNextAction } from "./submission-progress";
+import { CvUpdatePanel } from "./cv-update-panel";
+import { ResumePdfPreview } from "@/features/resumes/resume-pdf-preview";
+import { stageEvidence, preparationLabel, STAGE_DESCRIPTIONS } from "./stage-evidence";
 import { MoveMenu, MoveDialog } from "./progress-actions";
 const PROFILE_TABS = [
   { id: "overview", label: "Overview" },
@@ -62,6 +65,8 @@ export function ProgressDetail({
     [error, setError] = useState(""),
     [busy, setBusy] = useState(false),
     [dirty, setDirty] = useState(false),
+    [previewId, setPreviewId] = useState<string | null>(null),
+    [reviewingUpdate, setReviewingUpdate] = useState(false),
     [move, setMove] = useState<{
       item: CandidateProgress;
       stage: CandidateStage;
@@ -105,12 +110,22 @@ export function ProgressDetail({
   }
   function changeTab(value: string) {
     if (value === tab || !leaveDraft()) return;
+    setReviewingUpdate(false);
     router.replace(`/candidates/${candidateId}?tab=${value}`, {
       scroll: false,
     });
   }
+  async function startReview() {
+    if (!item || busy) return;
+    setBusy(true); setError("");
+    try {
+      await workflowApi(`/api/candidates/${candidateId}`, {method: "PATCH", body: JSON.stringify({action: "start_review", expectedRevision: item.revision})});
+      await load(); changeTab("documents");
+    } catch(e) {setError(errorText(e));} finally {setBusy(false);}
+  }
   async function select(action: "select_cv" | "select_run", value: string) {
     if (!item || !leaveDraft()) return;
+    if (action === "select_cv" && value !== item.selectedCv.id && !window.confirm(`Use ${item.cvs.find(c => c.id === value)?.fileName ?? "this CV"} for a new preparation? Progress will track this CV. Previous approval, account access, assigned forms and answers remain in history. This does not start a workflow or resend an invitation.`)) return;
     ++requestVersion.current;
     setBusy(true);
     setError("");
@@ -142,7 +157,9 @@ export function ProgressDetail({
   function nextAction() {
     if (!item) return null;
     if (!item.selectedCv.verified)
-      return <Button onClick={() => changeTab("documents")}>Review CV</Button>;
+      return !item.facts.reviewStarted && item.facts.runStatus !== "waiting_review"
+        ? <Button disabled={busy} onClick={() => void startReview()}>Start CV review</Button>
+        : <Button onClick={() => {setPreviewId(null);changeTab("documents");}}>Review and approve CV</Button>;
     const issue = item.issues[0];
     if (issue?.key === "contact" && item.selectedCv.intakeId)
       return (
@@ -243,7 +260,7 @@ export function ProgressDetail({
             </span>
             {item.manual && (
               <Badge variant="outline">
-                HR stage · actual: {STAGE_LABELS[item.automaticStage]}
+                HR override · actual progress: {STAGE_LABELS[item.automaticStage]}
               </Badge>
             )}
             <Badge variant="secondary">
@@ -251,6 +268,8 @@ export function ProgressDetail({
               submitted
             </Badge>
           </div>
+          <p className="text-sm text-muted-foreground">{STAGE_DESCRIPTIONS[item.stage]} {stageEvidence(item)}</p>
+          {preparationLabel(item) && <Alert variant={item.run?.status === "failed" ? "destructive" : "default"}><AlertDescription className="flex flex-wrap items-center justify-between gap-3"><span>{preparationLabel(item)} · {item.run?.name}</span><Button asChild variant="outline" size="sm"><Link href={runUrl}>{item.run?.status === "failed" ? "Resolve issue" : "View progress"}</Link></Button></AlertDescription></Alert>}
           <Tabs value={tab} onValueChange={changeTab}>
             <div className="min-w-0 overflow-x-auto pb-1">
               <TabsList variant="line" className="w-max">
@@ -383,7 +402,7 @@ export function ProgressDetail({
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <p className="break-words text-sm">
-                    Selected CV: <strong>{item.selectedCv.fileName}</strong>
+                    Preparation CV: <strong>{item.selectedCv.fileName}</strong>
                   </p>
                   {item.runs.some(
                     (r) => r.resumeId === item.selectedCv.id && !r.archived,
@@ -426,8 +445,7 @@ export function ProgressDetail({
                     </div>
                   )}
                   <p className="text-xs text-muted-foreground">
-                    Each preparation uses a specific approved CV. Changing the
-                    selected CV preserves earlier assignments and history.
+                    Each preparation keeps its approved CV and information snapshot. Previewing another CV does not change progress. Choosing a CV for a new preparation is a separate decision.
                   </p>
                   {item.run ? (
                     <Button asChild variant="outline">
@@ -445,14 +463,16 @@ export function ProgressDetail({
               </Card>
             </TabsContent>
             <TabsContent value="documents" className="mt-5 space-y-5">
-              <section className="rounded-xl border bg-card p-5">
+              <CvUpdatePanel item={item} onChanged={() => void load()} onDirtyChange={setDirty} canOpenReview={leaveDraft} onReviewingChange={setReviewingUpdate} />
+              {!item.selectedCv.verified && !item.facts.reviewStarted && item.facts.runStatus !== "waiting_review" && <Button disabled={busy} onClick={() => void startReview()}>Start CV review</Button>}
+              {!reviewingUpdate && <section className="rounded-xl border bg-card p-5">
                 <label htmlFor="selected-cv" className="text-sm font-medium">
                   Currently viewing CV
                 </label>
                 <Select
-                  value={item.selectedCv.id}
+                  value={previewId ?? item.selectedCv.id}
                   onValueChange={(v) => {
-                    if (v) void select("select_cv", v);
+                    if (v && leaveDraft()) setPreviewId(v);
                   }}
                   disabled={busy}
                 >
@@ -480,21 +500,23 @@ export function ProgressDetail({
                   </SelectContent>
                 </Select>
                 <p className="mt-3 break-words text-sm text-muted-foreground">
-                  {item.selectedCv.fileName} · Received{" "}
-                  {runDate(item.selectedCv.receivedAt)}
+                  {item.cvs.find(c => c.id === (previewId ?? item.selectedCv.id))?.fileName} · Currently viewing
                 </p>
                 <p className="mt-2 text-xs text-muted-foreground">
-                  CV approval verifies information. It does not mark the
-                  candidate as hired.
+                  Viewing a CV does not change the application CV or progress. CV approval verifies information; it does not mark the candidate as hired.
                 </p>
-              </section>
-              <ResumeDetailView
+              </section>}
+              {!reviewingUpdate && (previewId && previewId !== item.selectedCv.id ? <section className="space-y-4">
+                <p className="text-sm text-muted-foreground">Preview only. Current preparation uses {item.selectedCv.fileName}.</p>
+                <div className="h-[32rem]"><ResumePdfPreview resumeId={previewId} fileName={item.cvs.find(c => c.id === previewId)?.fileName ?? "CV.pdf"} contained /></div>
+                <div className="flex flex-wrap gap-2"><Button variant="outline" onClick={() => setPreviewId(null)}>Return to preparation CV</Button><Button disabled={busy || item.cvs.find(c => c.id === previewId)?.archived} onClick={() => void select("select_cv", previewId)}>Use this CV for a new preparation</Button></div>
+              </section> : <ResumeDetailView
                 key={item.selectedCv.id}
                 resumeId={item.selectedCv.id}
                 embedded
                 onChanged={() => void load()}
                 onDirtyChange={setDirty}
-              />
+              />)}
             </TabsContent>
             <TabsContent value="forms" className="mt-5">
               <CandidateForms item={item} onChanged={() => void load()} />

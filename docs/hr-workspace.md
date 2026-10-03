@@ -13,7 +13,7 @@ Reading/review pages, tables and card lists use one centered 80rem shell contain
 
 ## Candidate profile
 
-The profile has URL-addressable Overview, CV & documents, Forms, Communication and History tabs. Overview explains one next action and distinguishes CV verification, access, preparation, invitations, form submission and HR acceptance. CV & documents embeds the existing guarded Resume Editor; changing tabs or CVs prompts before discarding unsaved edits. Save changes and Approve CV retain their separate semantics and optional paid AI.
+The profile has URL-addressable Overview, CV & documents, Forms, Communication and History tabs. Overview explains one next action and distinguishes CV verification, access, preparation, invitations, form submission and HR acceptance. CV & documents embeds the existing guarded Resume Editor and an independent CV update review; changing tabs or CVs prompts before discarding unsaved edits. Save changes and Approve CV retain their separate semantics and optional paid AI.
 
 Forms shows the linked account's assignments and identifies those required for the selected preparation. Direct web-form assignment requires an existing account and an approved CV. It reuses the existing user/version assignment and does not send a message. Published preparation can be started from the profile using existing review/account-reuse/Telegram guards. Telegram candidates use the existing invitation preparation path; a suitable published workflow and explicit contact/reuse confirmation are required.
 
@@ -34,3 +34,5 @@ Each submission can be decided once. Concurrent, superseded, archived, disabled-
 ## Scope
 
 This release organizes existing recruitment/document preparation. It does not introduce hiring decisions, jobs/interviews, employee records, payroll, multiple management roles or automatic reminder sending. Management authorization remains scoped to the configured owner. Legacy PDF templates remain available.
+
+CV updates require candidate confirmation and an HR decision. Previewing another PDF does not change progress. Existing preparations retain their original CV/information snapshot after update approval. [Candidate progress](candidate-progress.md#protected-cv-updates-and-explicit-review) describes these safeguards and the explicit Start CV review action.

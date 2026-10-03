@@ -1,3 +1,4 @@
+import { getCvUpdate } from "./cv-updates.server";
 import "server-only";
 import { stageSince } from "./stage-since";
 import { getDatabaseBinding } from "@/db";
@@ -28,6 +29,10 @@ type CvRow = {
   telegram: string | null;
   confirmed: number;
   archived: number;
+  updateStatus: string | null;
+  reviewStartedAt: string | null;
+  reviewStartedBy: string | null;
+  approvedBy: string | null;
 };
 type Meta = {
   candidate_id: string;
@@ -88,14 +93,16 @@ async function rows<T>(query: string, owner: string) {
     .results;
 }
 async function load(owner: string, resumeId?: string) {
-  const [cvs, metadata, runs, forms, deliveries, accounts, moves] =
+  const [cvs, metadata, runs, forms, deliveries, accounts, moves, updates] =
     await Promise.all([
       rows<CvRow>(
         `SELECT c.id,c.full_name name,c.email,c.user_id userId,c.updated_at candidateRevision,r.id resumeId,r.file_name fileName,r.created_at receivedAt,r.updated_at resumeRevision,
  (SELECT p.id FROM candidate_profile_versions p WHERE p.resume_id=r.id AND p.candidate_id=c.id AND p.owner_email=c.owner_email AND p.created_by_email=c.owner_email AND p.verification_status='verified' AND r.verification_status='verified' AND c.verification_status='verified' AND r.duplicate_candidate_id IS NULL AND p.created_at>=r.updated_at AND p.created_at>=c.updated_at ORDER BY p.version_number DESC LIMIT 1) approvalId,
  (SELECT p.verified_at FROM candidate_profile_versions p WHERE p.resume_id=r.id AND p.candidate_id=c.id AND p.owner_email=c.owner_email AND p.verification_status='verified' ORDER BY p.version_number DESC LIMIT 1) approvedAt,
+ u.status updateStatus,h.started_at reviewStartedAt,h.started_by reviewStartedBy,
+ (SELECT p.created_by_email FROM candidate_profile_versions p WHERE p.resume_id=r.id AND p.verification_status='verified' ORDER BY p.version_number DESC LIMIT 1) approvedBy,
  i.id intakeId,t.username telegram,CASE WHEN t.confirmed_candidate_id=c.id AND t.confirmed_by=c.owner_email THEN 1 ELSE 0 END confirmed,CASE WHEN ${activeCv} THEN 0 ELSE 1 END archived
- FROM candidates c JOIN resumes r ON r.candidate_id=c.id AND r.owner_email=c.owner_email LEFT JOIN telegram_intakes i ON i.resume_id=r.id AND i.owner_email=c.owner_email LEFT JOIN telegram_connections t ON t.id=i.connection_id AND t.owner_email=c.owner_email WHERE c.owner_email=? ORDER BY r.created_at DESC,r.id DESC`,
+ FROM candidates c JOIN resumes r ON r.candidate_id=c.id AND r.owner_email=c.owner_email LEFT JOIN telegram_intakes i ON i.resume_id=r.id AND i.owner_email=c.owner_email LEFT JOIN telegram_connections t ON t.id=i.connection_id AND t.owner_email=c.owner_email LEFT JOIN candidate_cv_updates u ON u.resume_id=r.id LEFT JOIN candidate_cv_reviews h ON h.resume_id=r.id WHERE c.owner_email=? ORDER BY r.created_at DESC,r.id DESC`,
         owner,
       ),
       rows<Meta>("SELECT * FROM candidate_progress WHERE owner_email=?", owner),
@@ -119,6 +126,7 @@ async function load(owner: string, resumeId?: string) {
         "SELECT target_id candidateId,created_at at,metadata_json metadata FROM audit_events WHERE owner_email=? AND action='candidate.progress_stage_changed' ORDER BY created_at DESC",
         owner,
       ),
+      rows<{resumeId: string; candidateId: string; baseResumeId: string; fileName: string; status: string; createdAt: string; updatedAt: string; reason: string | null}>("SELECT u.resume_id resumeId,u.candidate_id candidateId,u.base_resume_id baseResumeId,r.file_name fileName,u.status,u.created_at createdAt,u.updated_at updatedAt,u.reason FROM candidate_cv_updates u JOIN resumes r ON r.id=u.resume_id WHERE u.owner_email=? AND u.status NOT IN ('awaiting_confirmation','cancelled','replaced') AND NOT EXISTS(SELECT 1 FROM archive_records a WHERE a.entity_type='resume' AND a.entity_id=r.id) ORDER BY u.created_at DESC", owner),
     ]);
   const groups = new Map<string, CvRow[]>();
   for (const r of cvs) {
@@ -128,7 +136,7 @@ async function load(owner: string, resumeId?: string) {
   }
   const entries = [];
   for (const [id, history] of groups) {
-    const active = history.filter((c) => !c.archived);
+    const active = history.filter((c) => !c.archived && !["awaiting_confirmation", "pending", "reviewing", "declined", "cancelled"].includes(c.updateStatus ?? ""));
     if (!active.length) continue;
     const meta = metadata.find((m) => m.candidate_id === id),
       cv =
@@ -192,6 +200,7 @@ async function load(owner: string, resumeId?: string) {
         context.resumeEditorApproval?.profileVersionId === cv.approvalId);
     const facts = {
       verified: !!cv.approvalId,
+      reviewStarted: !!cv.reviewStartedAt,
       runStatus: run?.status ?? (manualPreparation ? "completed" : null),
       preparationCurrent:
         current &&
@@ -244,13 +253,15 @@ async function load(owner: string, resumeId?: string) {
       attention.push(message);
       issues.push({ key, action, href, message });
     };
-    if (active[0].resumeId !== cv.resumeId)
+    if (active[0].resumeId !== cv.resumeId && !active[0].updateStatus)
       issue(
         "new_cv",
         "Choose latest CV",
         `/candidates/${id}?tab=documents#selected-cv`,
         "A newer CV is available. Select it to review; current preparation stays linked to this CV.",
       );
+    if (updates.some(u => u.candidateId === id && ["pending", "reviewing"].includes(u.status)))
+      issue("cv_update", "Review CV update", `/candidates/${id}?tab=documents#cv-updates`, "A CV update needs HR review. Your active application and forms are unchanged.");
     if (cv.approvalId && cv.intakeId && !cv.confirmed && !facts.invitationSent)
       issue(
         "contact",
@@ -343,6 +354,7 @@ async function load(owner: string, resumeId?: string) {
       new TextEncoder().encode(
         JSON.stringify({
           basis,
+          updates: updates.filter(u => u.candidateId === id),
           version: meta?.version ?? 0,
           runRevision: run?.updated_at,
           forms: relevant.map((f) => f.updatedAt),
@@ -452,11 +464,19 @@ async function load(owner: string, resumeId?: string) {
       telegram: cv.telegram ?? "",
       contactConfirmed: !!cv.confirmed,
       stage: manual ? meta!.manual_stage! : auto,
+      approvalBy: cv.approvedBy,
+      reviewStartedAt: cv.reviewStartedAt,
+      reviewStartedBy: cv.reviewStartedBy,
+      cvUpdates: updates.filter(u => u.candidateId === id),
+      currentCv: (() => {
+        const current = history.find(c => !c.archived && c.updateStatus === "accepted") ?? cv;
+        return {id: current.resumeId, fileName: current.fileName, receivedAt: current.receivedAt, verified: !!current.approvalId, archived: !!current.archived, intakeId: current.intakeId};
+      })(),
       automaticStage: auto,
       manual,
       revision,
       selectedCv: dtoCv(cv),
-      cvs: history.map(dtoCv),
+      cvs: history.filter(c => c.updateStatus !== "awaiting_confirmation").map(dtoCv),
       run: run ? dtoRun(run) : null,
       runs: cvRuns.map(dtoRun),
       facts,
@@ -477,7 +497,7 @@ async function load(owner: string, resumeId?: string) {
                 JSON.parse(m.metadata).to === STAGE_LABELS[meta!.manual_stage!],
             )?.at
           : undefined,
-        reviewStartedAt: context.reviewStartedAt,
+        reviewStartedAt: cv.reviewStartedAt ?? context.reviewStartedAt,
         preparationCompletedAt:
           context.preparationCompletedAt ??
           graph?.nodes
@@ -519,6 +539,8 @@ async function load(owner: string, resumeId?: string) {
         cv.candidateRevision,
         run?.updated_at,
         meta?.updated_at,
+        cv.reviewStartedAt,
+        ...updates.filter(u => u.candidateId === id).map(u => u.updatedAt),
         ...relevant.map((f) => f.updatedAt),
         ...relevant.map((f) => f.reviewedAt),
         ...relevant.map((f) => f.correctionAt),
@@ -580,7 +602,7 @@ export async function detailProgress(owner: string, id: string) {
   const events = (
     await getDatabaseBinding()
       .prepare(
-        "SELECT id,action,actor_id actor,created_at at,metadata_json FROM audit_events WHERE owner_email=? AND target_type='candidate' AND target_id=? AND action LIKE 'candidate.progress_%' ORDER BY created_at DESC LIMIT 100",
+        "SELECT id,action,actor_id actor,created_at at,metadata_json FROM audit_events WHERE owner_email=? AND target_type='candidate' AND target_id=? AND (action LIKE 'candidate.progress_%' OR action LIKE 'candidate.cv_update_%') ORDER BY created_at DESC LIMIT 100",
       )
       .bind(owner, id)
       .all<{
@@ -599,7 +621,7 @@ export async function detailProgress(owner: string, id: string) {
           ? "HR stage changed"
           : a.action === "candidate.progress_cv_selected"
             ? "Selected CV changed"
-            : "Selected preparation changed",
+            : a.action.startsWith("candidate.cv_update_") ? `CV update ${a.action.slice("candidate.cv_update_".length)}` : "Selected preparation changed",
       actor: a.actor,
       at: a.at,
       metadata: JSON.parse(a.metadata_json),
@@ -654,7 +676,11 @@ export async function updateProgress(
     manualStage: CandidateStage | null = null,
     action = "",
     event: Record<string, unknown> = {};
-  if (body.action === "move") {
+  if (body.action === "move" || body.action === "start_review") {
+    if (body.action === "start_review") {
+      if (item.facts.verified) fail("This CV is already approved.", 409);
+      body.stage = "reviewing";
+    }
     if (
       typeof body.stage !== "string" ||
       !STAGES.includes(body.stage as CandidateStage)
@@ -663,6 +689,10 @@ export async function updateProgress(
     const target = body.stage as CandidateStage,
       required = transitionRequirement(item.facts, target);
     if (required) fail(required.message, 422);
+    if (target === "reviewing" && !item.facts.verified && !item.reviewStartedAt) {
+      // Added to the guarded mutation batch below.
+      body.startReview = true;
+    }
     if (target === item.stage)
       return { candidate: await detailProgress(owner, id) };
     const backward = STAGES.indexOf(target) < STAGES.indexOf(item.stage);
@@ -672,7 +702,7 @@ export async function updateProgress(
         "Provide a short reason for moving this candidate backward (up to 500 characters).",
         422,
       );
-    manualStage = target;
+    manualStage = target === "accepted" ? null : target;
     action = "candidate.progress_stage_changed";
     event = {
       from: STAGE_LABELS[item.stage],
@@ -685,6 +715,8 @@ export async function updateProgress(
     const selected = item.cvs.find((c) => c.id === body.resumeId);
     if (!selected || selected.archived)
       fail("Choose an active CV belonging to this candidate.", 422);
+    const update = await getCvUpdate(owner, selected.id);
+    if (update && !["accepted", "replaced"].includes(update.status)) fail("Review and approve this update before using it for a new preparation.", 422);
     selectedResumeId = selected.id;
     primaryRunId = null;
     action = "candidate.progress_cv_selected";
@@ -731,6 +763,7 @@ export async function updateProgress(
           })),
         ),
       ),
+    ...(body.startReview ? [db.prepare("INSERT INTO candidate_cv_reviews(resume_id,owner_email,started_by,started_at) VALUES(?,?,?,?) ON CONFLICT(resume_id) DO NOTHING").bind(cv.resumeId, owner, owner, now)] : []),
     db
       .prepare(
         "INSERT INTO candidate_progress(candidate_id,owner_email,selected_resume_id,primary_run_id,manual_stage,basis_json,version,updated_at) VALUES(?,?,?,?,?,?,1,?) ON CONFLICT(candidate_id) DO UPDATE SET selected_resume_id=excluded.selected_resume_id,primary_run_id=excluded.primary_run_id,manual_stage=excluded.manual_stage,basis_json=excluded.basis_json,version=candidate_progress.version+1,updated_at=excluded.updated_at WHERE candidate_progress.owner_email=excluded.owner_email",

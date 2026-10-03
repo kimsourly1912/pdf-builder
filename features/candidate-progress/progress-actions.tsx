@@ -49,7 +49,7 @@ export function MoveMenu({
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
-        <DropdownMenuLabel>Move to…</DropdownMenuLabel>
+        <DropdownMenuLabel>Change HR stage…</DropdownMenuLabel>
         {STAGES.map((s) => (
           <DropdownMenuItem
             key={s}
@@ -122,7 +122,7 @@ export function MoveDialog({
           <DialogDescription>
             {requirement?.message ??
               (backward
-                ? "This changes the HR stage. Existing approval, account, invitations and submitted forms remain preserved. New progress events may advance the candidate again."
+                ? "This records an HR override, not a reversal of approval. Existing account access, invitations and submitted forms remain preserved. Actual progress is shown separately. New progress events may advance the candidate again."
                 : "This updates the HR stage. Account, invitation and submission facts stay accurate.")}
           </DialogDescription>
         </DialogHeader>
@@ -152,13 +152,13 @@ export function MoveDialog({
               <Link
                 href={
                   requirement.kind === "review"
-                    ? `/resumes/${move!.item.selectedCv.id}?candidateId=${move!.item.id}`
+                    ? `/candidates/${move!.item.id}?tab=documents`
                     : requirement.kind === "prepare"
                       ? move!.item.selectedCv.intakeId
                         ? `/intake/${move!.item.selectedCv.intakeId}`
                         : move!.item.run
                           ? `/workflows/${move!.item.run.workflowId}?tab=runs&run=${move!.item.run.id}`
-                          : "/workflows"
+                          : `/candidates/${move!.item.id}?tab=overview`
                       : `/candidates/${move!.item.id}`
                 }
               >

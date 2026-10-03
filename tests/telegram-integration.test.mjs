@@ -736,6 +736,7 @@ async function verifyCv(row, confirmTelegram = false) {
         confirmTelegram,
         resumeRevision: resume.updatedAt,
         candidateRevision: resume.candidateRevision,
+        updateRevision: resume.cvUpdate?.revision,
       },
       "PATCH",
     ),
@@ -845,69 +846,39 @@ test("manual Resume Editor verification enables intake workflow without an AI re
   runtime.OPENAI_API_KEY = "integration-openai";
 });
 
-test("completed bot intake rejects unsolicited PDFs and explicitly groups additional/replaced CVs under one contact", async () => {
+test("completed intake rejects unsolicited uploads and confirmed updates replace only CVs untouched by HR", async () => {
   const calls = aiCalls;
-  const original = await submit(70002, "history@example.com");
-  const candidates = count("candidates"),
-    intakes = count("telegram_intakes");
-  await freshPdf("unsolicited");
-  await chat(70002, "anything");
-  await chat(70002, null, { file_id: "test", file_name: "another.pdf" });
-  assert.equal(count("telegram_intakes"), intakes);
-  assert.equal(count("candidates"), candidates);
-  assert.match(messages.at(-1).text, /\/add_cv/);
-  await chat(70002, "/add_cv");
-  await chat(70002, null, { file_id: "test", file_name: "additional.pdf" });
-  assert.equal(count("telegram_intakes"), intakes + 1);
-  assert.equal(count("candidates"), candidates);
-  let list = await intake.intakeList(
-    runtime.MANAGEMENT_EMAIL,
-    new URLSearchParams(),
-  );
-  let contact = list.filter((i) => i.email === "history@example.com");
-  assert.equal(contact.length, 1);
-  assert.equal(contact[0].cvCount, 2);
-  const additional = d1.sqlite
-    .prepare(
-      "SELECT * FROM telegram_intakes WHERE connection_id=? ORDER BY update_id DESC LIMIT 1",
-    )
-    .get(original.connection_id);
-  await chat(70002, "/replace_cv");
-  await freshPdf("replacement");
-  await chat(70002, null, { file_id: "test", file_name: "replacement.pdf" });
-  assert.equal(count("telegram_intakes"), intakes + 2);
-  assert.equal(await archiveService.isArchived("intake", additional.id), true);
-  assert.equal(
-    await archiveService.isArchived("resume", additional.resume_id),
-    true,
-  );
-  assert(
-    storage.has(
-      d1.sqlite
-        .prepare("SELECT file_key FROM resumes WHERE id=?")
-        .get(additional.resume_id).file_key,
-    ),
-  );
-  list = await intake.intakeList(
-    runtime.MANAGEMENT_EMAIL,
-    new URLSearchParams(),
-  );
-  contact = list.filter((i) => i.email === "history@example.com");
-  assert.equal(contact.length, 1);
-  assert.equal(contact[0].cvCount, 2);
-  const latest = d1.sqlite
-    .prepare(
-      "SELECT * FROM telegram_intakes WHERE connection_id=? ORDER BY update_id DESC LIMIT 1",
-    )
-    .get(original.connection_id);
-  assert.equal((await overview(latest)).cvHistory.length, 3);
-  await verifyCv(latest);
-  await chat(70002, "/replace_cv");
-  await freshPdf("blocked replacement");
-  await chat(70002, null, { file_id: "test", file_name: "blocked.pdf" });
-  assert.equal(count("telegram_intakes"), intakes + 2);
-  assert.match(messages.at(-1).text, /already saved|reviewed or archived/);
-  assert.equal(aiCalls, calls);
+  const flags = d1.sqlite.prepare("SELECT id,active FROM workflows").all();
+  d1.sqlite.exec("UPDATE workflows SET active=0");
+  try {
+    const original = await submit(70002, "history@example.com");
+    const candidateCount = count("candidates"), intakes = count("telegram_intakes");
+    await freshPdf("unsolicited");
+    await chat(70002, "anything");
+    await chat(70002, null, {file_id: "test", file_name: "another.pdf"});
+    assert.equal(count("telegram_intakes"), intakes);
+    assert.match(messages.at(-1).text, /update button/);
+    await chat(70002, "Update submitted CV");
+    await chat(70002, null, {file_id: "test", file_name: "updated.pdf"});
+    assert.match(messages.at(-1).text, /Replace.*previous unreviewed/s);
+    assert.equal(await archiveService.isArchived("resume", original.resume_id), false);
+    assert.equal((await progressGet(original.candidate_id)).selectedCv.id, original.resume_id);
+    await chat(70002, "Confirm replacement");
+    assert.equal(await archiveService.isArchived("resume", original.resume_id), true);
+    const latest = d1.sqlite.prepare("SELECT * FROM telegram_intakes WHERE connection_id=? ORDER BY update_id DESC LIMIT 1").get(original.connection_id);
+    assert.equal((await progressGet(original.candidate_id)).selectedCv.id, latest.resume_id);
+    assert.equal(count("candidates"), candidateCount);
+    await verifyCv(latest);
+    await chat(70002, "Request a CV update");
+    await freshPdf("protected replacement");
+    await chat(70002, null, {file_id: "test", file_name: "protected.pdf"});
+    assert.match(messages.at(-1).text, /current application CV, approval and forms remain active/);
+    await chat(70002, "Send update to HR");
+    assert.equal(await archiveService.isArchived("resume", latest.resume_id), false);
+    assert.equal((await progressGet(original.candidate_id)).selectedCv.id, latest.resume_id);
+    assert.equal((await progressGet(original.candidate_id)).cvUpdates[0].status, "pending");
+    assert.equal(aiCalls, calls);
+  } finally {for (const w of flags) d1.sqlite.prepare("UPDATE workflows SET active=? WHERE id=?").run(w.active, w.id);}
 });
 
 test("workflow starting events route submissions by purpose and Telegram receipt waits for HR verification without AI", async () => {
@@ -1306,6 +1277,7 @@ test("candidate progress groups CV history and prevents unverified approval, sta
   await freshPdf("second progress CV");
   await chat(71001, "/add_cv");
   await chat(71001, null, { file_id: "test", file_name: "second.pdf" });
+  await chat(71001, "Send update to HR");
   const list = await progressService.listProgress(
     runtime.MANAGEMENT_EMAIL,
     new URLSearchParams({ search: "progress@example.com" }),
@@ -1406,6 +1378,7 @@ test("changing selection and archive state preserves preparation history without
   let item = await progressGet(progressIntake.candidate_id);
   const other = item.cvs.find((c) => c.id !== progressIntake.resume_id);
   assert(other);
+  await verifyCv({resume_id: other.id, id: item.cvs.find(c => c.id === other.id).intakeId});
   await archiveService.archiveEntity(
     runtime.MANAGEMENT_EMAIL,
     "resume",
@@ -1683,38 +1656,17 @@ test("bot buttons map to guarded CV actions and status follows actual HR progres
     .at(-1)
     .reply_markup.keyboard.flat()
     .map((b) => b.text);
-  assert.deepEqual(menu, [
-    "Add another CV",
-    "Replace unreviewed CV",
-    "Check application status",
-  ]);
+  assert(menu.includes("Check application status"));
+  assert(!menu.includes("Add another CV"));
+  assert(!menu.includes("Replace unreviewed CV"));
   await chat(91003, "Check application status");
   assert(messages.at(-1).text.includes("Needs review"));
   await verifyCv(intake, true);
   await chat(91003, "Check application status");
-  assert(
-    messages.at(-1).text.includes("CV approved") ||
-      messages.at(-1).text.includes("Preparing account/forms"),
-  );
-  await chat(91003, "Replace unreviewed CV");
-  assert(messages.at(-1).text.includes("already been approved"));
-  assert.equal(
-    d1.sqlite
-      .prepare(
-        "SELECT submission_mode FROM telegram_connections WHERE chat_id=?",
-      )
-      .get("91003").submission_mode,
-    "completed",
-  );
-  await chat(91003, "Add another CV");
-  assert.equal(
-    d1.sqlite
-      .prepare(
-        "SELECT submission_mode FROM telegram_connections WHERE chat_id=?",
-      )
-      .get("91003").submission_mode,
-    "add",
-  );
+  assert(messages.at(-1).text.includes("CV approved") || messages.at(-1).text.includes("Preparing account/forms"));
+  assert(messages.at(-1).reply_markup.keyboard.flat().some(b => b.text === "Request a CV update"));
+  await chat(91003, "Request a CV update");
+  assert.equal(d1.sqlite.prepare("SELECT submission_mode FROM telegram_connections WHERE chat_id=?").get("91003").submission_mode, "update");
   await chat(70001, "Check application status");
   assert(messages.at(-1).text.includes("Invitation sent"));
   assert(messages.at(-1).text.includes("0/2 required forms submitted"));
@@ -1722,7 +1674,7 @@ test("bot buttons map to guarded CV actions and status follows actual HR progres
     messages.at(-1).text.includes("does not indicate whether it was read"),
   );
   await chat(12345, "Check application status");
-  assert(messages.at(-1).text.includes("Forms submitted"));
+  assert(messages.at(-1).text.includes("Forms to review"));
   assert(messages.at(-1).text.includes("2/2 required forms submitted"));
 });
 
@@ -1953,4 +1905,145 @@ test("progress waiting clocks, sorted pagination and issue actions use owned rec
     .prepare("UPDATE user SET banned=0 WHERE id=?")
     .bind(run.context.userId)
     .run();
+});
+
+test("CV updates preserve an active preparation, isolate edits, approve without sends and reject repeated decisions", async () => {
+  const before = await progressGet(manualIntake.candidate_id);
+  const candidateBefore = d1.sqlite.prepare("SELECT * FROM candidates WHERE id=?").get(before.id);
+  const assignments = d1.sqlite.prepare("SELECT * FROM form_assignments WHERE user_id=? ORDER BY id").all(before.accountId);
+  const runs = count("workflow_runs"), users = count("user"), calls = aiCalls;
+  await chat(70001, "Request a CV update");
+  await freshPdf("protected active update");
+  await chat(70001, null, {file_id: "test", file_name: "updated-active.pdf"});
+  const staged = d1.sqlite.prepare("SELECT * FROM candidate_cv_updates WHERE candidate_id=? ORDER BY created_at DESC LIMIT 1").get(before.id);
+  assert.equal(staged.status, "awaiting_confirmation");
+  assert.equal((await progressGet(before.id)).selectedCv.id, before.selectedCv.id);
+  await chat(70001, "Send update to HR");
+  await chat(70001, "Request a CV update");
+  assert.match(messages.at(-1).text, /already have a CV update/);
+  const getUpdate = async () => (await resumeRoute.GET(ownerRequest("/api/resumes/"+staged.resume_id, null, "GET"), {params: Promise.resolve({id: staged.resume_id})})).json();
+  let {resume} = await getUpdate();
+  const draft = {...resume.candidate, currentTitle: "Updated title"};
+  const patch = body => resumeRoute.PATCH(ownerRequest("/api/resumes/"+staged.resume_id, body, "PATCH"), {params: Promise.resolve({id: staged.resume_id})});
+  let response = await patch({action: "save_changes", candidate: draft, updateRevision: resume.cvUpdate.revision, resumeRevision: resume.updatedAt, candidateRevision: resume.candidateRevision});
+  assert.equal(response.status, 200, await response.clone().text());
+  assert.deepEqual(d1.sqlite.prepare("SELECT * FROM candidates WHERE id=?").get(before.id), candidateBefore);
+  ({resume} = await getUpdate());
+  const decision = {action: "approve_cv", candidate: resume.candidate, updateRevision: resume.cvUpdate.revision, resumeRevision: resume.updatedAt, candidateRevision: resume.candidateRevision};
+  const sends = messages.length;
+  response = await patch(decision);
+  assert.equal(response.status, 200, await response.clone().text());
+  assert.equal(messages.length, sends);
+  assert.equal(count("workflow_runs"), runs);
+  assert.equal(count("user"), users);
+  assert.equal(aiCalls, calls);
+  const after = await progressGet(before.id);
+  assert.equal(after.selectedCv.id, before.selectedCv.id);
+  assert.equal(after.currentCv.id, staged.resume_id);
+  assert.equal(after.currentCv.verified, true);
+  assert.match(await archiveService.deletionBlocker(runtime.MANAGEMENT_EMAIL,"resume",staged.resume_id),/protected CV update/);
+  assert.equal(after.automaticStage, before.automaticStage);
+  assert.deepEqual(after.facts, before.facts);
+  assert.deepEqual(d1.sqlite.prepare("SELECT * FROM form_assignments WHERE user_id=? ORDER BY id").all(before.accountId), assignments);
+  assert.deepEqual(d1.sqlite.prepare("SELECT * FROM candidates WHERE id=?").get(before.id), candidateBefore);
+  assert.equal((await patch(decision)).status, 409);
+  const unauth = await resumeRoute.PATCH(new Request("http://localhost:5173/api/resumes/"+staged.resume_id, {method:"PATCH", body:JSON.stringify(decision)}), {params:Promise.resolve({id:staged.resume_id})});
+  assert.equal(unauth.status, 401);
+  await chat(70001, "Check application status");
+  assert(!messages.at(-1).text.includes("read by candidate"));
+});
+
+test("starting review during an upload converts confirmation into an update request; cancellation preserves the original", async () => {
+  const flags = d1.sqlite.prepare("SELECT id,active FROM workflows").all();
+  d1.sqlite.exec("UPDATE workflows SET active=0");
+  try {
+    const original = await submit(92001, "reviewrace@example.com");
+    await chat(92001, "Update submitted CV");
+    await freshPdf("race update");
+    await chat(92001, null, {file_id:"test",file_name:"race.pdf"});
+    assert(messages.at(-1).reply_markup.keyboard.flat().some(b => b.text === "Confirm replacement"));
+    const before = await progressGet(original.candidate_id);
+    await progressService.updateProgress(runtime.MANAGEMENT_EMAIL, before.id, {action:"start_review",expectedRevision:before.revision});
+    const reviewing = await progressGet(before.id);
+    assert.equal(reviewing.automaticStage,"reviewing");
+    assert.equal(reviewing.reviewStartedBy,runtime.MANAGEMENT_EMAIL);
+    assert(reviewing.reviewStartedAt);
+    await chat(92001,"Confirm replacement");
+    assert.equal(await archiveService.isArchived("resume",original.resume_id),false);
+    const update = (await progressGet(before.id)).cvUpdates[0];
+    assert.equal(update.status,"pending");
+    // A stale reviewer cannot replace a newer decision.
+    const service = await vite.ssrLoadModule("/features/candidate-progress/cv-updates.server.ts");
+    await assert.rejects(service.decideCvUpdate(runtime.MANAGEMENT_EMAIL,update.resumeId,{action:"decline_update",reason:"Keep reviewed original",updateRevision:"stale"}),e=>e.status===409);
+    const response = await resumeRoute.GET(ownerRequest("/api/resumes/"+update.resumeId,null,"GET"),{params:Promise.resolve({id:update.resumeId})});
+    const {resume}=await response.json();
+    await service.decideCvUpdate(runtime.MANAGEMENT_EMAIL,update.resumeId,{action:"decline_update",reason:"Keep reviewed original",updateRevision:resume.cvUpdate.revision,resumeRevision:resume.updatedAt,candidateRevision:resume.candidateRevision});
+    assert.equal((await progressGet(before.id)).selectedCv.id,original.resume_id);
+    await chat(92001,"Request a CV update");
+    await freshPdf("cancel update");
+    await chat(92001,null,{file_id:"test",file_name:"cancel.pdf"});
+    await chat(92001,"Cancel upload");
+    assert.equal((await progressGet(before.id)).selectedCv.id,original.resume_id);
+    assert.equal((await progressGet(before.id)).automaticStage,"reviewing");
+    assert.equal(d1.sqlite.prepare("SELECT count(*) n FROM candidate_cv_updates WHERE candidate_id=? AND status='cancelled'").get(before.id).n,1);
+  } finally {for(const w of flags)d1.sqlite.prepare("UPDATE workflows SET active=? WHERE id=?").run(w.active,w.id);}
+});
+
+test("saving an approved application CV requires explicit acknowledgement before invalidating approval", async () => {
+  const original=await submit(92002,"saveapproval@example.com");
+  await verifyCv(original);
+  const {resume}=await (await resumeRoute.GET(ownerRequest("/api/resumes/"+original.resume_id,null,"GET"),{params:Promise.resolve({id:original.resume_id})})).json();
+  const body={action:"save_changes",candidate:{...resume.candidate,currentTitle:"Edited title"},resumeRevision:resume.updatedAt,candidateRevision:resume.candidateRevision};
+  const patch=()=>resumeRoute.PATCH(ownerRequest("/api/resumes/"+original.resume_id,body,"PATCH"),{params:Promise.resolve({id:original.resume_id})});
+  assert.equal((await patch()).status,409);
+  assert.equal((await progressGet(original.candidate_id)).facts.verified,true);
+  body.confirmInvalidateApproval=true;
+  assert.equal((await patch()).status,200);
+  assert.equal((await progressGet(original.candidate_id)).facts.verified,false);
+});
+
+test("replacement transaction rechecks review started after the protection read", async () => {
+  const flags=d1.sqlite.prepare("SELECT id,active FROM workflows").all();d1.sqlite.exec("UPDATE workflows SET active=0");
+  const originalBatch=d1.batch;
+  try {
+    const original=await submit(92003,"batchrace@example.com");
+    await chat(92003,"Update submitted CV");await freshPdf("transaction race");await chat(92003,null,{file_id:"test",file_name:"transaction-race.pdf"});
+    let intercepted=false;
+    d1.batch=async statements=>{
+      if(!intercepted && statements.some(s=>s.query.includes("INSERT INTO telegram_replacement_guards"))){intercepted=true;d1.sqlite.prepare("INSERT INTO candidate_cv_reviews(resume_id,owner_email,started_by,started_at) VALUES(?,?,?,?)").run(original.resume_id,runtime.MANAGEMENT_EMAIL,runtime.MANAGEMENT_EMAIL,new Date().toISOString());}
+      return originalBatch(statements);
+    };
+    await chat(92003,"Confirm replacement");
+    assert(intercepted);
+    const item=await progressGet(original.candidate_id);
+    assert.equal(item.selectedCv.id,original.resume_id);assert.equal(item.automaticStage,"reviewing");assert.equal(item.cvUpdates[0].status,"pending");assert.equal(await archiveService.isArchived("resume",original.resume_id),false);
+  } finally {d1.batch=originalBatch;for(const w of flags)d1.sqlite.prepare("UPDATE workflows SET active=? WHERE id=?").run(w.active,w.id);}
+});
+
+test("explicit paid extraction of a CV update updates only its isolated draft", async () => {
+  const before=await progressGet(manualIntake.candidate_id),candidateBefore=d1.sqlite.prepare("SELECT * FROM candidates WHERE id=?").get(before.id),calls=aiCalls;
+  await chat(70001,"Request a CV update");await freshPdf("AI isolated update");await chat(70001,null,{file_id:"test",file_name:"ai-update.pdf"});await chat(70001,"Send update to HR");
+  const update=(await progressGet(before.id)).cvUpdates.find(u=>u.status==='pending');assert(update);
+  const row=d1.sqlite.prepare("SELECT id FROM telegram_intakes WHERE resume_id=?").get(update.resumeId);
+  const extracted=await extractRoute.POST(ownerRequest('/api/intake/'+row.id+'/extract',{confirm:true}),{params:Promise.resolve({id:row.id})});
+  assert.equal(extracted.status,200,await extracted.clone().text());assert.equal(aiCalls,calls+1);
+  assert.deepEqual(d1.sqlite.prepare("SELECT * FROM candidates WHERE id=?").get(before.id),candidateBefore);
+  const after=await progressGet(before.id);assert.deepEqual(after.facts,before.facts);assert.equal(after.selectedCv.id,before.selectedCv.id);
+  assert.equal(after.cvUpdates.find(u=>u.resumeId===update.resumeId).status,'reviewing');
+  const service=await vite.ssrLoadModule('/features/candidate-progress/cv-updates.server.ts');
+  await assert.rejects(service.decideCvUpdate('other@example.com',update.resumeId,{action:'approve_cv'}),e=>e.status===404);
+});
+
+test("initial update adoption rejects preparation created after the review read", async () => {
+  const flags=d1.sqlite.prepare("SELECT id,active FROM workflows").all();d1.sqlite.exec("UPDATE workflows SET active=0");const originalBatch=d1.batch;
+  try {
+    const original=await submit(92004,"adoptionrace@example.com");
+    const item=await progressGet(original.candidate_id);await progressService.updateProgress(runtime.MANAGEMENT_EMAIL,item.id,{action:'start_review',expectedRevision:item.revision});
+    await chat(92004,'Request a CV update');await freshPdf('initial adoption race');await chat(92004,null,{file_id:'test',file_name:'adoption.pdf'});await chat(92004,'Send update to HR');
+    const update=(await progressGet(item.id)).cvUpdates[0];const {resume}=await (await resumeRoute.GET(ownerRequest('/api/resumes/'+update.resumeId,null,'GET'),{params:Promise.resolve({id:update.resumeId})})).json();
+    const before=d1.sqlite.prepare('SELECT * FROM candidates WHERE id=?').get(item.id);let intercepted=false;
+    d1.batch=async statements=>{if(!intercepted && statements.some(s=>s.query.includes('INSERT INTO candidate_cv_initial_adoption_guards'))){intercepted=true;d1.sqlite.prepare("INSERT INTO workflow_runs(id,workflow_id,owner_email,version,workflow_name,graph_json,resume_id,status,context_json,current_node_id,created_at,updated_at) SELECT ?,workflow_id,owner_email,version,workflow_name,graph_json,?,'queued','{}',current_node_id,created_at,updated_at FROM workflow_runs LIMIT 1").run(crypto.randomUUID(),original.resume_id);}return originalBatch(statements);};
+    const result=await resumeRoute.PATCH(ownerRequest('/api/resumes/'+update.resumeId,{action:'approve_cv',candidate:resume.candidate,updateRevision:resume.cvUpdate.revision,resumeRevision:resume.updatedAt,candidateRevision:resume.candidateRevision},'PATCH'),{params:Promise.resolve({id:update.resumeId})});
+    assert(intercepted);assert.equal(result.status,409,await result.clone().text());assert.deepEqual(d1.sqlite.prepare('SELECT * FROM candidates WHERE id=?').get(item.id),before);assert.equal(d1.sqlite.prepare('SELECT status FROM candidate_cv_updates WHERE resume_id=?').get(update.resumeId).status,'pending');
+  } finally {d1.batch=originalBatch;for(const w of flags)d1.sqlite.prepare('UPDATE workflows SET active=? WHERE id=?').run(w.active,w.id);}
 });

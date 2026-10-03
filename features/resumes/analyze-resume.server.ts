@@ -1,3 +1,4 @@
+import { getCvUpdate } from "@/features/candidate-progress/cv-updates.server";
 import { isArchived } from "@/features/archive/archive.server";
 import {
   telegramIntakes,
@@ -6,12 +7,13 @@ import {
 import { extractResumeProfile } from "@/features/resumes/resume-extraction";
 import { and, desc, eq, ne, or, type SQL } from "drizzle-orm";
 
-import { getDb } from "@/db";
+import { getDb, getDatabaseBinding } from "@/db";
 import {
   auditEvents,
   candidateProfileVersions,
   candidateResumeLinks,
   candidates,
+  candidateCvUpdates,
   resumeExtractions,
   resumeProcessingJobs,
   resumes,
@@ -27,6 +29,7 @@ import {
 } from "@/features/resumes/openai-resume-extraction.server";
 import {
   candidateInsertFromExtraction,
+  candidateSummary,
   parseResumeExtraction,
   resumeStatusForExtraction,
 } from "@/features/resumes/resume.server";
@@ -58,6 +61,8 @@ export async function analyzeResumeForOwner(
         409,
       );
 
+    const cvUpdate = await getCvUpdate(ownerEmail, id);
+    if (cvUpdate && cvUpdate.status !== "replaced" && !["pending", "reviewing"].includes(cvUpdate.status)) return jsonError("This CV update cannot be edited. Request a new update instead.", 409);
     const [intake] = await db
       .select()
       .from(telegramIntakes)
@@ -152,7 +157,7 @@ export async function analyzeResumeForOwner(
           ? error.code
           : "AI_PROVIDER_FAILED";
       const now = new Date().toISOString();
-      await db.batch([
+      const failureStatements = [
         db.insert(resumeProcessingJobs).values({
           id: crypto.randomUUID(),
           resumeId: resume.id,
@@ -174,7 +179,11 @@ export async function analyzeResumeForOwner(
           .where(
             and(eq(resumes.id, resume.id), eq(resumes.ownerEmail, ownerEmail)),
           ),
-      ]);
+      ];
+      if (cvUpdate && cvUpdate.status !== "replaced") {
+        const binding = getDatabaseBinding();
+        await binding.batch([binding.prepare("INSERT INTO candidate_cv_update_guards(resume_id,owner_email,revision,status) VALUES(?,?,?,?)").bind(id, ownerEmail, cvUpdate.updatedAt, cvUpdate.status), ...failureStatements.map(q => {const p = q.toSQL();return binding.prepare(p.sql).bind(...p.params);})]);
+      } else await db.batch(failureStatements as [(typeof failureStatements)[number], ...typeof failureStatements]);
       console.error("Resume AI analysis failed", { resumeId: resume.id, code });
       return jsonError(
         code === "AI_NOT_CONFIGURED"
@@ -226,7 +235,7 @@ export async function analyzeResumeForOwner(
         ),
       );
     }
-    if (candidateId && resume.candidateId) {
+    if (candidateId && resume.candidateId && (!cvUpdate || cvUpdate.status === "replaced")) {
       const [candidate] = await db
         .select()
         .from(candidates)
@@ -278,6 +287,11 @@ export async function analyzeResumeForOwner(
       }
     }
 
+    if (cvUpdate && cvUpdate.status !== "replaced") {
+      const extracted = candidateSummary({...candidateInsertFromExtraction(extraction, {id: cvUpdate.candidateId, ownerEmail, now}), userId: null});
+      const original = JSON.parse(cvUpdate.draftJson);
+      statements.push(db.update(candidateCvUpdates).set({draftJson: JSON.stringify({...extracted, fullName: extracted?.fullName || original.fullName, email: extracted?.email || original.email}), status: "reviewing", updatedAt: now}).where(and(eq(candidateCvUpdates.resumeId, id), eq(candidateCvUpdates.updatedAt, cvUpdate.updatedAt))));
+    }
     statements.push(
       db.insert(resumeExtractions).values({
         id: extractionId,
@@ -416,12 +430,14 @@ export async function analyzeResumeForOwner(
           ),
       );
     }
-    await db.batch(
-      statements as [(typeof statements)[number], ...typeof statements],
-    );
+    if (cvUpdate && cvUpdate.status !== "replaced") {
+      const binding = getDatabaseBinding();
+      await binding.batch([binding.prepare("INSERT INTO candidate_cv_update_guards(resume_id,owner_email,revision,status) VALUES(?,?,?,?)").bind(id, ownerEmail, cvUpdate.updatedAt, cvUpdate.status), ...statements.map(q => {const prepared = q.toSQL(); return binding.prepare(prepared.sql).bind(...prepared.params);})]);
+    } else await db.batch(statements as [(typeof statements)[number], ...typeof statements]);
     return Response.json({ resume: { id: resume.id, status } });
   } catch (error) {
     if (isResponse(error)) return error;
+    if (error instanceof Error && /CV_UPDATE_CHANGED/.test(error.message)) return jsonError("This CV update changed during extraction. Reload before continuing.", 409);
     console.error("Failed to analyze resume", {
       errorName: error instanceof Error ? error.name : "Unknown",
     });

@@ -38,6 +38,7 @@ import {
   type CandidateProgress,
   type CandidateStage,
 } from "./progress";
+import { STAGE_DESCRIPTIONS, stageEvidence, preparationLabel, overrideEvidence } from "./stage-evidence";
 import { stageAge, statusColor, runStatusLabel } from "./presentation";
 import { useUrlFilters } from "./use-url-filters";
 import { candidateNextAction } from "./submission-progress";
@@ -76,6 +77,7 @@ export function ProgressDashboard({
 }) {
   const [data, setData] = useState<Data | null>(null),
     [view, setView] = useState<"kanban" | "list">("kanban"),
+    [viewReady, setViewReady] = useState(false),
     [loading, setLoading] = useState(true),
     [error, setError] = useState(""),
     [notice, setNotice] = useState(""),
@@ -101,6 +103,7 @@ export function ProgressDashboard({
         const saved = localStorage.getItem(preferenceKey);
         if (saved === "list" || saved === "kanban") setView(saved);
       } catch {}
+      setViewReady(true);
     }, 0);
     return () => clearTimeout(timer);
   }, [preferenceKey]);
@@ -217,8 +220,12 @@ export function ProgressDashboard({
       >
         {STAGE_LABELS[item.stage]}
       </Badge>
-      <p className="mt-3 truncate text-xs" title={item.selectedCv.fileName}>
-        CV: {item.selectedCv.fileName}
+      <p className="mt-2 break-words text-xs text-muted-foreground">{stageEvidence(item)}</p>
+      {item.manual && <p className="mt-1 break-words text-xs text-muted-foreground">{overrideEvidence(item)}</p>}
+      {preparationLabel(item) && <p className="mt-1 text-xs font-medium">{preparationLabel(item)}</p>}
+      {(item.cvUpdates ?? []).some(u => ["pending", "reviewing"].includes(u.status)) && <p className="mt-1 text-xs text-amber-700">CV update pending · application unchanged</p>}
+      <p className="mt-3 truncate text-xs" title={item.currentCv?.fileName ?? item.selectedCv.fileName}>
+        Current CV: {item.currentCv?.fileName ?? item.selectedCv.fileName}
       </p>
       <div className="mt-2 flex flex-wrap gap-1.5">
         <Badge variant="secondary">
@@ -271,6 +278,7 @@ export function ProgressDashboard({
               <Button
                 size="sm"
                 variant={view === "kanban" ? "secondary" : "ghost"}
+                disabled={!viewReady}
                 aria-pressed={view === "kanban"}
                 onClick={() => switchView("kanban")}
               >
@@ -280,6 +288,7 @@ export function ProgressDashboard({
               <Button
                 size="sm"
                 variant={view === "list" ? "secondary" : "ghost"}
+                disabled={!viewReady}
                 aria-pressed={view === "list"}
                 onClick={() => switchView("list")}
               >
@@ -410,6 +419,7 @@ export function ProgressDashboard({
                   <h2 className="text-sm font-semibold">{STAGE_LABELS[s]}</h2>
                   <Badge variant="secondary">{data?.stats[s] ?? 0}</Badge>
                 </div>
+                <p className="mb-3 text-xs text-muted-foreground">{STAGE_DESCRIPTIONS[s]}</p>
                 {data &&
                   data.stats[s] >
                     data.items.filter((i) => i.stage === s).length && (
@@ -478,7 +488,7 @@ export function ProgressDashboard({
                       </p>
                     )}
                   </TableCell>
-                  <TableCell>{i.selectedCv.fileName}</TableCell>
+                  <TableCell><p>{i.currentCv?.fileName ?? i.selectedCv.fileName}</p>{i.currentCv && i.currentCv.id !== i.selectedCv.id && <p className="text-xs text-muted-foreground">Preparation: {i.selectedCv.fileName}</p>}</TableCell>
                   <TableCell>
                     <Badge
                       variant="outline"
@@ -488,6 +498,8 @@ export function ProgressDashboard({
                     </Badge>
                     <p className="mt-1 text-xs text-muted-foreground">
                       {stageAge(i.stage, i.stageSince)}
+                      <span className="mt-1 block">{stageEvidence(i)}</span>
+                      {i.manual && <span className="mt-1 block">{overrideEvidence(i)}</span>}
                     </p>
                   </TableCell>
                   <TableCell>

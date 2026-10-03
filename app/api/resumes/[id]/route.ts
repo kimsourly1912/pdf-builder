@@ -1,3 +1,4 @@
+import { getCvUpdate, decideCvUpdate } from "@/features/candidate-progress/cv-updates.server";
 import { archiveEntity, isArchived } from "@/features/archive/archive.server";
 import {
   telegramIntakes,
@@ -106,7 +107,10 @@ export async function GET(
           )
           .limit(1)
       : [];
+    const cvUpdate = await getCvUpdate(ownerEmail, id);
+    const updateDraft = cvUpdate ? parseCandidateUpdate(JSON.parse(cvUpdate.draftJson)) : null;
     const detail: ResumeDetail = {
+      cvUpdate: cvUpdate && cvUpdate.status !== "replaced" ? {status: cvUpdate.status, revision: cvUpdate.updatedAt, baseResumeId: cvUpdate.baseResumeId, reason: cvUpdate.reason} : undefined,
       intakeId: intake?.id,
       candidateRevision: row.candidate?.updatedAt,
       archived: await isArchived("resume", id),
@@ -131,7 +135,7 @@ export async function GET(
         : "queued",
       verificationStatus: row.resume
         .verificationStatus as ResumeDetail["verificationStatus"],
-      candidate: candidateSummary(row.candidate),
+      candidate: updateDraft && row.candidate && cvUpdate?.status !== "replaced" ? {...updateDraft, id: row.candidate.id, verificationStatus: cvUpdate?.status === "accepted" ? "verified" : "extracted"} : candidateSummary(row.candidate),
       duplicateCandidate: candidateSummary(duplicate),
       extraction: extractionRow
         ? parseStoredExtraction(extractionRow.fieldsJson)
@@ -159,6 +163,8 @@ export async function PATCH(
   try {
     const ownerEmail = await requireRequestOwner(request);
     const { id } = await context.params;
+    const origin = request.headers.get("origin");
+    if (origin && origin !== new URL(request.url).origin) return jsonError("Use the same site to review a CV.", 403);
     const body = (await request.json()) as Record<string, unknown>;
     const [resume] = await getDb()
       .select()
@@ -168,6 +174,10 @@ export async function PATCH(
     if (!resume) return jsonError("Resume not found.", 404);
     if (await isArchived("resume", id))
       return jsonError("Restore this CV from Archive before editing it.", 409);
+    const cvUpdate = await getCvUpdate(ownerEmail, id);
+    if (cvUpdate && cvUpdate.status !== "replaced") {
+      return Response.json(await decideCvUpdate(ownerEmail, id, body));
+    }
     if (body.action === "link_candidate")
       return linkCandidate(ownerEmail, resume.id, body.candidateId);
     if (body.action === "retry_extraction")
@@ -268,6 +278,8 @@ export async function PATCH(
           eq(candidates.ownerEmail, ownerEmail),
         ),
       );
+    if (!approving && resume.verificationStatus === "verified" && body.confirmInvalidateApproval !== true)
+      return jsonError("Saving these changes requires CV approval again. Existing preparation and submitted answers are preserved. Confirm before saving.", 409);
     if (!approving) {
       const binding = getDatabaseBinding();
       const queries = [
@@ -486,7 +498,7 @@ export async function PATCH(
     return Response.json({ candidate: verifiedCandidate });
   } catch (error) {
     if (isResponse(error)) return error;
-    if (error instanceof Error && /RESUME_EDIT_CHANGED/.test(error.message))
+    if (error instanceof Error && /RESUME_EDIT_CHANGED|CV_UPDATE_CHANGED/.test(error.message))
       return jsonError(
         "This CV changed while saving. Reload before trying again.",
         409,

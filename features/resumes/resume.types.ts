@@ -137,6 +137,7 @@ export type ResumeSummary = {
 };
 
 export type ResumeDetail = ResumeSummary & {
+  cvUpdate?: {status: string; revision: string; baseResumeId: string; reason: string | null};
   intakeId?: string;
   archived?: boolean;
   candidateRevision?: string;

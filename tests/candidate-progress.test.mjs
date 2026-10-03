@@ -73,7 +73,7 @@ test("next action opens the selected CV, contact confirmation or active preparat
     attention: [],
     run: null,
   };
-  assert.equal(candidateNextAction(item).href, "/resumes/cv-2");
+  assert.equal(candidateNextAction(item).href, "/candidates/candidate-1?tab=documents");
   item.facts = { ...facts, preparationCurrent: false };
   assert.equal(candidateNextAction(item).href, "/intake/intake-2#contact");
   item.contactConfirmed = true;
@@ -87,7 +87,7 @@ test("next action opens the selected CV, contact confirmation or active preparat
   assert.equal(candidateNextAction(item).next, "View progress");
   // New, unapproved CVs still require review despite an older preparation run.
   item.facts.verified = false;
-  assert.equal(candidateNextAction(item).href, "/resumes/cv-2");
+  assert.equal(candidateNextAction(item).href, "/candidates/candidate-1?tab=documents");
 });
 test("completed preparation and sent invitation do not claim the candidate has submitted forms", () => {
   assert.equal(automaticStage(facts), "awaiting_forms");
