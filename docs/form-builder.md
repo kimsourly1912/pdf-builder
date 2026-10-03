@@ -1,6 +1,6 @@
 # Web form builder
 
-The **Form Builder** sidebar entry opens `/forms`. The existing **PDF Templates** editor remains available separately as a reference and for existing assignments; this release does not migrate or remove it.
+The **Forms & documents → Form templates** sidebar entry opens `/forms`. The existing **PDF Templates** editor remains available separately as a reference and for existing assignments; this release does not migrate or remove it.
 
 ## HR flow
 
@@ -21,6 +21,10 @@ PDF generation happens **after** answers are saved. Pending artifacts can be com
 
 Forms use the existing archive and protected-history rules. Archiving a form removes it from active builder lists and prevents new assignments. Existing account assignments retain their pinned history. Templates with assignments/submissions cannot be permanently deleted.
 
+## HR acceptance and corrections
+
+Submitted responses link to [HR review](hr-workspace.md). Acceptance and correction requests are recorded separately from saved answers. A correction creates a new attempt pinned to the same published version, with original history retained. Candidate feedback appears in My forms; no Telegram message is sent automatically.
+
 ## Implementation
 
 - `features/forms/form.ts`: Zod definitions, stable identities, answer validation and the compatibility adapter.
@@ -38,4 +42,4 @@ Libraries are pinned in the lockfile. This release uses the current `@dnd-kit/re
 
 Integration tests cover authorization, definition validation, revisions, private media, pinned versions, idempotency, concurrent revocation, JSON-only submission, Khmer/rotated PDF output, overflow and PDF retries. Browser verification covers builder interactions, mapping, responsive preview and the candidate submission path.
 
-The account-protected email assignment model is intentional: unauthenticated Google Forms-style public collection, bulk emailing, conditional sections, correction requests, and retirement/migration of legacy templates need separate product decisions. This guide does not claim those capabilities exist.
+The account-protected email assignment model is intentional: unauthenticated Google Forms-style public collection, bulk emailing, conditional sections, and retirement/migration of legacy templates need separate product decisions. This guide does not claim those capabilities exist.

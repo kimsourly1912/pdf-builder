@@ -134,3 +134,15 @@ test("review stages do not need AI, while approval requires actual CV verificati
     "reviewing",
   );
 });
+
+test("document acceptance requires HR decisions and cannot be created by Kanban moves",()=>{
+ const f={...facts,completed:2,accepted:1};
+ assert.equal(automaticStage(f),'ready');
+ assert.match(transitionRequirement(f,'accepted').message,/accept every required/);
+ assert.equal(automaticStage({...f,accepted:2}),'accepted');
+ assert.equal(transitionRequirement({...f,accepted:2},'ready'),null);
+});
+
+test("correction requests start a new waiting clock while preserving preparation history",()=>{
+ assert.equal(stageSince('awaiting_forms',{receivedAt:'2026-10-01',approvedAt:'2026-10-01',approvalCurrent:true,cvChangedAt:'2026-10-01',candidateChangedAt:'2026-10-01',preparationCompletedAt:'2026-10-01',formCompletedAt:[],formCorrectionAt:['2026-10-03']}),'2026-10-03');
+});

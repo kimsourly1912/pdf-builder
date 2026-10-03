@@ -607,6 +607,7 @@ export async function intakeList(ownerEmail: string, query: URLSearchParams) {
     )
     .map((r) => ({
       id: r.intake.id,
+      candidateId: r.candidate.id,
       progress: progress.get(r.candidate.id) ?? null,
       reviewStatus: !!r.reviewReady ? "verified" : "needs_review",
       cvCount: countMap.get(r.connection.id)?.cvCount ?? 1,

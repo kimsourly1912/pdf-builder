@@ -1103,6 +1103,104 @@ test("new forms stay out of legacy template/response lists and remain selectable
   const option=options.find(o=>o.id===id);assert.equal(option.kind,"form");assert.equal(option.roles.length,1);assert.equal(option.roles[0].id,model.FORM_ASSIGNMENT_ROLE.id);
 });
 
+
+test("HR corrections preserve immutable answers and version, require owner access, and create a guarded new attempt", async () => {
+  const review = await vite.ssrLoadModule('/app/api/submissions/[id]/review/route.ts');
+  const inbox = await vite.ssrLoadModule('/features/hr/review-inbox.server.ts');
+  const created = await ok(await call(() => forms.createForm(request('/api/forms','POST',{name:'TEST HR corrections'}))),201);
+  const definition={format:1,fields:[field('comment','paragraph','comment',true)],mappings:[],pageCount:0};
+  await ok(await call(() => forms.saveForm(request(`/api/forms/${created.id}/publish`,'POST',{name:'TEST HR corrections',definition,revision:created.revision}),created.id,true)));
+  const assigned = await ok(await assign.POST(request(`/api/forms/${created.id}/assign`,'POST',{email:'candidate@example.com'},ownerCookie,{'Idempotency-Key':'hr-review-assignment-001'}),context(created.id)),201);
+  const token='assigned_'+assigned.assignment.id;
+  const submitted=await ok(await fill.POST(request(`/api/fill/${token}`,'POST',answers({comment:'Original response'}),candidateCookie,{'Idempotency-Key':'hr-review-original-001'}),{params:Promise.resolve({token})}),201);
+  const id=submitted.submission.id;
+  const original=db.sqlite.prepare('SELECT * FROM submissions WHERE id=?').get(id);
+  assert.equal((await review.GET(request(`/api/submissions/${id}/review`,'GET',undefined,candidateCookie),context(id))).status,401);
+  assert.equal((await review.POST(request(`/api/submissions/${id}/review`,'POST',{action:'accept',expectedRevision:''},candidateCookie),context(id))).status,401);
+  await ok(await review.GET(request(`/api/submissions/${id}/review`),context(id)));
+  assert.ok((await inbox.reviewInbox(runtime.MANAGEMENT_EMAIL,new URLSearchParams({search:'TEST HR corrections'}))).items.some(s=>s.id===id));
+  assert.equal((await review.POST(request(`/api/submissions/${id}/review`,'POST',{action:'request_corrections',expectedRevision:'',reason:'x'}),context(id))).status,422);
+  assert.equal((await review.POST(request(`/api/submissions/${id}/review`,'POST',{action:'accept',expectedRevision:'stale'}),context(id))).status,409);
+  const corrected=await ok(await review.POST(request(`/api/submissions/${id}/review`,'POST',{action:'request_corrections',expectedRevision:'',reason:'Please correct the contact details.'}),context(id)));
+  assert.equal(corrected.review.reviewStatus,'corrections_requested');
+  assert.equal(corrected.assignmentUrl,`/fill/${token}`);
+  assert.deepEqual(db.sqlite.prepare('SELECT * FROM submissions WHERE id=?').get(id),original);
+  const link=db.sqlite.prepare('SELECT * FROM form_assignments WHERE id=?').get(assigned.assignment.id);
+  assert.notEqual(link.recipient_link_id,original.recipient_link_id);
+  assert.equal(link.template_version_id,original.template_version_id);
+  assert.equal(link.status,'assigned');
+  const payload=await ok(await fill.GET(request(`/api/fill/${token}`,'GET',undefined,candidateCookie),{params:Promise.resolve({token})}));
+  assert.equal(payload.correction.reason,'Please correct the contact details.');
+  assert.equal(payload.formDraftValues.comment,'Original response');
+  const portalData=await ok(await portal.GET(request('/api/portal/assignments','GET',undefined,candidateCookie)));
+  assert.equal(portalData.assignments.find(a=>a.id===assigned.assignment.id).correctionReason,'Please correct the contact details.');
+  assert.equal((await review.POST(request(`/api/submissions/${id}/review`,'POST',{action:'accept',expectedRevision:corrected.review.revision}),context(id))).status,409);
+  const newBody=answers({comment:'Corrected response'});newBody.set('revision',payload.formDraftRevision);
+  const newSubmission=await ok(await fill.POST(request(`/api/fill/${token}`,'POST',newBody,candidateCookie,{'Idempotency-Key':'hr-review-corrected-001'}),{params:Promise.resolve({token})}),201);
+  assert.notEqual(newSubmission.submission.id,id);
+  const nextId=newSubmission.submission.id;
+  const nextDetail=await ok(await review.GET(request(`/api/submissions/${nextId}/review`),context(nextId)));
+  assert.equal(nextDetail.review.previous.id,id);
+  assert.equal((await ok(await review.GET(request(`/api/submissions/${id}/review`),context(id)))).review.next.id,nextId);
+  await ok(await review.POST(request(`/api/submissions/${nextId}/review`,'POST',{action:'accept',expectedRevision:''}),context(nextId)));
+  assert.equal(db.sqlite.prepare('SELECT status FROM submission_reviews WHERE submission_id=?').get(nextId).status,'accepted');
+  assert.equal(db.sqlite.prepare('SELECT count(*) n FROM audit_events WHERE target_id=? AND action=?').get(nextId,'submission.accepted').n,1);
+  assert.equal((await review.POST(request(`/api/submissions/${nextId}/review`,'POST',{action:'accept',expectedRevision:''}),context(nextId))).status,409);
+  assert.deepEqual(db.sqlite.prepare('SELECT * FROM submissions WHERE id=?').get(id),original);
+});
+
+test("HR decisions reject archived submissions and concurrent assignment changes without rotating links", async () => {
+  const review = await vite.ssrLoadModule('/app/api/submissions/[id]/review/route.ts');
+  const original = db.sqlite.prepare('SELECT * FROM submissions WHERE id=?').get(submittedId);
+  const assignment = db.sqlite.prepare('SELECT * FROM form_assignments WHERE recipient_link_id=?').get(original.recipient_link_id);
+  const originalBatch = db.batch;
+  let intercepted=false;
+  db.batch = async statements => {
+    if(!intercepted && statements[0].query.startsWith('INSERT INTO submission_reviews')) {
+      intercepted=true;
+      db.sqlite.prepare("UPDATE form_assignments SET updated_at='changed-concurrently' WHERE id=?").run(assignment.id);
+    }
+    return originalBatch(statements);
+  };
+  try {
+    const response=await review.POST(request(`/api/submissions/${submittedId}/review`,'POST',{action:'request_corrections',expectedRevision:'',reason:'Please update the answer.'}),context(submittedId));
+    assert.equal(response.status,409,await response.clone().text());
+    assert.equal(db.sqlite.prepare('SELECT count(*) n FROM submission_reviews WHERE submission_id=?').get(submittedId).n,0);
+    assert.equal(db.sqlite.prepare('SELECT recipient_link_id FROM form_assignments WHERE id=?').get(assignment.id).recipient_link_id,original.recipient_link_id);
+  } finally {
+    db.batch=originalBatch;
+    db.sqlite.prepare('UPDATE form_assignments SET updated_at=? WHERE id=?').run(assignment.updated_at,assignment.id);
+  }
+  const archive=await vite.ssrLoadModule('/features/archive/archive.server.ts');
+  await archive.archiveEntity(runtime.MANAGEMENT_EMAIL,'submission',submittedId);
+  assert.equal((await review.POST(request(`/api/submissions/${submittedId}/review`,'POST',{action:'accept',expectedRevision:''}),context(submittedId))).status,404);
+  await archive.restoreEntity(runtime.MANAGEMENT_EMAIL,'submission',submittedId,db.sqlite.prepare("SELECT archived_at FROM archive_records WHERE entity_type='submission' AND entity_id=?").get(submittedId).archived_at);
+});
+
+test("candidate progress connects manual assignments, HR acceptance and correction history without changing CV approval",async()=>{
+ const progress=await vite.ssrLoadModule('/features/candidate-progress/progress.server.ts');
+ const home=await vite.ssrLoadModule('/features/hr/home.server.ts');
+ const now='2026-10-03T00:00:00.000Z';
+ db.sqlite.prepare("INSERT INTO candidates(id,owner_email,user_id,full_name,email,verification_status,created_at,updated_at) VALUES('hr-candidate',?,?,'TEST HR candidate','candidate@example.com','verified',?,?)").run(runtime.MANAGEMENT_EMAIL,accountId,now,now);
+ db.sqlite.prepare("INSERT INTO resumes(id,owner_email,candidate_id,file_key,file_name,file_size,content_type,checksum,page_count,source,received_date,status,verification_status,created_at,updated_at) VALUES('hr-cv',?,'hr-candidate','hr-test.pdf','TEST HR CV.pdf',1,'application/pdf','hr-test-checksum',1,'staff','2026-10-03','uploaded','verified',?,?)").run(runtime.MANAGEMENT_EMAIL,now,now);
+ db.sqlite.prepare("INSERT INTO candidate_profile_versions(id,owner_email,candidate_id,resume_id,version_number,profile_json,verification_status,source,created_by_email,created_at,verified_at) VALUES('hr-approval',?,'hr-candidate','hr-cv',1,'{}','verified','manual',?,?,?)").run(runtime.MANAGEMENT_EMAIL,runtime.MANAGEMENT_EMAIL,now,now);
+ const chosen=db.sqlite.prepare("SELECT f.id FROM form_assignments f JOIN templates t ON t.id=f.template_id WHERE t.name='TEST HR corrections'").get();
+ db.sqlite.prepare("UPDATE form_assignments SET candidate_profile_version_id='hr-approval' WHERE id=?").run(chosen.id);
+ const item=await progress.detailProgress(runtime.MANAGEMENT_EMAIL,'hr-candidate');
+ assert.equal(item.selectedCv.verified,true);
+ assert.equal(item.facts.preparationCurrent,true);
+ assert.equal(item.facts.required,1);
+ assert.equal(item.facts.accepted,1);
+ assert.equal(item.stage,'accepted');
+ assert.ok(item.forms[0].responseUrl.includes('/submissions/'));
+ assert.ok(item.assignments.length>item.forms.length);
+ assert.ok(item.activity.some(a=>a.action==='Form corrections requested'));
+ assert.ok(item.activity.some(a=>a.action==='Form accepted by HR'));
+ const summary=await home.hrHome(runtime.MANAGEMENT_EMAIL);
+ assert.equal(summary.tasks.some(t=>t.id==='candidate:hr-candidate'),false);
+ assert.ok(summary.counts.review>0);
+ assert.equal((await progress.progressOverview('another-owner@example.com')).length,0);
+});
 test("archived form responses disappear from active lists while protected submission and assignment evidence remains",async()=>{
   const archive=await vite.ssrLoadModule("/features/archive/archive.server.ts");
   await archive.archiveEntity(runtime.MANAGEMENT_EMAIL,"submission",submittedId);

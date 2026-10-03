@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button";
 
 export function ResumePdfPreview(props: {
   resumeId: string;
+  url?: string;
   fileName: string;
   contained?: boolean;
   allowDownload?: boolean;
@@ -25,7 +26,7 @@ export function ResumePdfPreview(props: {
     "loading",
   );
   const [error, setError] = useState("");
-  const previewUrl = `/api/resumes/${resumeId}/download`;
+  const previewUrl = props.url ?? `/api/resumes/${resumeId}/download`;
 
   useEffect(() => {
     const controller = new AbortController();

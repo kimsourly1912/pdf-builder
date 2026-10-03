@@ -38,6 +38,7 @@ export type RecipientResumePrefill = {
 };
 
 export type TemplateFillPayload = {
+  correction?: { reason: string; previousSubmittedAt: string } | null;
   formDefinition?: import("@/features/forms/form").FormDefinition;
   formDraftValues?: Record<string, unknown>;
   formDraftRevision?: string;

@@ -4,7 +4,7 @@ Apply these standards to new screens and changes to existing screens. Existing s
 
 ## Layout and visual language
 
-Use `components/patterns/app-shell.tsx` and `page-header.tsx` for application pages. Operational screens such as Intake, Progress, and Workflows should use the available content width; constrain reading text and forms where it improves comprehension. Avoid nesting a narrow page container inside an already constrained shell.
+Use `components/patterns/app-shell.tsx` and `page-header.tsx` for application pages. Center reading, review, table and card-list pages in a single `max-w-7xl` (80rem) shell container. Use full width for interactive studios, form builders, workflow canvases and the candidate Kanban. The candidate List view uses the centered container. Avoid nesting a narrow page container inside an already constrained shell.
 
 Reuse `components/ui/` primitives and `components/patterns/` feedback, status, pagination, and data-view components. Use existing Tailwind theme tokens for background, border, text, and focus states; support dark mode. Follow nearby spacing, type sizes, and corner styles rather than introducing a second visual system. Prefer shared variants over copied component markup.
 

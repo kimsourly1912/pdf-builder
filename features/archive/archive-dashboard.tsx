@@ -149,7 +149,7 @@ export function ArchiveDashboard({ displayName }: { displayName: string }) {
   }
   const blockers = impact?.blockers.filter((b) => b.reason) ?? [];
   return (
-    <AppShell displayName={displayName} fullWidth>
+    <AppShell displayName={displayName}>
       <PageHeader
         title="Archive"
         description="Restore archived records or permanently delete eligible data. Completed submissions and linked history remain protected."

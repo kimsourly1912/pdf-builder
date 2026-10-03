@@ -29,3 +29,11 @@ For a new decision, add a stable ID, explain the tradeoff and resulting constrai
 New web forms assign all fields to one managed account; recipient roles are absent from their authoring and candidate interfaces. The existing PDF template editor remains available until an explicit retirement/migration decision. A private single-user storage adapter reuses existing workflow and assignment guards; it is not an authentication role.
 
 Drafts and published versions are separate. Published form presentation, fields, JSON keys, placements and source PDF are pinned per assignment. PDF output is optional and generated after the immutable JSON response commits; generation failure does not undo submission. Retrying uses the same snapshot. Use React Hook Form/Zod, the current dnd-kit React adapter, react-rnd, signature_pad and the existing PDF stack rather than inventing drag, form or signature primitives.
+
+## HR workspace and document review (2026-10-03)
+
+- Daily navigation centers on candidates and HR tasks. PDF editing remains a full-width tool at `/studio`; older template-editor links remain compatible.
+- Reading/review screens use a centered 80rem container; interactive canvases and Kanban use full width.
+- CV verification and document acceptance are separate from hiring decisions.
+- Correction requests create a new account-protected attempt with the same pinned version and approved snapshot. Original answers/artifacts remain immutable; new draft media cannot own original submission media.
+- Form acceptance is evidence-derived and cannot be substituted by a Kanban move. Management remains owner-scoped pending a separate team-permissions design.

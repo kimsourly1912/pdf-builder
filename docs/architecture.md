@@ -60,3 +60,5 @@ Workflow graphs and approved preparation values are snapshotted. Lease checks, r
 There is currently one production target. `main` is not the application deployment branch. See [decisions](decisions.md) before changing these assumptions.
 
 The additive [web form builder](form-builder.md) lives in `features/forms`, with `/forms` management routes and shared `/fill` account authorization. It uses versioned template storage and existing assignment/workflow history, with separate draft-response and leased PDF-artifact tables. Legacy PDF templates continue to use their existing editor.
+
+[HR workspace](hr-workspace.md) adds task-based Home and unified profiles. Submission reviews are separate records; correction requests rotate the existing assignment to a new link in a guarded batch while retaining immutable submission/version history.

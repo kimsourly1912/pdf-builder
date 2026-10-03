@@ -1,14 +1,12 @@
 "use client";
 
 import {
-  Activity,
   Archive,
-  FilePenLine,
+  Home,
   Files,
   FileText,
   UsersRound,
   Workflow,
-  Inbox,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -43,23 +41,59 @@ type AppShellProps = {
 };
 
 const navigationItems = [
-  { href: "/", label: "Editor", icon: FilePenLine, exact: true },
-  { href: "/templates", label: "Templates", icon: Files },
-  { href: "/resumes", label: "Resumes", icon: FileText },
-  { href: "/accounts", label: "Accounts", icon: UsersRound },
-  { href: "/workflows", label: "Workflows", icon: Workflow },
-  { href: "/candidates", label: "Candidates", icon: UsersRound },
-  { href: "/analyses", label: "AI analyses", icon: Archive },
-  { href: "/archive", label: "Archive", icon: Archive },
-  { href: "/activity", label: "Activity", icon: Activity },
+  { href: "/", label: "Home", icon: Home, children: [] },
+  {
+    href: "/candidates",
+    label: "Candidates",
+    icon: UsersRound,
+    children: [
+      { href: "/candidates", label: "All candidates" },
+      { href: "/intake", label: "New submissions" },
+      { href: "/resumes", label: "CV library" },
+    ],
+  },
+  {
+    href: "/forms",
+    label: "Forms & documents",
+    icon: Files,
+    children: [
+      { href: "/forms", label: "Form templates" },
+      { href: "/submissions", label: "Review inbox" },
+      { href: "/templates", label: "PDF templates" },
+      { href: "/studio", label: "PDF studio" },
+    ],
+  },
+  { href: "/workflows", label: "Automation", icon: Workflow, children: [] },
+  {
+    href: "/administration",
+    label: "Administration",
+    icon: Archive,
+    children: [
+      { href: "/administration", label: "Settings & integrations" },
+      { href: "/accounts", label: "Account access" },
+      { href: "/analyses", label: "AI history" },
+      { href: "/activity", label: "Activity" },
+      { href: "/archive", label: "Archive" },
+    ],
+  },
 ];
+function matches(pathname: string, href: string) {
+  return href === "/"
+    ? pathname === "/"
+    : pathname === href || pathname.startsWith(`${href}/`);
+}
 
 function AppShell(props: AppShellProps) {
   const pathname = usePathname();
   const currentItem =
-    navigationItems.find((item) =>
-      item.exact ? pathname === item.href : (pathname.startsWith(item.href) || (item.href === "/templates" && pathname.startsWith("/forms"))),
+    navigationItems.find(
+      (item) =>
+        matches(pathname, item.href) ||
+        item.children.some((child) => matches(pathname, child.href)),
     ) ?? navigationItems[0];
+  const currentLabel =
+    currentItem.children.find((child) => matches(pathname, child.href))
+      ?.label ?? currentItem.label;
 
   return (
     <SidebarProvider>
@@ -67,15 +101,15 @@ function AppShell(props: AppShellProps) {
         <SidebarHeader className="border-b border-sidebar-border/70">
           <SidebarMenu>
             <SidebarMenuItem>
-              <SidebarMenuButton asChild size="lg" tooltip="PDF Studio">
-                <Link href="/templates">
+              <SidebarMenuButton asChild size="lg" tooltip="HR Workspace">
+                <Link href="/">
                   <span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-primary text-primary-foreground">
                     <FileText className="size-4" />
                   </span>
                   <span className="grid min-w-0 flex-1 text-left leading-tight">
-                    <span className="truncate font-semibold">PDF Studio</span>
+                    <span className="truncate font-semibold">HR Workspace</span>
                     <span className="truncate text-xs text-sidebar-foreground/60">
-                      HR workspace
+                      Candidates & documents
                     </span>
                   </span>
                 </Link>
@@ -90,20 +124,13 @@ function AppShell(props: AppShellProps) {
             <SidebarGroupContent>
               <SidebarMenu>
                 {navigationItems.map((item) => {
-                  const active =
-                    item.href === "/candidates" &&
-                    pathname.startsWith("/intake")
-                      ? true
-                      : item.exact
-                        ? pathname === item.href
-                        : pathname.startsWith(item.href);
-                  const templateActive = item.href === "/templates" && pathname.startsWith("/forms");
+                  const active = item === currentItem;
                   const Icon = item.icon;
                   return (
                     <SidebarMenuItem key={item.href}>
                       <SidebarMenuButton
                         asChild
-                        isActive={active || templateActive}
+                        isActive={active}
                         tooltip={item.label}
                       >
                         <Link href={item.href}>
@@ -111,34 +138,20 @@ function AppShell(props: AppShellProps) {
                           <span>{item.label}</span>
                         </Link>
                       </SidebarMenuButton>
-                      {item.href === "/templates" && <SidebarMenuSub>
-                        <SidebarMenuSubItem><SidebarMenuSubButton asChild isActive={pathname.startsWith("/forms")}><Link href="/forms"><span>Form Builder · New</span></Link></SidebarMenuSubButton></SidebarMenuSubItem>
-                        <SidebarMenuSubItem><SidebarMenuSubButton asChild isActive={pathname.startsWith("/templates")}><Link href="/templates"><span>PDF Templates · Current</span></Link></SidebarMenuSubButton></SidebarMenuSubItem>
-                      </SidebarMenuSub>}
-                      {item.href === "/candidates" && (
+                      {item.children.length > 0 && active && (
                         <SidebarMenuSub>
-                          <SidebarMenuSubItem>
-                            <SidebarMenuSubButton
-                              asChild
-                              isActive={pathname.startsWith("/intake")}
-                            >
-                              <Link href="/intake">
-                                <Inbox />
-                                <span>Intake</span>
-                              </Link>
-                            </SidebarMenuSubButton>
-                          </SidebarMenuSubItem>
-                          <SidebarMenuSubItem>
-                            <SidebarMenuSubButton
-                              asChild
-                              isActive={pathname.startsWith("/candidates")}
-                            >
-                              <Link href="/candidates">
-                                <Activity />
-                                <span>Progress</span>
-                              </Link>
-                            </SidebarMenuSubButton>
-                          </SidebarMenuSubItem>
+                          {item.children.map((child) => (
+                            <SidebarMenuSubItem key={child.href}>
+                              <SidebarMenuSubButton
+                                asChild
+                                isActive={matches(pathname, child.href)}
+                              >
+                                <Link href={child.href}>
+                                  <span>{child.label}</span>
+                                </Link>
+                              </SidebarMenuSubButton>
+                            </SidebarMenuSubItem>
+                          ))}
                         </SidebarMenuSub>
                       )}
                     </SidebarMenuItem>
@@ -176,19 +189,13 @@ function AppShell(props: AppShellProps) {
           <SidebarTrigger className="-ml-1" />
           <Separator orientation="vertical" className="mx-1 h-4" />
           <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-medium">
-              {pathname.startsWith("/intake")
-                ? "Candidate intake"
-                : pathname.startsWith("/candidates")
-                  ? "Candidate progress"
-                  : currentItem.label}
-            </p>
+            <p className="truncate text-sm font-medium">{currentLabel}</p>
           </div>
           <SignOutButton />
         </header>
         <div className="flex flex-1 flex-col">
           <div
-            className={`mx-auto flex w-full min-w-0 flex-1 flex-col gap-6 p-4 sm:p-6 lg:p-8 ${props.fullWidth ? "max-w-none" : "max-w-[90rem]"}`}
+            className={`mx-auto flex w-full min-w-0 flex-1 flex-col gap-6 p-4 sm:p-6 lg:p-8 ${props.fullWidth ? "max-w-none" : "max-w-7xl"}`}
           >
             {props.children}
           </div>

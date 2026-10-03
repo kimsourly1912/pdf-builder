@@ -10,6 +10,7 @@ import {
   templates,
   templateVersions,
   formSubmissionArtifacts,
+  submissionReviews,
   submissions,
   user,
   recipientProfiles,
@@ -483,6 +484,7 @@ export async function formResponses(request: Request, id: string) {
       pdfStatus: formSubmissionArtifacts.status,
       pdfError: formSubmissionArtifacts.errorCode,
       versionId: submissions.templateVersionId,
+      reviewStatus: submissionReviews.status,
       fileKey: formSubmissionArtifacts.fileKey,
     })
     .from(submissions)
@@ -490,6 +492,7 @@ export async function formResponses(request: Request, id: string) {
       formSubmissionArtifacts,
       eq(formSubmissionArtifacts.submissionId, submissions.id),
     )
+    .leftJoin(submissionReviews, eq(submissionReviews.submissionId, submissions.id))
     .where(where)
     .orderBy(desc(submissions.submittedAt))
     .limit(query.pageSize)
@@ -499,6 +502,7 @@ export async function formResponses(request: Request, id: string) {
       ...createPageMeta(totals.total, query),
       items: rows.map((r) => ({
         ...r,
+        reviewStatus: r.reviewStatus ?? "pending",
         answers: (
           JSON.parse(r.answersJson) as Array<{
             fieldId: string;

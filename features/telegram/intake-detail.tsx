@@ -242,7 +242,7 @@ export function IntakeDetail({
         ? "Resolve issue"
         : "View progress";
   return (
-    <AppShell displayName={displayName} fullWidth>
+    <AppShell displayName={displayName}>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <Link

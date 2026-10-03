@@ -62,7 +62,7 @@ export function FormsDashboard(props: { displayName: string }) {
   }
   const filtered = items;
   return (
-    <AppShell displayName={props.displayName} fullWidth>
+    <AppShell displayName={props.displayName}>
       <PageHeader
         title="Form Builder"
         description="Build a clean web form, map answers to a PDF, then assign it to a user."

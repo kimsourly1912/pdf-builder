@@ -600,7 +600,7 @@ export function TemplatesDashboard(props: { displayName: string }) {
         description="Create reusable PDF forms, manage recipient access, and review submissions from one workspace."
         actions={
           <Button asChild>
-            <Link href="/">
+            <Link href="/studio">
               <FileText className="size-4" /> New template
             </Link>
           </Button>
@@ -1048,7 +1048,7 @@ function TemplateRowActions(props: {
   return (
     <div className="flex justify-end gap-1">
       <Button asChild variant="outline" size="sm">
-        <Link href={`/?templateId=${encodeURIComponent(props.template.id)}`}>
+        <Link href={`/studio?templateId=${encodeURIComponent(props.template.id)}`}>
           <Pencil /> Edit
         </Link>
       </Button>

@@ -12,12 +12,12 @@ export async function formApi<T>(
       ...options?.headers,
     },
   });
-  const body = await response.json();
+  const body = await response.json().catch(() => null);
   if (!response.ok)
     throw new Error(
       body && typeof body === "object" && "error" in body
         ? String(body.error)
-        : "The request could not be completed.",
+        : response.status === 401 ? "Your session expired. Sign in again; keep this page open to preserve your work." : "The request could not be completed. Try again.",
     );
   return body as T;
 }

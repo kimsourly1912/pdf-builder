@@ -88,7 +88,7 @@ export function WorkflowReview(props: { displayName: string; runId: string }) {
     return () => controller.abort();
   }, [props.runId, revision]);
   return (
-    <AppShell displayName={props.displayName} fullWidth>
+    <AppShell displayName={props.displayName}>
       {error && (
         <Alert variant="destructive">
           <AlertDescription>{error}</AlertDescription>

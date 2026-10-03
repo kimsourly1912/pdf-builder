@@ -46,6 +46,7 @@ type IntakeItem = {
     fileName: string;
   } | null;
   id: string;
+  candidateId: string;
   fullName: string;
   email: string;
   username: string;
@@ -122,7 +123,7 @@ export function IntakeDashboard({
     }
   }
   return (
-    <AppShell displayName={displayName} fullWidth>
+    <AppShell displayName={displayName}>
       <PageHeader
         title="Candidate intake"
         description="Candidate details and CVs received through Telegram. Login accounts are created only after HR approval."
@@ -288,7 +289,7 @@ export function IntakeDashboard({
                     </TableCell>
                     <TableCell>
                       <Button asChild variant="outline" size="sm">
-                        <Link href={`/intake/${item.id}`}>View candidate</Link>
+                        <Link href={`/candidates/${item.candidateId}?tab=documents`}>Review candidate</Link>
                       </Button>
                     </TableCell>
                   </TableRow>

@@ -110,7 +110,7 @@ function FormFill(props: { token: string; payload: TemplateFillPayload }) {
   return (
     <div className="min-h-svh bg-muted/20 px-4 py-8 sm:py-12">
       <main className="mx-auto max-w-3xl rounded-2xl border bg-card p-5 shadow-sm sm:p-8">
-        <p className="mb-5 text-sm font-semibold text-primary">PDF Studio</p>
+        <p className="mb-5 text-sm font-semibold text-primary">HR Workspace</p>
         <h1 className="text-2xl font-semibold">
           {props.payload.template.name}
         </h1>
@@ -122,6 +122,7 @@ function FormFill(props: { token: string; payload: TemplateFillPayload }) {
           Version {props.payload.template.versionNumber} ·{" "}
           {props.payload.identity?.email}
         </p>
+        {props.payload.correction && <div className="mt-5 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-100"><h2 className="font-semibold">Corrections requested by HR</h2><p className="mt-2 whitespace-pre-wrap break-words">{props.payload.correction.reason}</p><p className="mt-2 text-xs">Your original submission remains saved. Check the answers and upload photos or signatures again before submitting this new attempt.</p></div>}
         {error && (
           <p
             role="alert"

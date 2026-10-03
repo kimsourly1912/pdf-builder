@@ -603,6 +603,22 @@ export const submissions = sqliteTable(
   ],
 );
 
+// HR decisions are separate from immutable candidate answers and PDF artifacts.
+export const submissionReviews = sqliteTable("submission_reviews", {
+  submissionId: text("submission_id").primaryKey().references(() => submissions.id, { onDelete: "cascade" }),
+  ownerEmail: text("owner_email").notNull(),
+  status: text("status").notNull(),
+  reason: text("reason").notNull().default(""),
+  revision: text("revision").notNull(),
+  reviewedAt: text("reviewed_at").notNull(),
+  reviewedBy: text("reviewed_by").notNull(),
+  correctionLinkId: text("correction_link_id").references(() => recipientLinks.id, { onDelete: "restrict" }),
+}, (table) => [
+  check("submission_reviews_status_check", sql`${table.status} IN ('accepted', 'corrections_requested')`),
+  index("submission_reviews_owner_idx").on(table.ownerEmail, table.status),
+  uniqueIndex("submission_reviews_correction_link_unique").on(table.correctionLinkId),
+]);
+
 export const storageCleanupJobs = sqliteTable(
   "storage_cleanup_jobs",
   {

@@ -63,7 +63,7 @@ import type {
 
 type CandidateDraft = Omit<ResumeCandidateSummary, "id" | "verificationStatus">;
 
-export function ResumeDetailView(props: { resumeId: string }) {
+export function ResumeDetailView(props: { resumeId: string; embedded?: boolean; onChanged?: () => void; onDirtyChange?: (dirty: boolean) => void }) {
   const [resume, setResume] = useState<ResumeDetail | null>(null);
   const [draft, setDraft] = useState<CandidateDraft | null>(null);
   const [loading, setLoading] = useState(true);
@@ -81,6 +81,8 @@ export function ResumeDetailView(props: { resumeId: string }) {
       JSON.stringify(candidateDraft(resume.candidate)) ||
       confirmTelegram !== (resume.telegramContact?.confirmed ?? false));
   useUnsavedChanges(dirty);
+  const { onDirtyChange } = props;
+  useEffect(() => { onDirtyChange?.(dirty); }, [dirty, onDirtyChange]);
   const discardEdits = () => !dirty || window.confirm(DISCARD_EDITS);
 
   const loadResume = useCallback(async () => {
@@ -156,6 +158,7 @@ export function ResumeDetailView(props: { resumeId: string }) {
           : "Changes saved. This CV still needs approval; no workflow was started.",
       );
       await loadResume();
+      props.onChanged?.();
     } catch (cause) {
       setError(
         cause instanceof Error
@@ -230,6 +233,7 @@ export function ResumeDetailView(props: { resumeId: string }) {
 
       setNotice("AI resume analysis completed.");
       await loadResume();
+      props.onChanged?.();
     } catch (cause) {
       setError(
         cause instanceof Error
@@ -265,10 +269,11 @@ export function ResumeDetailView(props: { resumeId: string }) {
         resume.id,
         resume.fileName,
         receipt,
-        () => void loadResume(),
+        () => { void loadResume(); props.onChanged?.(); },
       );
       setArchiveOpen(false);
       await loadResume();
+      props.onChanged?.();
       setBusy(false);
     } catch (cause) {
       setError(
@@ -302,12 +307,12 @@ export function ResumeDetailView(props: { resumeId: string }) {
   const fields = resume.extraction?.fields;
 
   return (
-    <main className="min-h-screen bg-background text-foreground">
-      <header className="sticky top-0 z-30 border-b border-border/70 bg-card/95 backdrop-blur">
-        <div className="mx-auto flex min-h-16 max-w-[1500px] items-center justify-between gap-3 px-4 py-2 sm:px-6">
+    <main className={props.embedded ? "min-w-0 text-foreground" : "min-h-screen bg-background text-foreground"}>
+      <header className={props.embedded ? "rounded-lg border bg-card" : "sticky top-0 z-30 border-b border-border/70 bg-card/95 backdrop-blur"}>
+        <div className="mx-auto flex min-h-16 max-w-[1500px] flex-wrap items-center justify-between gap-3 px-4 py-2 sm:px-6">
           <div className="flex min-w-0 items-center gap-3">
             <Button asChild variant="ghost" size="icon-sm">
-              <Link href="/resumes" aria-label="Back to resumes">
+              <Link href="/resumes" aria-label="Back to CV library">
                 <ArrowLeft />
               </Link>
             </Button>
@@ -322,7 +327,7 @@ export function ResumeDetailView(props: { resumeId: string }) {
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <Button asChild variant="outline" size="sm">
               <a href={`/api/resumes/${resume.id}/download`} download>
                 <Download /> Download
@@ -350,7 +355,7 @@ export function ResumeDetailView(props: { resumeId: string }) {
         </div>
       </header>
 
-      <div className="mx-auto max-w-[1500px] px-4 py-5 sm:px-6">
+      <div className={props.embedded ? "min-w-0 py-5" : "mx-auto max-w-[1500px] px-4 py-5 sm:px-6"}>
         {resume.archived && (
           <Alert className="mb-4">
             <Archive />
@@ -418,7 +423,7 @@ export function ResumeDetailView(props: { resumeId: string }) {
           </Alert>
         )}
 
-        <div className="grid items-start gap-5 xl:grid-cols-[minmax(500px,1fr)_minmax(430px,560px)]">
+        <div className={props.embedded ? "grid min-w-0 items-start gap-5 xl:grid-cols-2" : "grid items-start gap-5 xl:grid-cols-[minmax(500px,1fr)_minmax(430px,560px)]"}>
           <Card className="gap-0 overflow-hidden py-0 xl:sticky xl:top-20">
             <ResumePdfPreview resumeId={resume.id} fileName={resume.fileName} />
           </Card>
@@ -632,14 +637,14 @@ export function ResumeDetailView(props: { resumeId: string }) {
         </div>
       </div>
 
-      {resume.candidate && (
+      {!props.embedded && resume.candidate && (
         <Button asChild variant="outline">
           <Link href={`/candidates/${resume.candidate.id}`}>
-            Return to candidate progress
+            Return to candidate profile
           </Link>
         </Button>
       )}
-      {resume.intakeId && (
+      {!props.embedded && resume.intakeId && (
         <Button asChild variant="outline">
           <Link href={`/intake/${resume.intakeId}`}>
             Back to intake overview

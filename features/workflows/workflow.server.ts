@@ -77,6 +77,7 @@ export async function listWorkflows(ownerEmail: string) {
     trigger: publishedJson
       ? workflowTrigger(JSON.parse(publishedJson) as WorkflowGraph)
       : workflowTrigger(JSON.parse(draftJson) as WorkflowGraph),
+    hasPreparation: !!publishedJson && (JSON.parse(publishedJson) as WorkflowGraph).nodes.some(n => n.kind === "assign_forms"),
     hasTelegram:
       !!publishedJson &&
       (JSON.parse(publishedJson) as WorkflowGraph).nodes.some(

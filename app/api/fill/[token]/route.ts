@@ -72,7 +72,9 @@ export async function GET(
       fillContext.version.pageOrderJson,
     );
     const formExtras = fillContext.version.formDefinitionJson ? await formDraftPayload(fillContext) : {};
+    const correction = await getDatabaseBinding().prepare("SELECT h.reason,s.submitted_at previousSubmittedAt FROM submission_reviews h JOIN submissions s ON s.id=h.submission_id WHERE h.correction_link_id=? AND h.owner_email=?").bind(fillContext.link.id,fillContext.template.ownerEmail).first<{reason:string;previousSubmittedAt:string}>();
     const payload: TemplateFillPayload = {
+      correction,
       ...formExtras,
       template: {
         id: fillContext.template.id,

@@ -456,6 +456,7 @@ export function RecipientFill(props: { token: string }) {
             )}
           </CardHeader>
           <CardContent className="space-y-5">
+            {payload.correction && <div className="rounded-lg border p-3 text-sm"><h2 className="font-semibold">Corrections requested by HR</h2><p className="mt-2 whitespace-pre-wrap break-words">{payload.correction.reason}</p><p className="mt-2 text-xs text-muted-foreground">Complete a new attempt. The original submission is preserved.</p></div>}
             {payload.resumePrefill && !resumePrefillDismissed && (
               <ResumePrefillPanel
                 className="hidden lg:block"

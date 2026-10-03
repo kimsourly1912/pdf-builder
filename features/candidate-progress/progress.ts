@@ -4,6 +4,7 @@ export const STAGES = [
   "approved",
   "awaiting_forms",
   "ready",
+  "accepted",
 ] as const;
 export type CandidateStage = (typeof STAGES)[number];
 export const STAGE_LABELS: Record<CandidateStage, string> = {
@@ -11,7 +12,8 @@ export const STAGE_LABELS: Record<CandidateStage, string> = {
   reviewing: "Reviewing CV",
   approved: "CV approved",
   awaiting_forms: "Awaiting forms",
-  ready: "Ready for HR",
+  ready: "Forms to review",
+  accepted: "Documents accepted",
 };
 export type ProgressFacts = {
   verified: boolean;
@@ -20,6 +22,7 @@ export type ProgressFacts = {
   assigned: number;
   required: number;
   completed: number;
+  accepted?: number;
   invitationRequired: boolean;
   invitationSent: boolean;
 };
@@ -31,7 +34,7 @@ export function automaticStage(f: ProgressFacts): CandidateStage {
     f.completed === f.required &&
     (!f.invitationRequired || f.invitationSent)
   )
-    return "ready";
+    return f.required > 0 && f.accepted === f.required ? "accepted" : "ready";
   if (
     f.preparationCurrent &&
     f.runStatus === "completed" &&
@@ -65,11 +68,17 @@ export function transitionRequirement(
       message:
         "Finish candidate preparation and any required invitation before moving to Awaiting forms.",
     };
-  if (target === "ready" && automaticStage(f) !== "ready")
+  if (target === "ready" && !["ready", "accepted"].includes(automaticStage(f)))
     return {
       kind: "forms",
       message:
         "All required forms must be submitted and preparation completed before this candidate is ready for HR.",
+    };
+  if (target === "accepted" && automaticStage(f) !== "accepted")
+    return {
+      kind: "forms",
+      message:
+        "HR must accept every required submitted form before marking documents accepted.",
     };
   return null;
 }
@@ -100,6 +109,13 @@ export type ProgressForm = {
   reused: boolean;
   url: string | null;
   responseUrl?: string | null;
+  templateId?: string;
+  versionNumber?: number;
+  assignedAt?: string;
+  reviewStatus?: string;
+  isRequired?: boolean;
+  fillUrl?: string;
+  correctionReason?: string | null;
 };
 export type CandidateProgress = {
   id: string;
@@ -119,6 +135,11 @@ export type CandidateProgress = {
   forms: ProgressForm[];
   attention: string[];
   accountCreated: boolean;
+  accountId?: string | null;
+  accountEmail?: string | null;
+  accountDisabled?: boolean;
+  assignments?: ProgressForm[];
+  invitations?: { id: string; status: string; at: string; runId: string }[];
   lastActivity: string;
   stageSince: string | null;
   issues: { key: string; message: string; action: string; href: string }[];

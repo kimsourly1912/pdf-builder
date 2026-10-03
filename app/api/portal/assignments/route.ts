@@ -1,8 +1,9 @@
-import { desc, eq } from "drizzle-orm";
+import { desc, eq, sql } from "drizzle-orm";
 
 import { getDb } from "@/db";
 import {
   formAssignments,
+  submissionReviews,
   recipientLinks,
   templates,
   templateVersions,
@@ -22,6 +23,8 @@ export async function GET(request: Request) {
     const rows = await getDb()
       .select({
         id: formAssignments.id,
+        correctionReason: submissionReviews.reason,
+        reviewStatus: sql<string>`(SELECT h.status FROM submission_reviews h JOIN submissions s ON s.id=h.submission_id WHERE s.recipient_link_id=${recipientLinks.id} ORDER BY s.submitted_at DESC LIMIT 1)`,
         templateId: formAssignments.templateId,
         templateName: templates.name,
         templateKind: templates.kind,
@@ -50,6 +53,7 @@ export async function GET(request: Request) {
         recipientLinks,
         eq(formAssignments.recipientLinkId, recipientLinks.id),
       )
+      .leftJoin(submissionReviews, eq(submissionReviews.correctionLinkId, recipientLinks.id))
       .where(eq(formAssignments.userId, account.session.user.id))
       .orderBy(desc(formAssignments.assignedAt));
 
@@ -67,6 +71,8 @@ export async function GET(request: Request) {
             : row.assignmentStatus;
         return {
           id: row.id,
+          correctionReason: row.correctionReason,
+          reviewStatus: row.reviewStatus ?? "pending",
           templateId: row.templateId,
           templateName: row.templateName,
           templateKind: row.templateKind,

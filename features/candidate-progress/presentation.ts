@@ -20,6 +20,7 @@ export function statusColor(label: string) {
       "Needs review",
       "Reviewing CV",
       "Awaiting forms",
+      "Forms to review",
       "Waiting for CV review",
       "Waiting for Telegram connection",
       "Telegram retry pending",
@@ -38,6 +39,7 @@ export function statusColor(label: string) {
   if (
     [
       "Ready for HR",
+      "Documents accepted",
       "Forms submitted",
       "Preparation complete",
       "Completed",
@@ -73,7 +75,8 @@ export function stageAge(
     reviewing: "Reviewing CV",
     approved: "CV approved",
     awaiting_forms: "Awaiting forms",
-    ready: "Ready for HR",
+    ready: "Forms to review",
+    accepted: "Documents accepted",
   }[stage];
   if (!since || !Number.isFinite(Date.parse(since)))
     return `${label} · start time unknown`;

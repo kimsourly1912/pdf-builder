@@ -68,6 +68,12 @@ type FormRow = {
   expiresAt: string | null;
   submissionId: string | null;
   submissionPdf: string | null;
+  versionNumber: number;
+  assignedAt: string;
+  reviewStatus: string | null;
+  reviewedAt: string | null;
+  correctionReason: string | null;
+  correctionAt: string | null;
 };
 type Delivery = {
   id: string;
@@ -98,7 +104,7 @@ async function load(owner: string, resumeId?: string) {
         owner,
       ),
       rows<FormRow>(
-        "SELECT f.id,f.user_id userId,f.template_id templateId,t.kind templateKind,f.template_version_id versionId,f.role_id roleId,t.name,f.status,COALESCE(f.completed_at,l.completed_at) completedAt,f.candidate_profile_version_id profileId,f.updated_at updatedAt,l.status linkStatus,l.submission_count submissionCount,l.expires_at expiresAt,(SELECT s.id FROM submissions s WHERE s.recipient_link_id=l.id ORDER BY s.submitted_at DESC LIMIT 1) submissionId,(SELECT COALESCE(a.file_key,s.completed_file_key) FROM submissions s LEFT JOIN form_submission_artifacts a ON a.submission_id=s.id WHERE s.recipient_link_id=l.id ORDER BY s.submitted_at DESC LIMIT 1) submissionPdf FROM form_assignments f JOIN recipient_profiles p ON p.user_id=f.user_id JOIN templates t ON t.id=f.template_id AND t.owner_email=p.created_by_email JOIN recipient_links l ON l.id=f.recipient_link_id WHERE p.created_by_email=?",
+        "SELECT f.id,f.user_id userId,f.template_id templateId,t.kind templateKind,f.template_version_id versionId,f.role_id roleId,t.name,f.status,v.version_number versionNumber,f.assigned_at assignedAt,(SELECT h.status FROM submission_reviews h JOIN submissions s ON s.id=h.submission_id WHERE s.recipient_link_id=l.id ORDER BY s.submitted_at DESC LIMIT 1) reviewStatus,(SELECT h.reviewed_at FROM submission_reviews h JOIN submissions s ON s.id=h.submission_id WHERE s.recipient_link_id=l.id ORDER BY s.submitted_at DESC LIMIT 1) reviewedAt,(SELECT h.reason FROM submission_reviews h WHERE h.correction_link_id=l.id) correctionReason,(SELECT h.reviewed_at FROM submission_reviews h WHERE h.correction_link_id=l.id) correctionAt,COALESCE(f.completed_at,l.completed_at) completedAt,f.candidate_profile_version_id profileId,f.updated_at updatedAt,l.status linkStatus,l.submission_count submissionCount,l.expires_at expiresAt,(SELECT s.id FROM submissions s WHERE s.recipient_link_id=l.id ORDER BY s.submitted_at DESC LIMIT 1) submissionId,(SELECT COALESCE(a.file_key,s.completed_file_key) FROM submissions s LEFT JOIN form_submission_artifacts a ON a.submission_id=s.id WHERE s.recipient_link_id=l.id ORDER BY s.submitted_at DESC LIMIT 1) submissionPdf FROM form_assignments f JOIN recipient_profiles p ON p.user_id=f.user_id JOIN templates t ON t.id=f.template_id AND t.owner_email=p.created_by_email JOIN template_versions v ON v.id=f.template_version_id JOIN recipient_links l ON l.id=f.recipient_link_id WHERE p.created_by_email=?",
         owner,
       ),
       rows<Delivery>(
@@ -164,16 +170,19 @@ async function load(owner: string, resumeId?: string) {
       graph?.nodes
         .filter((n) => n.kind === "assign_forms")
         .flatMap((n) => n.config.forms ?? []) ?? [];
-    const relevant = forms.filter(
-      (f) =>
-        f.userId === context.userId &&
-        targets.some(
-          (t) =>
-            t.templateId === f.templateId &&
-            t.versionId === f.versionId &&
-            t.roleId === f.roleId,
-        ),
+    const accountUserId = context.userId ?? cv.userId;
+    const accountForms = forms.filter((f) => f.userId === accountUserId);
+    const relevant = accountForms.filter((f) =>
+      run
+        ? targets.some(
+            (t) =>
+              t.templateId === f.templateId &&
+              t.versionId === f.versionId &&
+              t.roleId === f.roleId,
+          )
+        : !!cv.approvalId && f.profileId === cv.approvalId,
     );
+    const manualPreparation = !run && relevant.length > 0;
     const runDeliveries = deliveries.filter((d) => d.run_id === run?.id),
       account = accounts.find((a) => a.id === (context.userId ?? cv.userId));
     const current =
@@ -183,13 +192,18 @@ async function load(owner: string, resumeId?: string) {
         context.resumeEditorApproval?.profileVersionId === cv.approvalId);
     const facts = {
       verified: !!cv.approvalId,
-      runStatus: run?.status ?? null,
+      runStatus: run?.status ?? (manualPreparation ? "completed" : null),
       preparationCurrent:
-        current && !!graph?.nodes.some((n) => n.kind === "assign_forms"),
+        current &&
+        (manualPreparation ||
+          !!graph?.nodes.some((n) => n.kind === "assign_forms")),
       assigned: relevant.length,
-      required: targets.length,
+      required: manualPreparation ? relevant.length : targets.length,
       completed: relevant.filter(
         (f) => f.status === "completed" && !!f.completedAt,
+      ).length,
+      accepted: relevant.filter(
+        (f) => f.status === "completed" && f.reviewStatus === "accepted",
       ).length,
       invitationRequired: !!graph?.nodes.some(
         (n) => n.kind === "send_telegram",
@@ -210,6 +224,7 @@ async function load(owner: string, resumeId?: string) {
         status: f.status,
         linkStatus: f.linkStatus,
         submissionCount: f.submissionCount,
+        reviewStatus: f.reviewStatus,
       })),
     });
     const attention: string[] = [],
@@ -233,7 +248,7 @@ async function load(owner: string, resumeId?: string) {
       issue(
         "new_cv",
         "Choose latest CV",
-        `/candidates/${id}#selected-cv`,
+        `/candidates/${id}?tab=documents#selected-cv`,
         "A newer CV is available. Select it to review; current preparation stays linked to this CV.",
       );
     if (cv.approvalId && cv.intakeId && !cv.confirmed && !facts.invitationSent)
@@ -300,7 +315,7 @@ async function load(owner: string, resumeId?: string) {
       issue(
         "multiple_runs",
         "Compare preparations",
-        `/candidates/${id}#selected-run`,
+        `/candidates/${id}?tab=overview#selected-run`,
         "Multiple preparations are active. Check the selected run.",
       );
     if (
@@ -400,18 +415,36 @@ async function load(owner: string, resumeId?: string) {
         at: f.completedAt!,
         metadata: {},
       });
-    const publicForms: ProgressForm[] = relevant.map((f) => ({
+    const formDto = (f: FormRow): ProgressForm => ({
       id: f.id,
       name: f.name,
-      status: f.status,
+      status: f.status === "completed" ? "completed" : f.status === "cancelled" || f.linkStatus === "revoked" ? "cancelled" : f.expiresAt && f.expiresAt <= new Date().toISOString() ? "expired" : f.status,
       completedAt: f.completedAt,
       reused: f.profileId !== context.profileVersionId,
-      responseUrl: f.submissionId && f.templateKind === "form" ? `/forms/${f.templateId}/responses?response=${f.submissionId}` : null,
+      templateId: f.templateId,
+      versionNumber: f.versionNumber,
+      assignedAt: f.assignedAt,
+      reviewStatus: f.reviewStatus ?? "pending",
+      isRequired: relevant.some((r) => r.id === f.id),
+      fillUrl: `/fill/assigned_${f.id}`,
+      correctionReason: f.correctionReason,
+      responseUrl: f.submissionId
+        ? `/submissions/${f.submissionId}/review`
+        : null,
       url:
         f.submissionId && f.submissionPdf
           ? `/api/submissions/${f.submissionId}/pdf`
           : null,
-    }));
+    });
+    const publicForms = relevant.map(formDto);
+    for (const f of relevant.filter((f) => f.reviewedAt))
+      activity.push({
+        id: `review:${f.id}`,
+        action: `Form accepted: ${f.name}`,
+        actor: "HR",
+        at: f.reviewedAt!,
+        metadata: {},
+      });
     const item: CandidateProgress = {
       id,
       name: cv.name || "Unnamed candidate",
@@ -452,12 +485,34 @@ async function load(owner: string, resumeId?: string) {
             .map((n) => context.steps?.[n.id]?.completedAt)
             .filter((s): s is string => !!s)
             .sort()
-            .at(-1),
+            .at(-1) ??
+          (manualPreparation
+            ? relevant
+                .map((f) => f.assignedAt)
+                .sort()
+                .at(-1)
+            : undefined),
+        formCorrectionAt: relevant
+          .map((f) => f.correctionAt)
+          .filter((s): s is string => !!s),
+        formReviewedAt: relevant
+          .map((f) => f.reviewedAt)
+          .filter((s): s is string => !!s),
         formCompletedAt: relevant
           .map((f) => f.completedAt)
           .filter((s): s is string => !!s),
       }),
       accountCreated: !!account,
+      accountId: account?.id ?? null,
+      accountEmail: account?.email ?? null,
+      accountDisabled: !!account?.banned,
+      assignments: accountForms.map(formDto),
+      invitations: runDeliveries.map((d) => ({
+        id: d.id,
+        status: d.status,
+        at: d.updated_at,
+        runId: d.run_id,
+      })),
       lastActivity: [
         cv.receivedAt,
         cv.resumeRevision,
@@ -465,6 +520,8 @@ async function load(owner: string, resumeId?: string) {
         run?.updated_at,
         meta?.updated_at,
         ...relevant.map((f) => f.updatedAt),
+        ...relevant.map((f) => f.reviewedAt),
+        ...relevant.map((f) => f.correctionAt),
         ...runDeliveries.map((d) => d.updated_at),
       ]
         .filter((s): s is string => !!s)
@@ -548,6 +605,37 @@ export async function detailProgress(owner: string, id: string) {
       metadata: JSON.parse(a.metadata_json),
     })),
   );
+  if (e.item.accountId) {
+    const reviews = (
+      await getDatabaseBinding()
+        .prepare(
+          "SELECT a.id,a.action,a.actor_id actor,a.created_at at,a.metadata_json FROM audit_events a JOIN submissions s ON s.id=a.target_id JOIN recipient_links l ON l.id=s.recipient_link_id WHERE a.owner_email=? AND a.target_type='submission' AND a.action IN ('submission.accepted','submission.corrections_requested') AND l.assigned_user_id=? ORDER BY a.created_at DESC LIMIT 100",
+        )
+        .bind(owner, e.item.accountId)
+        .all<{
+          id: string;
+          action: string;
+          actor: string;
+          at: string;
+          metadata_json: string;
+        }>()
+    ).results;
+    e.item.activity = e.item.activity.filter(
+      (a) => !a.id.startsWith("review:"),
+    );
+    e.item.activity.push(
+      ...reviews.map((a) => ({
+        id: a.id,
+        action:
+          a.action === "submission.accepted"
+            ? "Form accepted by HR"
+            : "Form corrections requested",
+        actor: a.actor,
+        at: a.at,
+        metadata: JSON.parse(a.metadata_json),
+      })),
+    );
+  }
   e.item.activity.sort((a, b) => b.at.localeCompare(a.at));
   return e.item;
 }

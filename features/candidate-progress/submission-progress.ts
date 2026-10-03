@@ -56,9 +56,17 @@ export function submissionProgress(item: CandidateProgress) {
     (!f.invitationRequired || f.invitationSent)
   )
     return {
-      label: f.required ? "Forms submitted" : "Preparation complete",
-      next: "View candidate progress",
-      href: `/candidates/${item.id}`,
+      label: f.required
+        ? f.accepted === f.required
+          ? "Documents accepted"
+          : "Forms submitted"
+        : "Preparation complete",
+      next: f.required
+        ? f.accepted === f.required
+          ? "View accepted documents"
+          : "Review submitted forms"
+        : "View candidate progress",
+      href: `/candidates/${item.id}?tab=forms`,
     };
   if (f.invitationSent)
     return {
@@ -77,6 +85,12 @@ export function submissionProgress(item: CandidateProgress) {
           ? "Resolve issue"
           : "View progress",
       href: `/workflows/${item.run.workflowId}?tab=runs&run=${item.run.id}`,
+    };
+  if (!item.run && f.preparationCurrent)
+    return {
+      label: "Awaiting forms",
+      next: "Check form completion",
+      href: `/candidates/${item.id}?tab=forms`,
     };
   if (item.run?.status === "completed" && f.preparationCurrent)
     return {

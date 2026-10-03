@@ -14,7 +14,7 @@ export function AnalysisHistory({ displayName }: { displayName: string }) {
       .catch((e) => setError(errorText(e)));
   }, []);
   return (
-    <AppShell displayName={displayName} fullWidth>
+    <AppShell displayName={displayName}>
       <PageHeader
         title="AI analysis history"
         description="Review stored form analyses and archive completed or cancelled records. Processing analyses must finish before archiving."

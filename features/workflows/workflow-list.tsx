@@ -83,7 +83,7 @@ export function WorkflowList(props: { displayName: string }) {
     }
   }
   return (
-    <AppShell displayName={props.displayName} fullWidth>
+    <AppShell displayName={props.displayName}>
       <PageHeader
         title="Workflows"
         description="Choose a starting event and automate candidate preparation for that purpose."

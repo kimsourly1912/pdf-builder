@@ -11,6 +11,8 @@ export function stageSince(
     reviewStartedAt?: string;
     preparationCompletedAt?: string;
     formCompletedAt: string[];
+    formReviewedAt?: string[];
+    formCorrectionAt?: string[];
   },
 ) {
   if (evidence.manualAt) return evidence.manualAt;
@@ -21,7 +23,14 @@ export function stageSince(
   if (stage === "reviewing") return evidence.reviewStartedAt ?? null;
   if (stage === "approved") return evidence.approvedAt;
   if (stage === "awaiting_forms")
-    return evidence.preparationCompletedAt ?? null;
+    return (
+      [evidence.preparationCompletedAt, ...(evidence.formCorrectionAt ?? [])]
+        .filter((s): s is string => !!s)
+        .sort()
+        .at(-1) ?? null
+    );
+  if (stage === "accepted")
+    return evidence.formReviewedAt?.sort().at(-1) ?? null;
   if (stage === "ready" && evidence.preparationCompletedAt)
     return [evidence.preparationCompletedAt, ...evidence.formCompletedAt]
       .sort()

@@ -257,9 +257,9 @@ export function ProgressDashboard({
     </article>
   );
   return (
-    <AppShell displayName={displayName} fullWidth>
+    <AppShell displayName={displayName} fullWidth={view === "kanban"}>
       <PageHeader
-        title="Candidate progress"
+        title="Candidates"
         description="Follow CV review, candidate preparation and form completion. Drag a card or use Move to… to update the HR stage."
         actions={
           <div className="flex gap-2">
@@ -382,7 +382,7 @@ export function ProgressDashboard({
         <p className="py-16 text-center">Loading candidate progress…</p>
       ) : view === "kanban" ? (
         <div className="max-w-full overflow-x-auto pb-4">
-          <div className="grid min-w-[1450px] grid-cols-5 gap-4">
+          <div className="grid min-w-[1740px] grid-cols-6 gap-4">
             {STAGES.map((s) => (
               <section
                 key={s}
@@ -493,7 +493,7 @@ export function ProgressDashboard({
                   <TableCell>
                     {i.run
                       ? runStatusLabel(i.run.status, i.run.waitingFor)
-                      : "Not started"}
+                      : i.facts.preparationCurrent ? "Forms assigned manually" : "Not started"}
                     {i.facts.invitationSent && (
                       <p className="text-xs">Invitation sent</p>
                     )}

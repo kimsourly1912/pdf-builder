@@ -27,6 +27,7 @@ type Item = {
   submittedAt: string;
   answers: Answer[];
   pdfStatus: string | null;
+  reviewStatus: string;
   pdfError?: string | null;
 };
 export function FormResponses(props: { id: string; displayName: string }) {
@@ -132,7 +133,7 @@ export function FormResponses(props: { id: string; displayName: string }) {
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
   return (
-    <AppShell displayName={props.displayName} fullWidth>
+    <AppShell displayName={props.displayName}>
       <PageHeader
         title={name}
         description="Assign the published form and collect independent responses with JSON and PDF output."
@@ -228,7 +229,7 @@ export function FormResponses(props: { id: string; displayName: string }) {
                     {item.email}
                   </span>
                   <span className="mt-2 block text-xs text-muted-foreground">
-                    Submitted · {new Date(item.submittedAt).toLocaleString()} ·{" "}
+                    {item.reviewStatus === "accepted" ? "Accepted by HR" : item.reviewStatus === "corrections_requested" ? "Corrections requested" : "Awaiting HR review"} · {new Date(item.submittedAt).toLocaleString()} ·{" "}
                     {item.pdfStatus === "ready"
                       ? "PDF ready"
                       : item.pdfStatus === "failed"
@@ -254,6 +255,7 @@ export function FormResponses(props: { id: string; displayName: string }) {
           {selected ? (
             <>
               <div className="mb-5 flex flex-wrap gap-2">
+                <Button asChild><Link href={`/submissions/${selected.id}/review`}>{selected.reviewStatus === "pending" ? "Review submission" : "View HR decision"}</Link></Button>
                 <ArchiveButton
                   type="submission"
                   id={selected.id}

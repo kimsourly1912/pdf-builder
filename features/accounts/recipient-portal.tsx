@@ -39,6 +39,8 @@ type PortalAssignment = {
   versionNumber: number;
   roleName: string;
   templateKind?: string;
+  correctionReason?: string | null;
+  reviewStatus?: string;
   roleColor: string;
   status: string;
   assignedAt: string;
@@ -98,7 +100,7 @@ export function RecipientPortal(props: {
         <div className="mx-auto flex min-h-16 max-w-5xl items-center justify-between gap-3 px-4 py-3 sm:px-6">
           <div className="flex min-w-0 items-center gap-3">
             <span className="flex size-8 items-center justify-center rounded-md bg-primary text-primary-foreground"><ClipboardList className="size-4" /></span>
-            <div className="min-w-0"><p className="text-sm font-semibold">PDF Studio</p><p className="truncate text-xs text-muted-foreground">{props.displayName} · {props.accountType}</p></div>
+            <div className="min-w-0"><p className="text-sm font-semibold">HR Workspace</p><p className="truncate text-xs text-muted-foreground">{props.displayName} · {props.accountType}</p></div>
           </div>
           <SignOutButton />
         </div>
@@ -184,6 +186,8 @@ function AssignmentCard(props: {
         </div>
         <StatusBadge label={display.label} tone={tone} className="text-[10px]" />
       </div>
+      {assignment.correctionReason && assignment.url && <div className="mt-4 rounded-lg border p-3 text-sm"><h4 className="font-semibold">Corrections requested</h4><p className="mt-2 whitespace-pre-wrap break-words">{assignment.correctionReason}</p><p className="mt-2 text-xs text-muted-foreground">Original submission retained. Open the form to submit a corrected attempt.</p></div>}
+      {assignment.status === "completed" && <p className="mt-4 text-sm text-muted-foreground">{assignment.reviewStatus === "accepted" ? "Your submission was accepted by HR." : "Your submission is saved and awaiting HR review."}</p>}
       {assignment.description && <p className="mt-4 text-sm leading-6 text-muted-foreground">{assignment.description}</p>}
       <p className="mt-4 text-xs text-muted-foreground">Assigned {formatLocalDateTime(assignment.assignedAt, { timeZone: props.timeZone })}</p>
       {assignment.url ? (
