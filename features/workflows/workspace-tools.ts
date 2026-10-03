@@ -212,7 +212,9 @@ export function stepEvidence(
     ...(result.outcome
       ? [["Branch", result.outcome]]
       : ["condition", "review_resume"].includes(node.kind)
-        ? [["Branch", "Not recorded for this older execution"]]
+        ? [["Branch", result.status === "completed"
+            ? "Not recorded for this older execution"
+            : "No branch result recorded yet"]]
         : []),
     ...(result.note ? [["Recorded note", result.note]] : []),
     ...(result.status === "completed" &&

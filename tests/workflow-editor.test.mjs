@@ -56,3 +56,13 @@ test('graph comparison ignores pinned form metadata and finds draft changes; leg
  const changed=structuredClone(g);changed.nodes[0].label='Start here';assert(workspace.graphChanges(g,changed).some(i=>i.includes('annotation')));
  assert.deepEqual(workspace.stepEvidence({context:{steps:{}}},g.nodes[0],'output'),[['Result','No result recorded for this step']]);
 });
+
+test('waiting steps have no chosen branch while completed legacy steps explicitly lack outcome evidence',()=>{
+ const node=graph().nodes.find(n=>n.kind==='review_resume');
+ const run={context:{steps:{[node.id]:{status:'waiting',attempts:1}}}};
+ assert(workspace.stepEvidence(run,node,'output').some(([label,value])=>label==='Branch'&&value==='No branch result recorded yet'));
+ run.context.steps[node.id].status='completed';
+ assert(workspace.stepEvidence(run,node,'output').some(([label,value])=>label==='Branch'&&value.includes('older execution')));
+ run.context.steps[node.id].outcome='approved';
+ assert(workspace.stepEvidence(run,node,'output').some(([label,value])=>label==='Branch'&&value==='approved'));
+});
