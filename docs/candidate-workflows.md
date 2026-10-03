@@ -111,3 +111,10 @@ also checks the authenticated Workflows page and workflow list/run APIs without
 creating or changing production candidates.
 
 Workflow creation offers purpose presets for preparing after CV approval, receiving a Telegram CV for HR review, and starting preparation manually. The Telegram review preset ends after the approved review and creates no account or form assignments. Preparation presets include the guarded account, CV link, form and Telegram steps; HR chooses forms before publishing. Saving CV edits does not approve or start a workflow. Explicit Approve CV does and warns that published approval workflows may start.
+
+## Automation readiness and history (shipped October 2026)
+
+- Draft readiness appears in Settings and publication review; manual execution checks the published snapshot before enabling Start. Checks inspect published/archived forms, pinned versions and required bot configuration without contacting Telegram or running AI. Candidate contact still needs explicit HR confirmation. Automatic events keep their existing guarded execution behavior.
+- Settings lists published snapshots and previews differences before an explicit restore to draft. Restore uses owner and revision checks, saves current edits first and leaves the live publication, activation and existing executions intact. Forms are revalidated and repinned on the next publication. Migration `0028_workflow_publish_history.sql` backfills only the latest existing publication; older snapshots cannot be reconstructed. Its publication trigger records future snapshots in the same transaction as the workflow update.
+- Execution search, status and date filters persist per owner and workflow via URL/session storage. Clear filters resets them.
+- Execution details emphasize the candidate and next action. Technical IDs and archive controls appear under More execution actions. HR review has no timeout; Telegram confirmation and retry waits are distinguished. New step-start timestamps support elapsed waiting time; legacy records without evidence show no invented duration. Over 15 minutes without a processing update shows a cautious delay notice, not a failure claim.

@@ -72,6 +72,7 @@ export type RunStatus =
 export type StepResult = {
   status: "completed" | "waiting" | "failed";
   attempts: number;
+  startedAt?: string;
   completedAt?: string;
   note?: string;
   outcome?: WorkflowEdge["outcome"];

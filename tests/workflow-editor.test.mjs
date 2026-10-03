@@ -7,6 +7,7 @@ const {defaultGraph,graphIssues}=await vite.ssrLoadModule('/features/workflows/w
 const tools=await vite.ssrLoadModule('/features/workflows/editor-tools.ts');
 const {parseDraftGraph,parseGraph}=await vite.ssrLoadModule('/features/workflows/workflow.ts');
 const workspace=await vite.ssrLoadModule('/features/workflows/workspace-tools.ts');
+const {executionGuidance}=await vite.ssrLoadModule("/features/workflows/execution-guidance.ts");
 function graph(){const g=defaultGraph();g.nodes.find(n=>n.kind==='assign_forms').config.forms=[{templateId:'form-1',roleId:'form_user'}];return g;}
 test('contextual insertion preserves approved branch and does not mutate the saved graph',()=>{
  const original=graph(),before=structuredClone(original),node=tools.newStep('condition',{x:500,y:100},'extra');
@@ -65,4 +66,14 @@ test('waiting steps have no chosen branch while completed legacy steps explicitl
  assert(workspace.stepEvidence(run,node,'output').some(([label,value])=>label==='Branch'&&value.includes('older execution')));
  run.context.steps[node.id].outcome='approved';
  assert(workspace.stepEvidence(run,node,'output').some(([label,value])=>label==='Branch'&&value==='approved'));
+});
+
+test('execution waiting guidance never calls human review stuck and distinguishes delayed worker activity',()=>{
+ const now=Date.parse('2026-10-03T12:00:00Z');const run={graph:graph(),currentNodeId:'review',status:'waiting_review',updatedAt:'2026-10-01T12:00:00Z',context:{steps:{},reviewStartedAt:'2026-10-01T12:00:00Z'}};
+ assert.match(executionGuidance(run,now).title,/HR review.*2 days/);assert.match(executionGuidance(run,now).action,/no automatic timeout/);
+ run.context.waitingFor='telegram';assert.match(executionGuidance(run,now).title,/Telegram confirmation/);assert(!executionGuidance(run,now).title.includes('2 days'));
+ run.context.waitingFor='telegram_retry';assert.match(executionGuidance(run,now).title,/Telegram retry/);
+ delete run.context.waitingFor;run.currentNodeId='account';run.status='queued';assert.equal(executionGuidance(run,now).title,'Processing may be delayed');
+ run.updatedAt='2026-10-03T11:59:00Z';assert.equal(executionGuidance(run,now).title,'Waiting for processing');
+ run.status='completed';assert.match(executionGuidance(run,now).title,/completed/);
 });

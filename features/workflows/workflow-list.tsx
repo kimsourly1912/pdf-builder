@@ -322,7 +322,7 @@ export function WorkflowList(props: {
           )}
         </TabsContent>
         <TabsContent value="runs" className="mt-5">
-          <WorkflowRunsView />
+          <WorkflowRunsView preferenceKey={`${props.preferenceKey}:executions`} />
         </TabsContent>
       </Tabs>
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>

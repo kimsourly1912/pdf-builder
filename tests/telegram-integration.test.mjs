@@ -180,6 +180,7 @@ async function ownerCookie() {
     .join("; ");
 }
 let intakeRow, workflowId, runId, cookie;
+const readinessService=await vite.ssrLoadModule("/features/workflows/readiness.server.ts");
 test("real intake service stores a PDF and candidate but never calls AI or creates a login account", async () => {
   const unauthorized = await webhookRoute.POST(
     new Request("http://localhost:5173/api/telegram/webhook", {
@@ -2075,4 +2076,35 @@ test("workflow drafts retain unfinished settings and duplicate to inactive owner
  assert.equal(d1.sqlite.prepare('SELECT count(*) c FROM workflow_runs WHERE workflow_id=?').get(copy.id).c,0);
  await assert.rejects(()=>workflows.duplicateWorkflow('unrelated@example.com',source.id),e=>e.status===404);
  assert.equal((await workflows.listWorkflows(owner)).find(w=>w.id===copy.id).latestRunStatus,null);
+});
+
+test("publication history is transactional, owner scoped and restores only the draft with revision guards",async()=>{
+ const owner=runtime.MANAGEMENT_EMAIL;let w=await workflows.createWorkflow(owner,'telegram_submission','telegram');
+ w=await workflows.saveWorkflow(owner,w.id,{action:'publish',expectedUpdatedAt:w.updatedAt,name:'TEST publication one',graph:w.draft});
+ const first=structuredClone(w);w.draft.nodes[0].label='TEST second version';
+ w=await workflows.saveWorkflow(owner,w.id,{action:'publish',expectedUpdatedAt:w.updatedAt,name:'TEST publication two',graph:w.draft});
+ const versions=await workflows.publishedVersions(owner,w.id);assert.deepEqual(versions.map(v=>v.version),[2,1]);
+ await assert.rejects(workflows.saveWorkflow(owner,w.id,{action:'publish',expectedUpdatedAt:first.updatedAt,name:first.name,graph:first.draft}),e=>e.status===409);
+ assert.equal((await workflows.publishedVersions(owner,w.id)).length,2);
+ await assert.rejects(workflows.publishedVersions('other@example.com',w.id),e=>e.status===404);
+ await assert.rejects(workflows.restorePublishedDraft('other@example.com',w.id,{version:1,expectedUpdatedAt:w.updatedAt}),e=>e.status===404);
+ await assert.rejects(workflows.restorePublishedDraft(owner,w.id,{version:1,expectedUpdatedAt:first.updatedAt}),e=>e.status===409);
+ const restored=await workflows.restorePublishedDraft(owner,w.id,{version:1,expectedUpdatedAt:w.updatedAt});
+ assert.deepEqual(restored.draft,first.draft);assert.deepEqual(restored.published,w.published);assert.equal(restored.version,2);assert.equal(restored.active,true);assert.equal(restored.name,first.name);
+ assert.equal((await workflows.publishedVersions(owner,w.id)).length,2);
+ // Snapshot insertion failure rolls back the publication itself.
+ d1.sqlite.exec(`CREATE TRIGGER test_history_failure BEFORE INSERT ON workflow_versions WHEN NEW.workflow_id='${w.id}' BEGIN SELECT RAISE(ABORT,'test history failure'); END`);
+ try {await assert.rejects(workflows.saveWorkflow(owner,w.id,{action:'publish',expectedUpdatedAt:restored.updatedAt,name:'TEST rollback',graph:restored.draft}));assert.equal((await workflows.getWorkflow(owner,w.id)).version,2);}finally{d1.sqlite.exec('DROP TRIGGER test_history_failure');}
+});
+test("readiness checks are read-only, owner scoped and report missing bot and unavailable forms",async()=>{
+ const owner=runtime.MANAGEMENT_EMAIL,w=await workflows.createWorkflow(owner,'manual','manual'),before=aiCalls,sent=messages.length,token=runtime.TELEGRAM_BOT_TOKEN;
+ try {
+ delete runtime.TELEGRAM_BOT_TOKEN;
+ const result=await readinessService.workflowReadiness(owner,w.id,w.draft);
+ assert(result.issues.some(i=>i.message.includes('Telegram bot')));assert(result.issues.some(i=>i.message.includes('at least one')));
+ w.draft.nodes.find(n=>n.kind==='assign_forms').config.forms=[{templateId:'missing',roleId:'form_user'}];
+ assert((await readinessService.workflowReadiness(owner,w.id,w.draft)).issues.some(i=>i.message.includes('unavailable')));
+ await assert.rejects(readinessService.workflowReadiness('other@example.com',w.id,w.draft),e=>e.status===404);
+ assert.equal(aiCalls,before);assert.equal(messages.length,sent);assert.equal(d1.sqlite.prepare('SELECT count(*) n FROM workflow_runs WHERE workflow_id=?').get(w.id).n,0);
+ }finally{runtime.TELEGRAM_BOT_TOKEN=token;}
 });

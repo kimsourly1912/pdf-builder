@@ -54,6 +54,8 @@ import {
   SheetDescription,
 } from "@/components/ui/sheet";
 import { useUnsavedChanges } from "@/features/resumes/use-unsaved-changes";
+import { WorkflowReadiness } from "./workflow-readiness";
+import { PublishHistory } from "./publish-history";
 import { WorkflowRunsView } from "./workflow-runs";
 import {
   WorkflowCanvas,
@@ -117,6 +119,7 @@ function flowEdges(graph: WorkflowGraph): FlowEdge[] {
 export function WorkflowEditor(props: {
   displayName: string;
   workflowId: string;
+  preferenceKey: string;
 }) {
   const [workflow, setWorkflow] = useState<WorkflowDetail | null>(null),
     [options, setOptions] = useState<TemplateOption[]>([]),
@@ -151,7 +154,11 @@ export function WorkflowEditor(props: {
       )}
       {workflow ? (
         <ReactFlowProvider>
-          <EditorBody initial={workflow} options={options} />
+          <EditorBody
+            initial={workflow}
+            options={options}
+            preferenceKey={props.preferenceKey}
+          />
         </ReactFlowProvider>
       ) : (
         <p className="py-20 text-center text-muted-foreground">
@@ -164,9 +171,11 @@ export function WorkflowEditor(props: {
 function EditorBody({
   initial,
   options,
+  preferenceKey,
 }: {
   initial: WorkflowDetail;
   options: TemplateOption[];
+  preferenceKey: string;
 }) {
   const [workflow, setWorkflow] = useState(initial),
     [name, setName] = useState(initial.name);
@@ -1180,9 +1189,60 @@ function EditorBody({
           </p>
         </TabsContent>
         <TabsContent value="runs" className="mt-4">
-          <WorkflowRunsView workflowId={workflow.id} />
+          <WorkflowRunsView
+            workflowId={workflow.id}
+            preferenceKey={preferenceKey}
+          />
         </TabsContent>
         <TabsContent value="settings" className="mt-4">
+          <WorkflowReadiness
+            id={workflow.id}
+            graph={graph}
+            onFocus={(id) => {
+              setTab("editor");
+              setSelected(id);
+            }}
+          />
+          <PublishHistory
+            id={workflow.id}
+            current={workflow.version}
+            graph={graph}
+            disabled={busy || !!workflow.archived}
+            onRestore={async (version) => {
+              setBusy(true);
+              try {
+                await save("save");
+                const { workflow: restored } = await workflowApi<{
+                  workflow: WorkflowDetail;
+                }>(`/api/workflows/${workflow.id}/versions`, {
+                  method: "POST",
+                  body: JSON.stringify({
+                    version,
+                    expectedUpdatedAt: revision.current,
+                  }),
+                });
+                revision.current = restored.updatedAt;
+                setWorkflow(restored);
+                setName(restored.name);
+                restore(restored.draft);
+                const signature = JSON.stringify([
+                  restored.name,
+                  parseDraftGraph(restored.draft) ?? restored.draft,
+                ]);
+                saved.current = signature;
+                setSavedFingerprint(signature);
+                setPast([]);
+                setFuture([]);
+                setError("");
+                setSaveState("Saved");
+                setNotice(
+                  "Published version restored as a draft. Review it before publishing.",
+                );
+              } finally {
+                setBusy(false);
+              }
+            }}
+          />
           <Card>
             <CardContent className="space-y-4 p-6">
               <h2 className="font-semibold">Workflow activation</h2>
@@ -1255,6 +1315,7 @@ function EditorBody({
               settings and history.
             </DialogDescription>
           </DialogHeader>
+          <WorkflowReadiness id={workflow.id} graph={graph} />
           <div className="rounded-lg border p-3">
             <p className="mb-2 font-medium">Changes from live version</p>
             <ul className="max-h-48 list-disc overflow-y-auto pl-5 text-sm">
@@ -1470,6 +1531,7 @@ function StartExisting({
   workflowId: string;
   onStarted: () => void;
 }) {
+  const [ready, setReady] = useState(false);
   const [items, setItems] = useState<{ id: string; fileName: string }[]>([]);
   const [search, setSearch] = useState("");
   const [resumeId, setResumeId] = useState("");
@@ -1509,6 +1571,7 @@ function StartExisting({
   }
   return (
     <div className="space-y-4">
+      <WorkflowReadiness id={workflowId} onReady={setReady} />
       <Input
         placeholder="Search resume…"
         aria-label="Search resume"
@@ -1532,7 +1595,10 @@ function StartExisting({
           {error}
         </p>
       )}
-      <Button disabled={!resumeId || busy} onClick={() => void start()}>
+      <Button
+        disabled={!resumeId || busy || !ready}
+        onClick={() => void start()}
+      >
         {busy && <LoaderCircle className="animate-spin" />} Start workflow
       </Button>
     </div>

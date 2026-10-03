@@ -86,7 +86,9 @@ export async function processWorkflowRun(id: string): Promise<void> {
           "This resume was removed. This workflow cannot continue.",
         );
       const attempts = (context.steps[nodeId]?.attempts ?? 0) + 1;
-      context.steps[nodeId] = { status: "waiting", attempts };
+      const startedAt =
+        context.steps[nodeId]?.startedAt ?? new Date().toISOString();
+      context.steps[nodeId] = { status: "waiting", attempts, startedAt };
       let outcome: "next" | "yes" | "no" = "next";
       let note: string | undefined;
       if (node.kind === "review_resume") {
@@ -106,6 +108,7 @@ export async function processWorkflowRun(id: string): Promise<void> {
         context.steps[nodeId] = {
           status: "completed",
           attempts,
+          startedAt,
           completedAt: new Date().toISOString(),
         };
         await checkpoint(
@@ -131,6 +134,7 @@ export async function processWorkflowRun(id: string): Promise<void> {
           context.steps[nodeId] = {
             status: "waiting",
             attempts,
+            startedAt,
             note:
               context.waitingFor === "telegram_retry"
                 ? "Telegram delivery will retry."
@@ -208,6 +212,7 @@ export async function processWorkflowRun(id: string): Promise<void> {
           accountContext.steps[nodeId] = {
             status: "completed",
             attempts,
+            startedAt,
             completedAt: now.toISOString(),
             note: "Candidate account created",
           };
@@ -293,6 +298,7 @@ export async function processWorkflowRun(id: string): Promise<void> {
         context.steps[nodeId] = {
           status: "completed",
           attempts,
+          startedAt,
           completedAt: now,
           note: "Approved resume linked",
         };
@@ -528,6 +534,7 @@ export async function processWorkflowRun(id: string): Promise<void> {
       context.steps[nodeId] = {
         status: "completed",
         attempts,
+        startedAt,
         completedAt: new Date().toISOString(),
         ...(note ? { note } : {}),
         outcome,

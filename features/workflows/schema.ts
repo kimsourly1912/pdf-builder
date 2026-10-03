@@ -25,3 +25,19 @@ export const workflowReviewDecisions = sqliteTable("workflow_review_decisions", 
 export const workflowExecutionGuards = sqliteTable("workflow_execution_guards", {
   runId: text("run_id").notNull(), lockToken: text("lock_token").notNull(), checkedAt: text("checked_at").notNull(),
 });
+
+// Published snapshots are recorded transactionally by the publication trigger.
+export const workflowVersions = sqliteTable(
+  "workflow_versions",
+  {
+    workflowId: text("workflow_id")
+      .notNull()
+      .references(() => workflows.id, { onDelete: "cascade" }),
+    version: integer("version").notNull(),
+    ownerEmail: text("owner_email").notNull(),
+    name: text("name").notNull(),
+    graphJson: text("graph_json").notNull(),
+    publishedAt: text("published_at").notNull(),
+  },
+  (t) => [uniqueIndex("workflow_versions_unique").on(t.workflowId, t.version)],
+);

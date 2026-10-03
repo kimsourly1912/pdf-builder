@@ -12,6 +12,7 @@ export { archiveRecords } from "../features/archive/schema";
 export {
   workflows,
   workflowRuns,
+  workflowVersions,
   workflowReviewDecisions,
 } from "../features/workflows/schema";
 

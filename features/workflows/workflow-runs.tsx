@@ -3,6 +3,8 @@ import {
   statusColor,
   runStatusLabel,
 } from "@/features/candidate-progress/presentation";
+import { useUrlFilters } from "@/features/candidate-progress/use-url-filters";
+import { executionGuidance } from "./execution-guidance";
 import { ArchiveButton } from "@/features/archive/archive-button";
 import { RunTelegramAction } from "@/features/telegram/run-telegram-action";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -77,11 +79,37 @@ type RunsData = {
   stats: Partial<Record<RunStatus, number>>;
 };
 
-export function WorkflowRunsView({ workflowId }: { workflowId?: string }) {
+const RUN_FILTERS = {
+  executionSearch: "",
+  executionStatus: "all",
+  executionDays: "7",
+};
+function validRunFilter(key: keyof typeof RUN_FILTERS, value: string) {
+  return key === "executionSearch"
+    ? value.length <= 120
+    : key === "executionStatus"
+      ? value === "all" || Object.hasOwn(STATUS_LABELS, value)
+      : ["1", "7", "30", "all"].includes(value);
+}
+export function WorkflowRunsView({
+  workflowId,
+  preferenceKey,
+}: {
+  workflowId?: string;
+  preferenceKey: string;
+}) {
   const [data, setData] = useState<RunsData | null>(null);
-  const [search, setSearch] = useState("");
-  const [status, setStatus] = useState("all");
-  const [days, setDays] = useState("7");
+  const {
+    filters,
+    setFilters,
+    ready: filtersReady,
+  } = useUrlFilters(RUN_FILTERS, validRunFilter, preferenceKey);
+  const search = filters.executionSearch,
+    status = filters.executionStatus,
+    days = filters.executionDays;
+  const setSearch = (value: string) => setFilters({ executionSearch: value });
+  const setStatus = (value: string) => setFilters({ executionStatus: value });
+  const setDays = (value: string) => setFilters({ executionDays: value });
   const [page, setPage] = useState(1);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -97,6 +125,7 @@ export function WorkflowRunsView({ workflowId }: { workflowId?: string }) {
   const [busy, setBusy] = useState(false);
   const requestId = useRef(0);
   const load = useCallback(async () => {
+    if (!filtersReady) return;
     const id = ++requestId.current;
     setLoading(true);
     try {
@@ -113,7 +142,7 @@ export function WorkflowRunsView({ workflowId }: { workflowId?: string }) {
     } finally {
       if (id === requestId.current) setLoading(false);
     }
-  }, [workflowId, page, search, status, days]);
+  }, [workflowId, page, search, status, days, filtersReady]);
   const invalidateRequests = useCallback(() => {
     ++requestId.current;
   }, []);
@@ -194,18 +223,34 @@ export function WorkflowRunsView({ workflowId }: { workflowId?: string }) {
         status={selected.status}
         waitingFor={selected.context.waitingFor}
       />
-      <p className="break-all text-xs text-muted-foreground">
-        Run ID: {selected.id}
-      </p>
-      <ArchiveButton
-        type="workflow_run"
-        id={selected.id}
-        label="this workflow run"
-        onArchived={() => {
-          setSelected(null);
-          void load();
-        }}
-      />
+      <div>
+        <h3 className="break-words font-semibold">
+          {selected.candidateName || selected.fileName}
+        </h3>
+        <p className="mt-1 text-sm font-medium">
+          {executionGuidance(selected).title}
+        </p>
+        <p className="mt-1 text-sm text-muted-foreground">
+          {executionGuidance(selected).action}
+        </p>
+      </div>
+      <details className="rounded-lg border p-3">
+        <summary className="cursor-pointer text-sm">
+          More execution actions
+        </summary>
+        <p className="my-3 break-all text-xs text-muted-foreground">
+          Run ID: {selected.id}
+        </p>
+        <ArchiveButton
+          type="workflow_run"
+          id={selected.id}
+          label="this workflow run"
+          onArchived={() => {
+            setSelected(null);
+            void load();
+          }}
+        />
+      </details>
       <ExecutionCanvas run={selected} />
       <details className="rounded-lg border p-3">
         <summary className="cursor-pointer text-sm font-medium">
@@ -397,6 +442,7 @@ export function WorkflowRunsView({ workflowId }: { workflowId?: string }) {
                   className="min-w-0 flex-1"
                   placeholder="Search candidate or resume"
                   aria-label="Search runs"
+                  disabled={!filtersReady}
                   value={search}
                   onChange={(e) => {
                     setSearch(e.target.value);
@@ -404,6 +450,7 @@ export function WorkflowRunsView({ workflowId }: { workflowId?: string }) {
                   }}
                 />
                 <Select
+                  disabled={!filtersReady}
                   value={status}
                   onValueChange={(v) => {
                     setStatus(v);
@@ -426,6 +473,7 @@ export function WorkflowRunsView({ workflowId }: { workflowId?: string }) {
                   </SelectContent>
                 </Select>
                 <Select
+                  disabled={!filtersReady}
                   value={days}
                   onValueChange={(v) => {
                     setDays(v);
@@ -454,6 +502,16 @@ export function WorkflowRunsView({ workflowId }: { workflowId?: string }) {
                 >
                   <RefreshCw className={loading ? "animate-spin" : ""} />
                 </Button>
+                <Button
+                  variant="ghost"
+                  disabled={!filtersReady}
+                  onClick={() => {
+                    setFilters(RUN_FILTERS);
+                    setPage(1);
+                  }}
+                >
+                  Clear filters
+                </Button>
               </div>
             </div>
             <div className="overflow-x-auto">
@@ -481,6 +539,9 @@ export function WorkflowRunsView({ workflowId }: { workflowId?: string }) {
                           status={r.status}
                           waitingFor={r.context.waitingFor}
                         />
+                        <span className="block text-xs text-muted-foreground">
+                          {executionGuidance(r).title}
+                        </span>
                         <span className="block text-xs text-muted-foreground">
                           {runDate(r.createdAt)} · v{r.version}
                         </span>
@@ -525,6 +586,9 @@ export function WorkflowRunsView({ workflowId }: { workflowId?: string }) {
                             status={r.status}
                             waitingFor={r.context.waitingFor}
                           />
+                          <p className="mt-1 text-xs text-muted-foreground">
+                            {executionGuidance(r).title}
+                          </p>
                         </TableCell>
                         <TableCell>
                           {

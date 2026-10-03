@@ -45,3 +45,7 @@ A Telegram CV update has an independent confirmation and HR review draft. Once r
 ## 2026-10-03: Workflow previews and graph metadata
 
 Workflow sample tests are pure browser previews and never call the runner, create accounts/assignments, approve CVs, generate activation links, send Telegram messages or request paid AI. Live execution retains current-revision review and account/contact checks. Draft validation may retain unfinished invitation text; publication remains strict. Names and internal annotations are bounded graph metadata and travel with immutable published snapshots. Duplication creates an inactive draft with no published version or execution history. Recorded branch outcomes are added for future executions; absent legacy evidence is not reconstructed from assumptions.
+
+## 2026-10-03: Published workflow history is separate from draft recovery
+
+Publication snapshots are written by a SQLite trigger in the publication update transaction. Restoring a snapshot uses normal owner-scoped, revision-guarded draft saving; it never activates, republishes or mutates existing executions. Restored form targets lose old version pins and are validated/pinned at the next publication. The history migration retains the latest existing publication only; older graph snapshots are unavailable. Integration readiness is read-only configuration feedback, not a delivery or candidate authorization check. Intentional HR/Telegram waits have no inferred failure timeout; processing delay notices describe lack of activity without claiming failure.

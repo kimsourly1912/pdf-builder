@@ -25,7 +25,7 @@ import {
 } from "@/db/schema";
 import { parseVersionRoles } from "@/features/templates/template-write";
 import { jsonError } from "@/features/templates/template.server";
-import { workflowRuns, workflows } from "./schema";
+import { workflowVersions, workflowRuns, workflows } from "./schema";
 import {
   defaultGraph,
   graphIssues,
@@ -609,4 +609,50 @@ export async function duplicateWorkflow(ownerEmail: string, id: string) {
     workflowAudit(ownerEmail, "workflow.duplicated", copyId, { sourceId: id }),
   ]);
   return getWorkflow(ownerEmail, copyId);
+}
+
+export async function publishedVersions(ownerEmail: string, id: string) {
+  await getWorkflow(ownerEmail, id);
+  return getDb()
+    .select({
+      version: workflowVersions.version,
+      name: workflowVersions.name,
+      publishedAt: workflowVersions.publishedAt,
+      graph: workflowVersions.graphJson,
+    })
+    .from(workflowVersions)
+    .where(
+      and(
+        eq(workflowVersions.workflowId, id),
+        eq(workflowVersions.ownerEmail, ownerEmail),
+      ),
+    )
+    .orderBy(desc(workflowVersions.version));
+}
+export async function restorePublishedDraft(
+  ownerEmail: string,
+  id: string,
+  body: Record<string, unknown>,
+) {
+  if (!Number.isSafeInteger(body.version) || Number(body.version) < 1)
+    fail("Choose a published version.");
+  const [version] = await getDb()
+    .select()
+    .from(workflowVersions)
+    .where(
+      and(
+        eq(workflowVersions.workflowId, id),
+        eq(workflowVersions.ownerEmail, ownerEmail),
+        eq(workflowVersions.version, Number(body.version)),
+      ),
+    )
+    .limit(1);
+  if (!version) fail("Published version not found.", 404);
+  // Normal draft parsing clears pinned template versions; publication validates and pins again.
+  return saveWorkflow(ownerEmail, id, {
+    action: "save",
+    expectedUpdatedAt: body.expectedUpdatedAt,
+    name: version.name,
+    graph: JSON.parse(version.graphJson),
+  });
 }
