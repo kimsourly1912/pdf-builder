@@ -1,12 +1,11 @@
+import { formResponse } from "@/features/forms/form.server";
+import { findFillContext } from "@/features/templates/fill-context.server";
+import { formDraftPayload, submitForm } from "@/features/forms/submission.server";
 import { and, eq } from "drizzle-orm";
 
 import { getDatabaseBinding, getDb } from "@/db";
 import {
-  formAssignments,
-  recipientLinks,
   submissions,
-  templates,
-  templateVersions,
 } from "@/db/schema";
 import { authorizeAssignedRecipient } from "@/features/accounts/account.server";
 import { createAuditEvent } from "@/features/audit/audit.server";
@@ -19,7 +18,6 @@ import {
 } from "@/features/templates/completed-pdf.server";
 import {
   COMPLETED_PDF_GENERATOR,
-  parseAssignedFillIdentifier,
   sha256Hex,
 } from "@/features/templates/submission-artifact";
 import { toUtcIsoString } from "@/features/templates/date-time";
@@ -30,7 +28,6 @@ import {
 } from "@/features/templates/recipient-link-lifecycle";
 import {
   getFilesBucket,
-  hashRecipientToken,
   isResponse,
   jsonError,
 } from "@/features/templates/template.server";
@@ -74,7 +71,9 @@ export async function GET(
     const pageOrder = parseArray<TemplatePageEntry>(
       fillContext.version.pageOrderJson,
     );
+    const formExtras = fillContext.version.formDefinitionJson ? await formDraftPayload(fillContext) : {};
     const payload: TemplateFillPayload = {
+      ...formExtras,
       template: {
         id: fillContext.template.id,
         versionId: fillContext.version.id,
@@ -117,6 +116,10 @@ export async function GET(
             )
           : undefined,
     };
+    if (payload.formDefinition?.presentation) {
+      payload.template.name = payload.formDefinition.presentation.title;
+      payload.template.description = payload.formDefinition.presentation.description;
+    }
     return Response.json(payload, {
       headers: { "Cache-Control": "no-store" },
     });
@@ -141,6 +144,8 @@ export async function POST(
       request.headers,
       fillContext.link.assignedUserId,
     );
+
+    if (fillContext.version.formDefinitionJson) return await formResponse(() => submitForm(request, fillContext));
 
     const idempotencyKey = request.headers.get("Idempotency-Key");
     if (!validIdempotencyKey(idempotencyKey)) {
@@ -497,40 +502,6 @@ function collectImageFiles(
   return { ok: true, files };
 }
 
-async function findFillContext(identifier: string) {
-  const assignmentId = parseAssignedFillIdentifier(identifier);
-  const db = getDb();
-  const query = db
-    .select({
-      link: recipientLinks,
-      template: templates,
-      version: templateVersions,
-      assignment: formAssignments,
-    })
-    .from(recipientLinks)
-    .innerJoin(templates, eq(recipientLinks.templateId, templates.id))
-    .innerJoin(
-      templateVersions,
-      eq(recipientLinks.templateVersionId, templateVersions.id),
-    )
-    .leftJoin(
-      formAssignments,
-      eq(recipientLinks.id, formAssignments.recipientLinkId),
-    );
-
-  if (assignmentId) {
-    const [row] = await query
-      .where(eq(formAssignments.id, assignmentId))
-      .limit(1);
-    return row ?? null;
-  }
-
-  if (!/^[A-Za-z0-9_-]{40,60}$/u.test(identifier)) return null;
-  const [row] = await query
-    .where(eq(recipientLinks.tokenHash, await hashRecipientToken(identifier)))
-    .limit(1);
-  return row ?? null;
-}
 
 function parseRecord(value: string | null | undefined): Record<string, unknown> {
   if (!value) return {};

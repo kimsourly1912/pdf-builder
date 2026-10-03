@@ -1,7 +1,7 @@
 import { and, eq } from "drizzle-orm";
 
 import { getDb } from "@/db";
-import { submissions, templates } from "@/db/schema";
+import { submissions, templates, formSubmissionArtifacts } from "@/db/schema";
 import { sha256Hex } from "@/features/templates/submission-artifact";
 import {
   getFilesBucket,
@@ -19,22 +19,25 @@ export async function GET(
     const { id } = await context.params;
     const db = getDb();
     const [row] = await db
-      .select({ submission: submissions, template: templates })
+      .select({ submission: submissions, template: templates, artifact: formSubmissionArtifacts })
       .from(submissions)
       .innerJoin(templates, eq(submissions.templateId, templates.id))
+      .leftJoin(formSubmissionArtifacts, eq(formSubmissionArtifacts.submissionId, submissions.id))
       .where(and(eq(submissions.id, id), eq(templates.ownerEmail, ownerEmail)))
       .limit(1);
-    if (!row || !row.submission.completedFileKey) {
+    const fileKey = row?.artifact?.fileKey ?? row?.submission.completedFileKey;
+    const checksum = row?.artifact?.checksum ?? row?.submission.completedFileChecksum;
+    if (!row || !fileKey) {
       return jsonError("Completed PDF not found.", 404);
     }
-    const object = await getFilesBucket().get(row.submission.completedFileKey);
+    const object = await getFilesBucket().get(fileKey);
     if (!object) return jsonError("Completed PDF not found.", 404);
     const bytes = new Uint8Array(
       await new Response(object.body).arrayBuffer(),
     ) as Uint8Array<ArrayBuffer>;
     if (
-      row.submission.completedFileChecksum &&
-      (await sha256Hex(bytes)) !== row.submission.completedFileChecksum
+      checksum &&
+      (await sha256Hex(bytes)) !== checksum
     ) {
       console.error("Completed PDF integrity verification failed", {
         submissionId: row.submission.id,

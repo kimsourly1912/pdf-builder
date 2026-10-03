@@ -38,6 +38,7 @@ type PortalAssignment = {
   description: string;
   versionNumber: number;
   roleName: string;
+  templateKind?: string;
   roleColor: string;
   status: string;
   assignedAt: string;
@@ -179,7 +180,7 @@ function AssignmentCard(props: {
         <span className="mt-1 size-3 shrink-0 rounded-full" style={{ backgroundColor: assignment.roleColor }} />
         <div className="min-w-0 flex-1">
           <h3 className="truncate text-base font-semibold">{assignment.templateName}</h3>
-          <p className="mt-1 text-xs text-muted-foreground">Version {assignment.versionNumber} · {assignment.roleName}</p>
+          <p className="mt-1 text-xs text-muted-foreground">Version {assignment.versionNumber}{assignment.templateKind !== "form" ? ` · ${assignment.roleName}` : ""}</p>
         </div>
         <StatusBadge label={display.label} tone={tone} className="text-[10px]" />
       </div>

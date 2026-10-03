@@ -55,6 +55,7 @@ type FormRow = {
   id: string;
   userId: string;
   templateId: string;
+  templateKind: string;
   versionId: string;
   roleId: string;
   name: string;
@@ -97,7 +98,7 @@ async function load(owner: string, resumeId?: string) {
         owner,
       ),
       rows<FormRow>(
-        "SELECT f.id,f.user_id userId,f.template_id templateId,f.template_version_id versionId,f.role_id roleId,t.name,f.status,COALESCE(f.completed_at,l.completed_at) completedAt,f.candidate_profile_version_id profileId,f.updated_at updatedAt,l.status linkStatus,l.submission_count submissionCount,l.expires_at expiresAt,(SELECT s.id FROM submissions s WHERE s.recipient_link_id=l.id ORDER BY s.submitted_at DESC LIMIT 1) submissionId,(SELECT s.completed_file_key FROM submissions s WHERE s.recipient_link_id=l.id ORDER BY s.submitted_at DESC LIMIT 1) submissionPdf FROM form_assignments f JOIN recipient_profiles p ON p.user_id=f.user_id JOIN templates t ON t.id=f.template_id AND t.owner_email=p.created_by_email JOIN recipient_links l ON l.id=f.recipient_link_id WHERE p.created_by_email=?",
+        "SELECT f.id,f.user_id userId,f.template_id templateId,t.kind templateKind,f.template_version_id versionId,f.role_id roleId,t.name,f.status,COALESCE(f.completed_at,l.completed_at) completedAt,f.candidate_profile_version_id profileId,f.updated_at updatedAt,l.status linkStatus,l.submission_count submissionCount,l.expires_at expiresAt,(SELECT s.id FROM submissions s WHERE s.recipient_link_id=l.id ORDER BY s.submitted_at DESC LIMIT 1) submissionId,(SELECT COALESCE(a.file_key,s.completed_file_key) FROM submissions s LEFT JOIN form_submission_artifacts a ON a.submission_id=s.id WHERE s.recipient_link_id=l.id ORDER BY s.submitted_at DESC LIMIT 1) submissionPdf FROM form_assignments f JOIN recipient_profiles p ON p.user_id=f.user_id JOIN templates t ON t.id=f.template_id AND t.owner_email=p.created_by_email JOIN recipient_links l ON l.id=f.recipient_link_id WHERE p.created_by_email=?",
         owner,
       ),
       rows<Delivery>(
@@ -405,6 +406,7 @@ async function load(owner: string, resumeId?: string) {
       status: f.status,
       completedAt: f.completedAt,
       reused: f.profileId !== context.profileVersionId,
+      responseUrl: f.submissionId && f.templateKind === "form" ? `/forms/${f.templateId}/responses?response=${f.submissionId}` : null,
       url:
         f.submissionId && f.submissionPdf
           ? `/api/submissions/${f.submissionId}/pdf`

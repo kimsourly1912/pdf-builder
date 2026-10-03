@@ -24,11 +24,14 @@
   "dependencies": {
     "@base-ui/react": "^1.7.0",
     "@better-auth/drizzle-adapter": "^1.7.3",
+    "@dnd-kit/react": "0.5.0",
     "@expo-google-fonts/noto-sans-khmer": "^0.4.3",
     "@hookform/resolvers": "^5.7.1",
     "@pdf-lib/fontkit": "^1.1.1",
     "@shadcn/react": "^0.3.0",
+    "@tanstack/react-form": "^1.0.0",
     "@tanstack/react-table": "^9.2.4",
+    "@xyflow/react": "^12.11.1",
     "better-auth": "^1.7.3",
     "class-variance-authority": "0.7.1",
     "clsx": "2.1.1",
@@ -48,14 +51,14 @@
     "react-dom": "19.2.6",
     "react-hook-form": "^7.85.0",
     "react-resizable-panels": "^4.12.2",
+    "react-rnd": "10.5.3",
     "recharts": "^3.8.0",
     "regenerator-runtime": "^0.14.1",
+    "signature_pad": "5.1.4",
     "sonner": "^2.0.8",
     "tailwind-merge": "3.6.0",
     "vaul": "^1.1.2",
-    "zod": "^4.5.4",
-    "@xyflow/react": "^12.11.1",
-    "@tanstack/react-form": "^1.0.0"
+    "zod": "^4.5.4"
   },
   "devDependencies": {
     "@cloudflare/vite-plugin": "1.37.1",

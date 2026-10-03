@@ -376,7 +376,9 @@ export function ProgressDetail({
                           {f.completedAt ? ` · ${runDate(f.completedAt)}` : ""}
                         </p>
                       </div>
-                      {f.status === "completed" && f.url ? (
+                      {f.status === "completed" && f.responseUrl ? (
+                        <Button asChild size="sm" variant="outline"><Link href={f.responseUrl}>View response</Link></Button>
+                      ) : f.status === "completed" && f.url ? (
                         <Button asChild size="sm" variant="outline">
                           <Link href={f.url!} target="_blank" rel="noreferrer">
                             View submission PDF

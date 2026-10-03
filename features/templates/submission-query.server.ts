@@ -103,6 +103,7 @@ export async function queryOwnedSubmissions(
 function submissionConditions(ownerEmail: string, filters: SubmissionFilters) {
   const conditions: SQL[] = [
     eq(templates.ownerEmail, ownerEmail),
+    eq(templates.kind, "pdf"),
     notArchived("submission", submissions.id),
   ];
   if (filters.templateId) {

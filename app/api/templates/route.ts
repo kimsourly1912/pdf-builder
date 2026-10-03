@@ -50,7 +50,7 @@ export async function GET(request: Request) {
       defaultSort: "updatedAt",
     });
     const status = templateStatus(searchParams.get("status"));
-    const conditions: SQL[] = [eq(templates.ownerEmail, ownerEmail)];
+    const conditions: SQL[] = [eq(templates.ownerEmail, ownerEmail), eq(templates.kind, "pdf")];
     if (status === "active") conditions.push(isNull(templates.archivedAt));
     if (status === "archived") conditions.push(isNotNull(templates.archivedAt));
     const search = searchParams.get("search")?.trim().slice(0, 120);
@@ -87,7 +87,7 @@ export async function GET(request: Request) {
           archived: sql<number>`sum(case when ${templates.archivedAt} is not null then 1 else 0 end)`,
         })
         .from(templates)
-        .where(eq(templates.ownerEmail, ownerEmail)),
+        .where(and(eq(templates.ownerEmail, ownerEmail), eq(templates.kind, "pdf"))),
       db
         .select({ total: count() })
         .from(recipientLinks)

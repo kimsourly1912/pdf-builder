@@ -58,7 +58,7 @@ function AppShell(props: AppShellProps) {
   const pathname = usePathname();
   const currentItem =
     navigationItems.find((item) =>
-      item.exact ? pathname === item.href : pathname.startsWith(item.href),
+      item.exact ? pathname === item.href : (pathname.startsWith(item.href) || (item.href === "/templates" && pathname.startsWith("/forms"))),
     ) ?? navigationItems[0];
 
   return (
@@ -97,12 +97,13 @@ function AppShell(props: AppShellProps) {
                       : item.exact
                         ? pathname === item.href
                         : pathname.startsWith(item.href);
+                  const templateActive = item.href === "/templates" && pathname.startsWith("/forms");
                   const Icon = item.icon;
                   return (
                     <SidebarMenuItem key={item.href}>
                       <SidebarMenuButton
                         asChild
-                        isActive={active}
+                        isActive={active || templateActive}
                         tooltip={item.label}
                       >
                         <Link href={item.href}>
@@ -110,6 +111,10 @@ function AppShell(props: AppShellProps) {
                           <span>{item.label}</span>
                         </Link>
                       </SidebarMenuButton>
+                      {item.href === "/templates" && <SidebarMenuSub>
+                        <SidebarMenuSubItem><SidebarMenuSubButton asChild isActive={pathname.startsWith("/forms")}><Link href="/forms"><span>Form Builder · New</span></Link></SidebarMenuSubButton></SidebarMenuSubItem>
+                        <SidebarMenuSubItem><SidebarMenuSubButton asChild isActive={pathname.startsWith("/templates")}><Link href="/templates"><span>PDF Templates · Current</span></Link></SidebarMenuSubButton></SidebarMenuSubItem>
+                      </SidebarMenuSub>}
                       {item.href === "/candidates" && (
                         <SidebarMenuSub>
                           <SidebarMenuSubItem>

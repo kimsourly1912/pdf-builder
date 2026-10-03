@@ -101,12 +101,30 @@ export const verification = sqliteTable(
   (table) => [index("verification_identifier_idx").on(table.identifier)],
 );
 
+export const formResponseDrafts = sqliteTable("form_response_drafts", {
+  recipientLinkId: text("recipient_link_id").primaryKey().references(() => recipientLinks.id, { onDelete: "cascade" }),
+  valuesJson: text("values_json").notNull().default("{}"),
+  revision: text("revision").notNull(),
+  updatedAt: text("updated_at").notNull(),
+});
+export const formSubmissionArtifacts = sqliteTable("form_submission_artifacts", {
+  submissionId: text("submission_id").primaryKey().references(() => submissions.id, { onDelete: "cascade" }),
+  status: text("status").notNull().default("pending"),
+  fileKey: text("file_key"), checksum: text("checksum"),
+  errorCode: text("error_code"),
+  leaseToken: text("lease_token"), leaseExpiresAt: text("lease_expires_at"),
+  updatedAt: text("updated_at").notNull(),
+});
+
 export const templates = sqliteTable(
   "templates",
   {
     id: text("id").primaryKey(),
     ownerEmail: text("owner_email").notNull(),
     name: text("name").notNull(),
+    kind: text("kind").notNull().default("pdf"),
+    formDraftJson: text("form_draft_json"),
+    formRevision: text("form_revision").notNull().default(""),
     description: text("description").notNull().default(""),
     fileKey: text("file_key").notNull(),
     fileName: text("file_name").notNull(),
@@ -140,6 +158,7 @@ export const templateVersions = sqliteTable(
     annotationsJson: text("annotations_json").notNull(),
     pageOrderJson: text("page_order_json").notNull(),
     rolesJson: text("roles_json").notNull().default("[]"),
+    formDefinitionJson: text("form_definition_json"),
     publishedAt: text("published_at").notNull(),
   },
   (table) => [

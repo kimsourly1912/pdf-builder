@@ -937,7 +937,7 @@ function AccountAssignmentRow(props: {
           {props.assignment.templateName}
         </p>
         <p className="mt-0.5 text-[11px] text-muted-foreground">
-          v{props.assignment.versionNumber} · {props.assignment.roleName} ·{" "}
+          v{props.assignment.versionNumber}{props.assignment.templateKind !== "form" ? ` · ${props.assignment.roleName}` : ""} ·{" "}
           {formatLocalDateTime(props.assignment.assignedAt, {
             timeZone: props.timeZone,
           })}

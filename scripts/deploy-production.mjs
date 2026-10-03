@@ -444,12 +444,14 @@ async function verifyDeployment(hostname, authenticatedCookie) {
   }
 
   for (const path of [
+    "/api/forms",
     "/api/workflows",
     "/api/workflow-runs",
     "/api/intake",
     "/api/archive",
     "/api/candidates",
     "/api/ai-field-detection/runs",
+    "/forms",
     "/workflows",
     "/intake",
     "/archive",
@@ -476,6 +478,7 @@ async function verifyDeployment(hostname, authenticatedCookie) {
     } else if (
       !(await response.text()).includes(
         {
+          "/forms": "Form Builder",
           "/intake": "Candidate intake",
           "/archive": "Archive",
           "/candidates": "Candidate progress",

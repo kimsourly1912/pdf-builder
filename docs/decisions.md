@@ -23,3 +23,9 @@ These accepted decisions describe the current product and technical contracts as
 Details: [Telegram](telegram-candidate-intake.md), [Workflows](candidate-workflows.md), [Progress](candidate-progress.md), [Archive](archive.md), and [Architecture](architecture.md).
 
 For a new decision, add a stable ID, explain the tradeoff and resulting constraint, and link relevant behavior documentation. If superseded, retain the ID and mark it superseded with a link to the replacement rather than erasing the history. Do not record secrets or conversational transcripts here.
+
+## Whole-form web assignments alongside legacy PDF templates (2026-10-03)
+
+New web forms assign all fields to one managed account; recipient roles are absent from their authoring and candidate interfaces. The existing PDF template editor remains available until an explicit retirement/migration decision. A private single-user storage adapter reuses existing workflow and assignment guards; it is not an authentication role.
+
+Drafts and published versions are separate. Published form presentation, fields, JSON keys, placements and source PDF are pinned per assignment. PDF output is optional and generated after the immutable JSON response commits; generation failure does not undo submission. Retrying uses the same snapshot. Use React Hook Form/Zod, the current dnd-kit React adapter, react-rnd, signature_pad and the existing PDF stack rather than inventing drag, form or signature primitives.

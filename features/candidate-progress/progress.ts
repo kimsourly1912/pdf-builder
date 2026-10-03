@@ -99,6 +99,7 @@ export type ProgressForm = {
   completedAt: string | null;
   reused: boolean;
   url: string | null;
+  responseUrl?: string | null;
 };
 export type CandidateProgress = {
   id: string;

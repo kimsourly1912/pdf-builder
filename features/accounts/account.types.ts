@@ -15,6 +15,7 @@ export type RecipientAssignmentSummary = {
   id: string;
   templateId: string;
   templateName: string;
+  templateKind?: string;
   versionNumber: number;
   roleId: string;
   roleName: string;

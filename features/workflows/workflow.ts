@@ -127,6 +127,7 @@ export type WorkflowRun = {
   context: RunContext;
 };
 export type TemplateOption = {
+  kind?: "pdf" | "form";
   id: string;
   name: string;
   roles: { id: string; name: string }[];

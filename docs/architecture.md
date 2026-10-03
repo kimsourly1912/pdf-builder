@@ -58,3 +58,5 @@ Workflow graphs and approved preparation values are snapshotted. Lease checks, r
 `.github/workflows/deploy-production.yml` runs on pushes to `codex/pdf-studio-self-host` or manual dispatch. It uses Node 22, installs locked dependencies, checks lint/types/migrations/tests, and invokes `scripts/deploy-production.mjs`. Deployment applies production migrations, publishes the Worker, and runs authenticated smoke checks; Telegram registration is verified when its required secrets are available. Application deployment success alone does not prove Telegram configuration when registration was skipped.
 
 There is currently one production target. `main` is not the application deployment branch. See [decisions](decisions.md) before changing these assumptions.
+
+The additive [web form builder](form-builder.md) lives in `features/forms`, with `/forms` management routes and shared `/fill` account authorization. It uses versioned template storage and existing assignment/workflow history, with separate draft-response and leased PDF-artifact tables. Legacy PDF templates continue to use their existing editor.

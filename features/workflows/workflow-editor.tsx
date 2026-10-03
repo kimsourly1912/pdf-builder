@@ -854,6 +854,7 @@ function StepSettings(props: {
                           ))}
                         </SelectContent>
                       </Select>
+                      {option?.kind !== "form" && (
                       <Select
                         value={target.roleId || undefined}
                         onValueChange={(v) => {
@@ -879,6 +880,8 @@ function StepSettings(props: {
                           ))}
                         </SelectContent>
                       </Select>
+                      )}
+
                       <Button
                         type="button"
                         variant="ghost"

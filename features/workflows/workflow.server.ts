@@ -137,6 +137,7 @@ export async function templateOptions(
       id: templates.id,
       name: templates.name,
       roles: templateVersions.rolesJson,
+      kind: templates.kind,
     })
     .from(templates)
     .innerJoin(
@@ -151,6 +152,7 @@ export async function templateOptions(
   return rows.map((r) => ({
     id: r.id,
     name: r.name,
+    kind: r.kind as "pdf" | "form",
     roles: parseVersionRoles(r.roles).map((role) => ({
       id: role.id,
       name: role.name,

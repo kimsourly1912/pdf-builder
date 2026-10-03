@@ -48,6 +48,7 @@ export async function GET(
     const { id } = await context.params;
     const row = await findOwnedTemplateVersion(id, ownerEmail);
     if (!row) return jsonError("Template not found.", 404);
+    if (row.template.kind === "form") return jsonError("Open this form in Form Builder.", 409);
 
     return Response.json({
       template: {
@@ -85,6 +86,7 @@ export async function PUT(
     const { id } = await context.params;
     const current = await findOwnedTemplateVersion(id, ownerEmail);
     if (!current) return jsonError("Template not found.", 404);
+    if (current.template.kind === "form") return jsonError("Edit this form in Form Builder.", 409);
 
     const formData = await request.formData();
     const pdf = formData.get("pdf");

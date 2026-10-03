@@ -1,3 +1,5 @@
+import { env } from "cloudflare:workers";
+import { processPendingFormPdfs } from "../features/forms/submission.server";
 import { processTelegramUpdates } from "../features/telegram/intake.server";
 import handler from "vinext/server/app-router-entry";
 
@@ -104,6 +106,8 @@ const worker = {
   async scheduled(): Promise<void> {
     await processTelegramUpdates();
     await processPendingWorkflowRuns();
+    const origin = (env as unknown as { BETTER_AUTH_URL?: string }).BETTER_AUTH_URL;
+    if (origin) await processPendingFormPdfs(origin);
     const result = await processStorageCleanupJobs({ limit: 100 });
     if (result.failed > 0) {
       console.warn("Storage cleanup remains pending", {
