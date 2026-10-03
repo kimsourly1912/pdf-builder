@@ -18,6 +18,7 @@ export function StepSettings(props: {
   options: TemplateOption[];
   disabled?: boolean;
   onChange: (config: StepConfig) => void;
+  onMetadata?: (metadata: { label?: string; note?: string }) => void;
 }) {
   const { node } = props,
     config = node.config;
@@ -31,6 +32,33 @@ export function StepSettings(props: {
           {STEP_DESCRIPTIONS[node.kind]}
         </p>
       </div>
+      {props.onMetadata && (
+        <div className="space-y-3">
+          <div>
+            <Label htmlFor="step-label">Step name</Label>
+            <Input
+              id="step-label"
+              maxLength={80}
+              placeholder={STEP_LABELS[node.kind]}
+              value={node.label ?? ""}
+              onChange={(e) => props.onMetadata?.({ label: e.target.value })}
+            />
+          </div>
+          <div>
+            <Label htmlFor="step-note">Annotation</Label>
+            <Textarea
+              id="step-note"
+              maxLength={2000}
+              placeholder="Explain this step for HR…"
+              value={node.note ?? ""}
+              onChange={(e) => props.onMetadata?.({ note: e.target.value })}
+            />
+            <p className="mt-1 text-xs text-muted-foreground">
+              Internal workflow note. Never sent to candidates.
+            </p>
+          </div>
+        </div>
+      )}
       {node.kind === "resume_uploaded" && (
         <div className="space-y-2">
           <Label htmlFor="workflow-trigger">Starting event</Label>
@@ -140,7 +168,7 @@ export function StepSettings(props: {
               })
             }
           >
-            Add template
+            Add form
           </Button>
           {!props.options.length && (
             <p className="text-sm text-muted-foreground">
@@ -192,7 +220,8 @@ export function StepSettings(props: {
           </div>
           {config.message !== undefined && !config.message.trim() && (
             <p role="alert" className="text-xs text-destructive">
-              Enter a message to save this draft.
+              Add a message before publishing. Your unfinished draft can still
+              be saved.
             </p>
           )}
           <Button

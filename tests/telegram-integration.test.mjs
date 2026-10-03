@@ -2062,3 +2062,17 @@ test("legacy HR overrides survive the added explicit-review fact", async () => {
   d1.sqlite.exec(readFileSync(root+'/drizzle/0027_backfill_cv_review_starts.sql','utf8'));
   const backfilled=await progressGet(item.id);assert.equal(backfilled.stage,'reviewing');assert.equal(backfilled.automaticStage,'reviewing');assert(backfilled.reviewStartedAt);
 });
+
+test("workflow drafts retain unfinished settings and duplicate to inactive owner-scoped drafts without history",async()=>{
+ const owner=runtime.MANAGEMENT_EMAIL;
+ let source=await workflows.createWorkflow(owner,'manual','manual');
+ const invitation=source.draft.nodes.find(n=>n.kind==='send_telegram');invitation.config.message='';invitation.label='TEST invitation';invitation.note='TEST internal note';
+ source=await workflows.saveWorkflow(owner,source.id,{action:'save',expectedUpdatedAt:source.updatedAt,name:'TEST unfinished workflow',graph:source.draft});
+ assert.equal(source.draft.nodes.find(n=>n.kind==='send_telegram').config.message,'');
+ await assert.rejects(()=>workflows.saveWorkflow(owner,source.id,{action:'publish',expectedUpdatedAt:source.updatedAt,name:source.name,graph:source.draft}),e=>e.status===400);
+ const copy=await workflows.duplicateWorkflow(owner,source.id);
+ assert.equal(copy.active,false);assert.equal(copy.version,0);assert.equal(copy.published,null);assert.notEqual(copy.id,source.id);assert.deepEqual(copy.draft,source.draft);
+ assert.equal(d1.sqlite.prepare('SELECT count(*) c FROM workflow_runs WHERE workflow_id=?').get(copy.id).c,0);
+ await assert.rejects(()=>workflows.duplicateWorkflow('unrelated@example.com',source.id),e=>e.status===404);
+ assert.equal((await workflows.listWorkflows(owner)).find(w=>w.id===copy.id).latestRunStatus,null);
+});

@@ -2,9 +2,10 @@
 import { WORKFLOW_PRESETS, type WorkflowPreset } from "./presets";
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { Plus, Workflow, LoaderCircle } from "lucide-react";
+import { Plus, Workflow, LoaderCircle, Copy } from "lucide-react";
 import { AppShell } from "@/components/patterns/app-shell";
 import { PageHeader } from "@/components/patterns/page-header";
+import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -16,6 +17,8 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useUrlFilters } from "@/features/candidate-progress/use-url-filters";
+import { RunBadge } from "./workflow-runs";
 import { WorkflowRunsView } from "./workflow-runs";
 import { workflowApi, errorText, runDate } from "./client";
 import {
@@ -40,7 +43,34 @@ import {
   SelectItem,
 } from "@/components/ui/select";
 
-export function WorkflowList(props: { displayName: string }) {
+const FILTERS = {
+  workflowSearch: "",
+  workflowStatus: "all",
+  workflowTrigger: "all",
+};
+function validFilter(key: keyof typeof FILTERS, value: string) {
+  return key === "workflowStatus"
+    ? ["all", "active", "paused", "draft"].includes(value)
+    : key === "workflowTrigger"
+      ? value === "all" || Object.hasOwn(TRIGGER_LABELS, value)
+      : value.length <= 120;
+}
+export function WorkflowList(props: {
+  displayName: string;
+  preferenceKey: string;
+}) {
+  const {
+    filters,
+    setFilters,
+    ready: filtersReady,
+  } = useUrlFilters(FILTERS, validFilter, props.preferenceKey);
+  const [tab, setTab] = useState(() =>
+    typeof window !== "undefined" &&
+    new URLSearchParams(window.location.search).get("tab") === "runs"
+      ? "runs"
+      : "workflows",
+  );
+  const [copying, setCopying] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false),
     [preset, setPreset] = useState<WorkflowPreset | "custom">("approval"),
     [trigger, setTrigger] = useState<WorkflowTrigger>("resume_verified");
@@ -82,8 +112,32 @@ export function WorkflowList(props: { displayName: string }) {
       setBusy(false);
     }
   }
+  const visible = items.filter(
+    (w) =>
+      w.name.toLowerCase().includes(filters.workflowSearch.toLowerCase()) &&
+      (filters.workflowTrigger === "all" ||
+        w.trigger === filters.workflowTrigger) &&
+      (filters.workflowStatus === "all" ||
+        filters.workflowStatus ===
+          (w.active ? "active" : w.version ? "paused" : "draft")),
+  );
+  async function duplicate(id: string) {
+    if (copying) return;
+    setCopying(id);
+    setError("");
+    try {
+      const d = await workflowApi<{ workflow: WorkflowSummary }>(
+        `/api/workflows/${id}`,
+        { method: "POST", body: JSON.stringify({ action: "duplicate" }) },
+      );
+      window.location.assign(`/workflows/${d.workflow.id}`);
+    } catch (e) {
+      setError(errorText(e));
+      setCopying(null);
+    }
+  }
   return (
-    <AppShell displayName={props.displayName}>
+    <AppShell displayName={props.displayName} fullWidth={tab === "runs"}>
       <PageHeader
         title="Workflows"
         description="Choose a starting event and automate candidate preparation for that purpose."
@@ -99,12 +153,60 @@ export function WorkflowList(props: { displayName: string }) {
           <AlertDescription>{error}</AlertDescription>
         </Alert>
       )}
-      <Tabs defaultValue="workflows">
+      <Tabs value={tab} onValueChange={setTab}>
         <TabsList>
           <TabsTrigger value="workflows">Workflows</TabsTrigger>
-          <TabsTrigger value="runs">All runs</TabsTrigger>
+          <TabsTrigger value="runs">Executions</TabsTrigger>
         </TabsList>
         <TabsContent value="workflows" className="mt-5">
+          <div className="mb-4 flex flex-wrap items-center gap-3">
+            <Input
+              aria-label="Search workflows"
+              disabled={!filtersReady}
+              placeholder="Search workflows…"
+              className="min-w-0 flex-1"
+              value={filters.workflowSearch}
+              onChange={(e) => setFilters({ workflowSearch: e.target.value })}
+            />
+            <select
+              aria-label="Workflow status filter"
+              disabled={!filtersReady}
+              className="h-10 rounded border bg-background px-3 text-sm"
+              value={filters.workflowStatus}
+              onChange={(e) => setFilters({ workflowStatus: e.target.value })}
+            >
+              {[
+                ["all", "All statuses"],
+                ["active", "Active"],
+                ["paused", "Paused"],
+                ["draft", "Draft"],
+              ].map(([v, l]) => (
+                <option key={v} value={v}>
+                  {l}
+                </option>
+              ))}
+            </select>
+            <select
+              aria-label="Starting event filter"
+              disabled={!filtersReady}
+              className="h-10 max-w-full rounded border bg-background px-3 text-sm"
+              value={filters.workflowTrigger}
+              onChange={(e) => setFilters({ workflowTrigger: e.target.value })}
+            >
+              <option value="all">All starting events</option>
+              {Object.entries(TRIGGER_LABELS).map(([v, l]) => (
+                <option key={v} value={v}>
+                  {l}
+                </option>
+              ))}
+            </select>
+            <Button variant="ghost" onClick={() => setFilters(FILTERS)}>
+              Clear filters
+            </Button>
+          </div>
+          <p className="mb-4 text-xs text-muted-foreground">
+            {visible.length} of {items.length} workflows
+          </p>
           {loading ? (
             <p className="py-12 text-center text-muted-foreground">
               Loading workflows…
@@ -129,7 +231,7 @@ export function WorkflowList(props: { displayName: string }) {
             </Card>
           ) : (
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-              {items.map((w) => (
+              {visible.map((w) => (
                 <Card key={w.id}>
                   <CardHeader>
                     <div className="flex items-center justify-between">
@@ -142,7 +244,9 @@ export function WorkflowList(props: { displayName: string }) {
                             : "Draft"}
                       </Badge>
                     </div>
-                    <CardTitle className="mt-3">{w.name}</CardTitle>
+                    <CardTitle className="mt-3 break-words [overflow-wrap:anywhere]">
+                      {w.name}
+                    </CardTitle>
                     <CardDescription>
                       {w.version ? `Version ${w.version} · ` : ""}Updated{" "}
                       {runDate(w.updatedAt)}
@@ -152,9 +256,43 @@ export function WorkflowList(props: { displayName: string }) {
                     </CardDescription>
                   </CardHeader>
                   <CardContent>
+                    {w.latestRunStatus && (
+                      <div className="mb-3 space-y-2">
+                        <p className="text-xs text-muted-foreground">
+                          Latest execution{" "}
+                          {w.latestRunAt ? runDate(w.latestRunAt) : ""}
+                        </p>
+                        <RunBadge
+                          status={w.latestRunStatus}
+                          waitingFor={w.latestRunWaitingFor ?? undefined}
+                        />
+                      </div>
+                    )}
                     <Button asChild variant="outline" className="w-full">
                       <Link href={`/workflows/${w.id}`}>Open workflow</Link>
                     </Button>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <Button asChild variant="ghost" size="sm">
+                        <Link
+                          href={`/workflows/${w.id}?tab=runs${w.latestRunId ? `&run=${w.latestRunId}` : ""}`}
+                        >
+                          View executions
+                        </Link>
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={!!copying || busy}
+                        onClick={() => void duplicate(w.id)}
+                      >
+                        {copying === w.id ? (
+                          <LoaderCircle className="animate-spin" />
+                        ) : (
+                          <Copy />
+                        )}
+                        Duplicate as draft
+                      </Button>
+                    </div>
                     <div className="mt-3">
                       <ArchiveButton
                         type="workflow"
@@ -167,6 +305,20 @@ export function WorkflowList(props: { displayName: string }) {
                 </Card>
               ))}
             </div>
+          )}
+          {!loading && items.length > 0 && !visible.length && (
+            <Card>
+              <CardContent className="py-12 text-center">
+                <p>No workflows match these filters.</p>
+                <Button
+                  variant="outline"
+                  className="mt-3"
+                  onClick={() => setFilters(FILTERS)}
+                >
+                  Clear filters
+                </Button>
+              </CardContent>
+            </Card>
           )}
         </TabsContent>
         <TabsContent value="runs" className="mt-5">

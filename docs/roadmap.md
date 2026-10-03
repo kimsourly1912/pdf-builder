@@ -8,7 +8,7 @@ As of 2026-10-03. This page focuses on the recent candidate intake, workflow, ar
 | --- | --- |
 | Telegram intake | Contact and original PDF collection without automatic paid AI or login creation; explicit additional/replacement CV actions and application status. |
 | CV review | Optional confirmed AI, manual editing, separate Save changes and Approve CV, current-revision approval, unsaved-change safeguards. |
-| Preparation workflows | Interactive horizontal canvas, connected insertion, searchable drag/drop catalog, immediate settings, undo/redo, autosave and visual execution inspection; purpose presets and starting events; guarded review/account reuse; CV linking, pinned forms, Telegram activation/sign-in invitations, recovery and history. |
+| Preparation workflows | Interactive canvas and focus mode, contextual catalog, node names/annotations and search, draft/live change review and recovery, safe sample previews, execution input/output inspection, saved overview filters and inactive duplication; purpose presets and starting events; guarded review/account reuse; CV linking, pinned forms, Telegram activation/sign-in invitations, recovery and history. |
 | Intake guidance | One next-step summary, actual progress, direct missing-requirement actions, selected CV context, state-specific preparation actions. |
 | Archive | Linked intake/CV groups, restore, eligibility and protected-history explanations, limited Undo, guarded permanent deletion and durable file cleanup. |
 | Candidate Progress | Candidates sidebar submenu, Kanban/List toggle, guarded dragging/menu transitions, CV/run selection, forms, and timeline. |
@@ -51,3 +51,13 @@ When work ships, move it into the shipped table and update the relevant feature 
 - Sample-answer testing and publish readiness preserve revision-checked autosave and pinned published versions.
 
 Editing original PDF text/layout and automatic recognition of blank or dotted areas are not part of this update.
+
+## Automation workspace refinement (shipped October 2026)
+
+- Separate saved drafts, unpublished graph changes and live starting events, with change review and overlapping-event checks before publication.
+- Focus mode, grouped contextual tools, searchable named/annotated nodes and accessible node action menus.
+- Browser-only sample path, assignment and invitation previews with no external or database effects.
+- Desktop execution workspace and mobile details, recorded outcomes and input/output evidence, existing guarded recovery actions.
+- Owner-scoped overview filters, latest execution context and inactive draft duplication without run history.
+
+Sample testing is a planning preview, not a live integration test. Missing legacy branch evidence remains unknown.

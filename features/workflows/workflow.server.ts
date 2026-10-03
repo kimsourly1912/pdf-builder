@@ -3,7 +3,18 @@ import { isArchived } from "@/features/archive/archive.server";
 import { notArchived } from "@/features/archive/archive";
 import "server-only";
 
-import { and, desc, eq, isNull, or, lt, like, count, gte } from "drizzle-orm";
+import {
+  and,
+  desc,
+  eq,
+  isNull,
+  or,
+  lt,
+  like,
+  count,
+  gte,
+  sql,
+} from "drizzle-orm";
 import { getDb } from "@/db";
 import {
   auditEvents,
@@ -19,6 +30,7 @@ import {
   defaultGraph,
   graphIssues,
   parseGraph,
+  parseDraftGraph,
   type TemplateOption,
   type WorkflowGraph,
   type WorkflowRun,
@@ -62,6 +74,16 @@ export async function listWorkflows(ownerEmail: string) {
       updatedAt: workflows.updatedAt,
       publishedJson: workflows.publishedJson,
       draftJson: workflows.draftJson,
+      latestRunWaitingFor: sql<
+        string | null
+      >`(select json_extract(context_json, '$.waitingFor') from workflow_runs wr where wr.workflow_id = ${workflows.id} and wr.owner_email = ${workflows.ownerEmail} order by wr.created_at desc, wr.id desc limit 1)`,
+      latestRunId: sql<
+        string | null
+      >`(select id from workflow_runs wr where wr.workflow_id = ${workflows.id} and wr.owner_email = ${workflows.ownerEmail} order by wr.created_at desc, wr.id desc limit 1)`,
+      latestRunStatus: sql<RunStatus | null>`(select status from workflow_runs wr where wr.workflow_id = ${workflows.id} and wr.owner_email = ${workflows.ownerEmail} order by wr.created_at desc, wr.id desc limit 1)`,
+      latestRunAt: sql<
+        string | null
+      >`(select created_at from workflow_runs wr where wr.workflow_id = ${workflows.id} and wr.owner_email = ${workflows.ownerEmail} order by wr.created_at desc, wr.id desc limit 1)`,
     })
     .from(workflows)
     .where(
@@ -77,7 +99,11 @@ export async function listWorkflows(ownerEmail: string) {
     trigger: publishedJson
       ? workflowTrigger(JSON.parse(publishedJson) as WorkflowGraph)
       : workflowTrigger(JSON.parse(draftJson) as WorkflowGraph),
-    hasPreparation: !!publishedJson && (JSON.parse(publishedJson) as WorkflowGraph).nodes.some(n => n.kind === "assign_forms"),
+    hasPreparation:
+      !!publishedJson &&
+      (JSON.parse(publishedJson) as WorkflowGraph).nodes.some(
+        (n) => n.kind === "assign_forms",
+      ),
     hasTelegram:
       !!publishedJson &&
       (JSON.parse(publishedJson) as WorkflowGraph).nodes.some(
@@ -100,6 +126,9 @@ export async function getWorkflow(ownerEmail: string, id: string) {
     updatedAt: row.updatedAt,
     draft: JSON.parse(row.draftJson) as WorkflowGraph,
     archived: await isArchived("workflow", row.id),
+    published: row.publishedJson
+      ? (JSON.parse(row.publishedJson) as WorkflowGraph)
+      : null,
   };
 }
 export async function createWorkflow(
@@ -189,7 +218,10 @@ export async function saveWorkflow(
     return getWorkflow(ownerEmail, id);
   }
   const name = typeof body.name === "string" ? body.name.trim() : "";
-  const graph = parseGraph(body.graph);
+  const graph =
+    body.action === "publish"
+      ? parseGraph(body.graph)
+      : parseDraftGraph(body.graph);
   if (!name || name.length > 120 || !graph)
     fail("Enter a name and a valid workflow configuration.");
   const publishing = body.action === "publish";
@@ -549,4 +581,32 @@ export async function claimRun(
     )
     .returning();
   return row ? { row, token } : null;
+}
+
+export async function duplicateWorkflow(ownerEmail: string, id: string) {
+  const source = await getWorkflow(ownerEmail, id);
+  if (source.archived)
+    fail("Restore this workflow before duplicating it.", 409);
+  if ((await listWorkflows(ownerEmail)).length >= 50)
+    fail("You can create up to 50 workflows.");
+  const graph = parseDraftGraph(source.draft);
+  if (!graph) fail("This draft could not be duplicated.", 422);
+  const copyId = crypto.randomUUID(),
+    now = new Date().toISOString();
+  await getDb().batch([
+    getDb()
+      .insert(workflows)
+      .values({
+        id: copyId,
+        ownerEmail,
+        name: (source.name + " (copy)").slice(0, 120),
+        draftJson: JSON.stringify(graph),
+        active: false,
+        version: 0,
+        createdAt: now,
+        updatedAt: now,
+      }),
+    workflowAudit(ownerEmail, "workflow.duplicated", copyId, { sourceId: id }),
+  ]);
+  return getWorkflow(ownerEmail, copyId);
 }

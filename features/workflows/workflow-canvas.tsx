@@ -36,6 +36,19 @@ import {
   type StepKind,
   type StepConfig,
 } from "./workflow";
+import {
+  ContextMenu,
+  ContextMenuTrigger,
+  ContextMenuContent,
+  ContextMenuItem,
+} from "@/components/ui/context-menu";
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+} from "@/components/ui/dropdown-menu";
+import { MoreHorizontal, StickyNote } from "lucide-react";
 import { outcomes } from "./editor-tools";
 export const STEP_ICONS = {
   resume_uploaded: FileUp,
@@ -53,6 +66,13 @@ export type FlowNode = Node<
   {
     kind: StepKind;
     config: StepConfig;
+    label?: string;
+    note?: string;
+    summary?: string;
+    onAction?: (
+      action: "configure" | "duplicate" | "remove",
+      id: string,
+    ) => void;
     issues?: string[];
     status?: string;
     onAdd?: (id: string, outcome: string) => void;
@@ -73,82 +93,155 @@ function StepCard({ id, data, selected }: NodeProps<FlowNode>) {
           : data.issues?.length
             ? "border-amber-400"
             : "border-border";
-  return (
-    <div
-      className={`relative w-56 rounded-xl border-2 bg-card p-4 shadow-sm ${color} ${selected ? "ring-2 ring-primary/30 border-primary" : ""}`}
-    >
+  const actions = (
+    <>
+      <ContextMenuItem onSelect={() => data.onAction?.("configure", id)}>
+        Configure step
+      </ContextMenuItem>
       {data.kind !== "resume_uploaded" && (
-        <Handle
-          type="target"
-          position={Position.Left}
-          id="in"
-          title="Input — connect a preceding step"
-          className="!size-3 !border-2 !bg-background"
-        />
+        <>
+          <ContextMenuItem onSelect={() => data.onAction?.("duplicate", id)}>
+            Duplicate step
+          </ContextMenuItem>
+          <ContextMenuItem onSelect={() => data.onAction?.("remove", id)}>
+            Remove step
+          </ContextMenuItem>
+        </>
       )}
-      <div className="flex gap-3">
-        <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-muted">
-          <Icon className="size-5" />
-        </span>
-        <div className="min-w-0">
-          <p className="text-sm font-semibold">
-            {data.kind === "resume_uploaded"
-              ? TRIGGER_LABELS[data.config.trigger ?? "staff_upload"]
-              : STEP_LABELS[data.kind]}
-          </p>
-          <p className="mt-1 text-xs text-muted-foreground">
-            {data.kind === "assign_forms"
-              ? `${data.config.forms?.length ?? 0} forms selected`
-              : STEP_DESCRIPTIONS[data.kind]}
-          </p>
-        </div>
-      </div>
-      {data.status && (
-        <p className="mt-2 text-xs font-medium">
-          {data.status === "not_reached"
-            ? "Not reached"
-            : data.status === "waiting"
-              ? "Waiting for action"
-              : data.status[0].toUpperCase() + data.status.slice(1)}
-        </p>
-      )}
-      {!data.status && data.issues?.length ? (
-        <p className="mt-2 text-xs text-amber-700 dark:text-amber-400">
-          Needs setup · {data.issues.length}{" "}
-          {data.issues.length === 1 ? "issue" : "issues"}
-        </p>
-      ) : null}
-      {outcomes(data.kind).map((outcome, i, all) => (
-        <Handle
-          key={outcome}
-          type="source"
-          position={Position.Right}
-          id={outcome}
-          title={`Output: ${outcome}`}
-          style={{ top: all.length === 1 ? "50%" : i === 0 ? "30%" : "75%" }}
-          className={`!size-3 !border-2 ${outcome === "rejected" || outcome === "no" ? "!bg-red-100 !border-red-500" : "!bg-background"}`}
+    </>
+  );
+  return (
+    <ContextMenu>
+      <ContextMenuTrigger asChild>
+        <div
+          className={`relative w-56 rounded-xl border-2 bg-card p-4 shadow-sm ${color} ${selected ? "ring-2 ring-primary/30 border-primary" : ""}`}
         >
-          {all.length > 1 && (
-            <span className="pointer-events-none absolute right-3 -top-1 rounded bg-card px-1 text-[10px]">
-              {outcome}
+          {data.kind !== "resume_uploaded" && (
+            <Handle
+              type="target"
+              position={Position.Left}
+              id="in"
+              title="Input — connect a preceding step"
+              className="!size-3 !border-2 !bg-background"
+            />
+          )}
+          <div className="flex gap-3">
+            <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-muted">
+              <Icon className="size-5" />
             </span>
-          )}
-          {data.onAdd && !data.readOnly && (
-            <button
-              type="button"
-              className="nodrag nopan absolute -top-2 left-4 flex size-6 items-center justify-center rounded-full border bg-card text-primary shadow-sm hover:bg-primary/10"
-              aria-label={`Add step after ${STEP_LABELS[data.kind]} ${outcome}`}
-              onClick={(e) => {
-                e.stopPropagation();
-                data.onAdd?.(id, outcome);
-              }}
+            <div className="min-w-0">
+              <p className="break-words text-sm font-semibold [overflow-wrap:anywhere]">
+                {data.label ||
+                  (data.kind === "resume_uploaded"
+                    ? TRIGGER_LABELS[data.config.trigger ?? "staff_upload"]
+                    : STEP_LABELS[data.kind])}
+              </p>
+              <p className="mt-1 break-words text-xs text-muted-foreground">
+                {data.summary ||
+                  (data.kind === "condition"
+                    ? `${data.config.field} equals ${data.config.value || "…"}`
+                    : data.kind === "assign_forms"
+                      ? `${data.config.forms?.length ?? 0} forms selected`
+                      : STEP_DESCRIPTIONS[data.kind])}
+              </p>
+            </div>
+          </div>
+          {data.note && (
+            <p
+              className="mt-2 line-clamp-2 break-words text-xs text-muted-foreground [overflow-wrap:anywhere]"
+              title={data.note}
             >
-              <Plus className="size-3" />
-            </button>
+              <StickyNote className="size-3 shrink-0" />
+              {data.note}
+            </p>
           )}
-        </Handle>
-      ))}
-    </div>
+          {data.onAction && !data.readOnly && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  aria-label={`Step actions for ${data.label || STEP_LABELS[data.kind]}`}
+                  className="nodrag nopan absolute -right-2 -top-3 rounded-full border bg-card p-1"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <MoreHorizontal className="size-4" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent>
+                <DropdownMenuItem
+                  onSelect={() => data.onAction?.("configure", id)}
+                >
+                  Configure step
+                </DropdownMenuItem>
+                {data.kind !== "resume_uploaded" && (
+                  <>
+                    <DropdownMenuItem
+                      onSelect={() => data.onAction?.("duplicate", id)}
+                    >
+                      Duplicate step
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      onSelect={() => data.onAction?.("remove", id)}
+                    >
+                      Remove step
+                    </DropdownMenuItem>
+                  </>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
+          {data.status && (
+            <p className="mt-2 text-xs font-medium">
+              {data.status === "not_reached"
+                ? "Not reached"
+                : data.status === "waiting"
+                  ? "Waiting for action"
+                  : data.status[0].toUpperCase() + data.status.slice(1)}
+            </p>
+          )}
+          {!data.status && data.issues?.length ? (
+            <p className="mt-2 text-xs text-amber-700 dark:text-amber-400">
+              Needs setup · {data.issues.length}{" "}
+              {data.issues.length === 1 ? "issue" : "issues"}
+            </p>
+          ) : null}
+          {outcomes(data.kind).map((outcome, i, all) => (
+            <Handle
+              key={outcome}
+              type="source"
+              position={Position.Right}
+              id={outcome}
+              title={`Output: ${outcome}`}
+              style={{
+                top: all.length === 1 ? "50%" : i === 0 ? "30%" : "75%",
+              }}
+              className={`!size-3 !border-2 ${outcome === "rejected" || outcome === "no" ? "!bg-red-100 !border-red-500" : "!bg-background"}`}
+            >
+              {all.length > 1 && (
+                <span className="pointer-events-none absolute right-3 -top-1 rounded bg-card px-1 text-[10px]">
+                  {outcome}
+                </span>
+              )}
+              {data.onAdd && !data.readOnly && (
+                <button
+                  type="button"
+                  className="nodrag nopan absolute -top-2 left-4 flex size-6 items-center justify-center rounded-full border bg-card text-primary shadow-sm hover:bg-primary/10"
+                  aria-label={`Add step after ${STEP_LABELS[data.kind]} ${outcome}`}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    data.onAdd?.(id, outcome);
+                  }}
+                >
+                  <Plus className="size-3" />
+                </button>
+              )}
+            </Handle>
+          ))}
+        </div>
+      </ContextMenuTrigger>
+      {data.onAction && !data.readOnly && (
+        <ContextMenuContent>{actions}</ContextMenuContent>
+      )}
+    </ContextMenu>
   );
 }
 function WorkflowEdgeView(props: EdgeProps<FlowEdge>) {

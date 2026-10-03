@@ -41,3 +41,7 @@ Drafts and published versions are separate. Published form presentation, fields,
 ## 2026-10-03: CV updates do not restart an active application
 
 A Telegram CV update has an independent confirmation and HR review draft. Once review starts, the application PDF is protected from candidate replacement. Accepting an update creates a new approved snapshot while preserving the preparation CV and all existing form data. No account/form preparation or Telegram invitation is rerun automatically. CV preview is navigation; choosing a CV for a future preparation is explicit. Both Resume detail and Candidate detail expose one shared approval operation.
+
+## 2026-10-03: Workflow previews and graph metadata
+
+Workflow sample tests are pure browser previews and never call the runner, create accounts/assignments, approve CVs, generate activation links, send Telegram messages or request paid AI. Live execution retains current-revision review and account/contact checks. Draft validation may retain unfinished invitation text; publication remains strict. Names and internal annotations are bounded graph metadata and travel with immutable published snapshots. Duplication creates an inactive draft with no published version or execution history. Recorded branch outcomes are added for future executions; absent legacy evidence is not reconstructed from assumptions.

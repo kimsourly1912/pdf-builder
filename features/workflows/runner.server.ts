@@ -530,6 +530,7 @@ export async function processWorkflowRun(id: string): Promise<void> {
         attempts,
         completedAt: new Date().toISOString(),
         ...(note ? { note } : {}),
+        outcome,
       };
       nodeId = next();
       await checkpoint(row, token, context, nodeId, "running");

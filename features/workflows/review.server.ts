@@ -42,7 +42,7 @@ export async function reviewRun(ownerEmail: string, runId: string, body: Record<
     if (body.action === "reject") {
       if (!note) fail("Add a reason for rejecting this resume.");
       Object.assign(context, { rejection: true, reviewer: ownerEmail, reviewedAt: now, reviewNote: note });
-      context.steps[node.id] = { status: "completed", attempts: context.steps[node.id]?.attempts ?? 1, completedAt: now, note: "Rejected by reviewer" };
+      context.steps[node.id] = { status: "completed", attempts: context.steps[node.id]?.attempts ?? 1, completedAt: now, outcome: "rejected", note: "Rejected by reviewer" };
       await getDb().batch([
         getDb().update(workflowRuns).set({ status: "queued", currentNodeId: nextNode(graph, node.id, "rejected"), contextJson: JSON.stringify(context), passwordHash: null, lockToken: null, lockedUntil: null, updatedAt: now }).where(and(eq(workflowRuns.id, row.id), eq(workflowRuns.lockToken, token))),
         workflowAudit(ownerEmail, "workflow.review_rejected", row.id, { resumeId: row.resumeId }),
@@ -94,7 +94,7 @@ export async function reviewRun(ownerEmail: string, runId: string, body: Record<
       const [latest] = await getDb().select({ version: candidateProfileVersions.versionNumber }).from(candidateProfileVersions).where(eq(candidateProfileVersions.candidateId, candidate.id)).orderBy(desc(candidateProfileVersions.versionNumber)).limit(1);
       const [extraction] = await getDb().select({ id: resumeExtractions.id }).from(resumeExtractions).where(eq(resumeExtractions.resumeId, resume.id)).orderBy(desc(resumeExtractions.versionNumber)).limit(1);
       context.profileVersionId = crypto.randomUUID();
-      context.steps[node.id] = { status: "completed", attempts: context.steps[node.id]?.attempts ?? 1, completedAt: now, note: "Approved by reviewer" };
+      context.steps[node.id] = { status: "completed", attempts: context.steps[node.id]?.attempts ?? 1, completedAt: now, outcome: "approved", note: "Approved by reviewer" };
       await getDb().batch([
         guard(),
         ...(telegramConnection ? [getDb().update(telegramConnections).set({candidateId:candidate.id,confirmedCandidateId:candidate.id,confirmedBy:ownerEmail,confirmedAt:now,updatedAt:now}).where(and(eq(telegramConnections.id,telegramConnection.id),eq(telegramConnections.ownerEmail,ownerEmail)))] : []),

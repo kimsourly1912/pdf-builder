@@ -44,6 +44,32 @@ Each resume can run once per workflow; retries continue that run. **Pause new au
   a hash is persisted; it is cleared after account creation. It is never included
   in run API responses, review notes, or audit metadata.
 
+## Automation workspace
+
+The editor separates **Draft saved**, **Unpublished changes**, and the **Live version**. The live starting event is shown independently from the draft event. **Review changes & publish** lists changed settings, steps, connections, annotations and positions. It checks other active workflows before enabling confirmation: every active workflow matching an event may run. Manual workflows do not share an automatic event. This warning does not reserve an event or change existing execution behavior.
+
+**Focus mode** expands the editor beyond the application navigation. Catalog and settings panels can be closed without resetting the canvas view. **Find a step** searches names and annotations and centers the selected step. Each node has a visible actions menu and a right-click menu for configuration, duplication and removal; the starting node remains protected. Internal annotations and custom step names are part of the graph and its published snapshot, and are never sent to candidates.
+
+The catalog groups Candidate, Forms, Communication and Logic tools, suggests a next step, and restricts rejected-review choices to Stop. Node cards summarize configured forms and conditions. **Parameters / Input / Output** in the draft distinguish configuration from actual execution evidence; sample testing provides planned results, while live results belong to executions.
+
+### Sample testing
+
+**Test with sample data** previews the current draft entirely in the browser. HR can change a sample name/email, CV source, position, approval decision, existing-account assumption and Telegram-confirmation assumption. The preview follows the configured condition/review path, lists planned forms and renders the invitation using supported name/email/form-count tokens.
+
+No account, approval, assignment, activation capability, database record, message or paid AI call is created by this preview. It does not verify live account reuse, available forms, contact ownership or delivery. A sample approval cannot approve a real CV. Missing configuration is displayed and still blocks publication. Conditions retain their existing exact source/position comparison; arbitrary code and expression execution are not supported.
+
+### Draft recovery
+
+Incomplete invitation text can be saved as a draft, while publication continues to reject an empty message. All graph types, sizes and metadata limits remain validated. A failed save preserves entered settings. **Download my draft** exports workflow configuration and annotations; **Review latest version** compares the latest saved graph without replacing local edits. **Discard my edits and load latest** is explicit, resets undo history and uses the latest revision. There is no automatic overwrite or merge of concurrent edits.
+
+### Executions and organization
+
+On desktop, choosing an execution opens an inline workspace with the filtered run list, read-only published graph and step inspector. Smaller screens use a details sheet. **Focus current step** centers the waiting/failed/current node. Parameters show the saved configuration; Input and Output show available CV/version references, approved candidate name, pinned forms, result, attempts, recorded branch and notes. Links open the relevant CV, candidate or accounts. No credentials or activation capabilities are exposed.
+
+New executions record condition and review outcomes. Older executions without outcome evidence keep unknown branches neutral and explicitly identify missing recorded outcomes. Recorded completion remains separate from candidate form submission or Telegram read status. Existing retry, return-to-review, contact confirmation and uncertain-delivery checks are preserved.
+
+The workflow overview includes name search, Active/Paused/Draft and starting-event filters, matching/overall counts, clear-filter actions, latest execution status and direct execution links. Filters use the existing URL/session preference helper scoped to the authenticated owner. **Duplicate as draft** copies the saved draft and annotations into an inactive version-zero workflow with no published graph or execution history. It never activates an additional automation.
+
 ## Permissions and recovery
 
 The current workspace owner authorization protects every workflow and run API.

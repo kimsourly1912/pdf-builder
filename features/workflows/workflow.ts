@@ -57,6 +57,8 @@ export type WorkflowNode = {
   kind: StepKind;
   position: { x: number; y: number };
   config: StepConfig;
+  label?: string;
+  note?: string;
 };
 export type WorkflowEdge = {
   id: string;
@@ -66,17 +68,13 @@ export type WorkflowEdge = {
 };
 export type WorkflowGraph = { nodes: WorkflowNode[]; edges: WorkflowEdge[] };
 export type RunStatus =
-  | "queued"
-  | "running"
-  | "waiting_review"
-  | "completed"
-  | "rejected"
-  | "failed";
+  "queued" | "running" | "waiting_review" | "completed" | "rejected" | "failed";
 export type StepResult = {
   status: "completed" | "waiting" | "failed";
   attempts: number;
   completedAt?: string;
   note?: string;
+  outcome?: WorkflowEdge["outcome"];
 };
 export type RunContext = {
   reviewStartedAt?: string;
@@ -105,10 +103,15 @@ export type WorkflowSummary = {
   active: boolean;
   version: number;
   updatedAt: string;
+  latestRunId?: string | null;
+  latestRunStatus?: RunStatus | null;
+  latestRunAt?: string | null;
+  latestRunWaitingFor?: string | null;
 };
 export type WorkflowDetail = WorkflowSummary & {
   draft: WorkflowGraph;
   archived?: boolean;
+  published?: WorkflowGraph | null;
 };
 export type WorkflowRun = {
   id: string;
@@ -231,7 +234,10 @@ function validId(value: unknown): value is string {
 }
 
 // Normalize untrusted graphs before storing them. Drafts may be incomplete.
-export function parseGraph(value: unknown): WorkflowGraph | null {
+export function parseGraph(
+  value: unknown,
+  draft = false,
+): WorkflowGraph | null {
   if (
     !record(value) ||
     !Array.isArray(value.nodes) ||
@@ -287,13 +293,15 @@ export function parseGraph(value: unknown): WorkflowGraph | null {
       if (
         n.config.message !== undefined &&
         (typeof n.config.message !== "string" ||
-          !n.config.message.trim() ||
+          (!draft && !n.config.message.trim()) ||
           n.config.message.length > 2000)
       )
         return null;
       config.message =
         typeof n.config.message === "string"
-          ? n.config.message.trim()
+          ? draft
+            ? n.config.message
+            : n.config.message.trim()
           : undefined;
     }
     if (n.kind === "condition") {
@@ -304,7 +312,18 @@ export function parseGraph(value: unknown): WorkflowGraph | null {
       config.field = n.config.field;
       config.value = n.config.value.trim();
     }
+    if (
+      (n.label !== undefined &&
+        (typeof n.label !== "string" || n.label.length > 80)) ||
+      (n.note !== undefined &&
+        (typeof n.note !== "string" || n.note.length > 2000))
+    )
+      return null;
     nodes.push({
+      ...(typeof n.label === "string" && n.label.trim()
+        ? { label: n.label.trim() }
+        : {}),
+      ...(typeof n.note === "string" && n.note ? { note: n.note } : {}),
       id: n.id,
       kind: n.kind as StepKind,
       position: { x: n.position.x, y: n.position.y },
@@ -386,6 +405,12 @@ export function graphIssues(graph: WorkflowGraph): string[] {
       )
         issues.add("Remove duplicate template and role selections.");
     }
+    if (
+      n.kind === "send_telegram" &&
+      n.config.message !== undefined &&
+      !n.config.message.trim()
+    )
+      issues.add("Enter a Telegram invitation message.");
     if (n.kind === "condition" && !n.config.value?.trim())
       issues.add("Enter a value for each condition.");
   }
@@ -479,4 +504,8 @@ export function conditionMatches(
     (resume[config.field ?? "source"] ?? "").trim().toLowerCase() ===
     (config.value ?? "").trim().toLowerCase()
   );
+}
+
+export function parseDraftGraph(value: unknown) {
+  return parseGraph(value, true);
 }
