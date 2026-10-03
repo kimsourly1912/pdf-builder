@@ -96,7 +96,7 @@ async function main() {
     // Wait for the real authentication API before attempting owner mutations.
     await waitForResponse(
       `https://${hostname}/api/auth/get-session`,
-      { redirect: "manual", signal: AbortSignal.timeout(10000) },
+      { redirect: "manual" },
       (response) => response.status === 200,
     );
     authenticatedCookie = await bootstrapAndSignInOwner(
