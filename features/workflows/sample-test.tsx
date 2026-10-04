@@ -1,4 +1,5 @@
 "use client";
+import { SampleCanvas, type SampleResult } from "./sample-canvas";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,12 +11,16 @@ export function SampleTest({
   graph,
   options,
   onFocus,
+  onShowPath,
+  initialSample,
 }: {
   graph: WorkflowGraph;
   options: TemplateOption[];
   onFocus?: (id: string) => void;
+  onShowPath?: (result: SampleResult, sample: SampleInput) => void;
+  initialSample?: SampleInput;
 }) {
-  const [sample, setSample] = useState<SampleInput>({
+  const [sample, setSample] = useState<SampleInput>(initialSample ?? {
     name: "Dara Sok",
     email: "dara@example.com",
     source: "telegram",
@@ -38,6 +43,27 @@ export function SampleTest({
           <legend className="mb-3 font-medium">Sample input</legend>
           {(
             [
+              ["approved", "Sample HR decision: approved"],
+              ["existingAccount", "Account already exists"],
+              ["telegramConfirmed", "Telegram contact confirmed"],
+            ] as const
+          ).map(([key, label]) => (
+            <label key={key} className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={sample[key]}
+                onChange={(e) =>
+                  setSample({ ...sample, [key]: e.target.checked })
+                }
+              />
+              {label}
+            </label>
+          ))}
+          <details className="rounded-lg border p-3" open={graph.nodes.some((n) => n.kind === "condition")}>
+            <summary className="cursor-pointer text-sm font-medium">Candidate sample details</summary>
+            <div className="mt-3 space-y-3">
+          {(
+            [
               ["name", "Name"],
               ["email", "Email"],
               ["source", "CV source"],
@@ -56,33 +82,21 @@ export function SampleTest({
               />
             </div>
           ))}
-          {(
-            [
-              ["approved", "Sample HR decision: approved"],
-              ["existingAccount", "Account already exists"],
-              ["telegramConfirmed", "Telegram contact confirmed"],
-            ] as const
-          ).map(([key, label]) => (
-            <label key={key} className="flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                checked={sample[key]}
-                onChange={(e) =>
-                  setSample({ ...sample, [key]: e.target.checked })
-                }
-              />
-              {label}
-            </label>
-          ))}
+            </div>
+          </details>
         </fieldset>
         <div className="min-w-0 space-y-3">
-          <h3 className="font-medium">Planned path</h3>
+          <SampleCanvas graph={graph} result={result} onFocus={onFocus} />
+          {onShowPath && <Button onClick={() => onShowPath(result, sample)}>Show path on editor canvas</Button>}
+          <details className="rounded-lg border p-3">
+            <summary className="cursor-pointer text-sm font-medium">Step-by-step result · {result.steps.length} steps</summary>
+            <div className="mt-3 space-y-3">
           {result.steps.map((step, i) => (
             <div key={step.id} className="rounded-lg border p-3 text-sm">
               {onFocus ? (
                 <Button
                   variant="link"
-                  className="h-auto p-0"
+                  className="h-auto max-w-full whitespace-normal p-0 text-left"
                   onClick={() => onFocus(step.id)}
                 >
                   {i + 1}. {step.label}
@@ -112,6 +126,8 @@ export function SampleTest({
               )}
             </div>
           ))}
+            </div>
+          </details>
         </div>
       </div>
       <p className="text-xs text-muted-foreground">

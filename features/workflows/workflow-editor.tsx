@@ -1,8 +1,11 @@
 "use client";
+import { stepSetupIssues, incomingChoices, type SetupIssue } from "./setup-issues";
+import { sampleNodeState, sampleEdgeStyle, type SampleResult } from "./sample-canvas";
+import type { SampleInput } from "./workspace-tools";
 import { WorkflowOutline } from "./workflow-outline";
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import { BusinessSummaryCard } from "./business-summary-card";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
 import Link from "next/link";
 import {
   ReactFlowProvider,
@@ -76,7 +79,6 @@ import { workflowApi, errorText } from "./client";
 import {
   TRIGGER_LABELS,
   STEP_KINDS,
-  STEP_LABELS,
   workflowTrigger,
   graphIssues,
   parseGraph,
@@ -195,6 +197,8 @@ function EditorBody({
     [outlineOpen, setOutlineOpen] = useState(false),
     [overviewOpen, setOverviewOpen] = useState(false),
     [inspectorTab, setInspectorTab] = useState("parameters");
+  const [preview, setPreview] = useState<{signature: string; result: SampleResult; sample: SampleInput} | null>(null);
+  const [settingTarget, setSettingTarget] = useState<{nodeId: string | null; control: string} | null>(null);
   const [recovery, setRecovery] = useState<WorkflowDetail | null>(null);
   const [compact, setCompact] = useState(false);
   useEffect(() => {
@@ -265,6 +269,21 @@ function EditorBody({
       outcome: (e.sourceHandle ?? "next") as WorkflowEdge["outcome"],
     })),
   };
+  const activePreview = preview?.signature === graphIdentity(graph) ? preview.result : null;
+  useEffect(() => {
+    if (!settingTarget || (settingTarget.nodeId && (selected !== settingTarget.nodeId || inspectorTab !== "parameters"))) return;
+    const timer = setTimeout(() => {
+      const control = document.getElementById(settingTarget.control);
+      if (control) {
+        let parent = control.parentElement;
+        while (parent) { if (parent instanceof HTMLDetailsElement) parent.open = true; parent = parent.parentElement; }
+        control.scrollIntoView({block: "nearest"});
+        control.focus();
+      }
+      setSettingTarget(null);
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [settingTarget, selected, inspectorTab]);
   const fingerprint = JSON.stringify([name, parseDraftGraph(graph) ?? graph]);
   const [savedFingerprint, setSavedFingerprint] = useState(() =>
     JSON.stringify([
@@ -508,6 +527,13 @@ function EditorBody({
     setValidateOpen(false);
     setSampleOpen(false);
   };
+  const fixIssue = (nodeId: string, issue: SetupIssue) => {
+    setPublishOpen(false);
+    focus(nodeId);
+    setSettingTarget({nodeId, control: issue.control});
+  };
+  const actionableIssues = graph.nodes.flatMap((node) => stepSetupIssues(graph, node).map((issue) => ({node, issue})));
+  const freeInputs = selectedNode ? incomingChoices(graph, selectedNode.id).filter((choice) => !connectionIssue(graph, choice.source, selectedNode.id, choice.outcome)) : [];
   const inspector = selectedNode ? (
     <>
       <div className="mb-4 flex items-center justify-between">
@@ -556,13 +582,26 @@ function EditorBody({
               })
             }
           />
-          {nodeIssues(graph, selectedNode).length > 0 && (
-            <ul className="my-4 space-y-1 rounded border border-amber-300 p-3 text-xs text-amber-800 dark:text-amber-300">
-              {nodeIssues(graph, selectedNode).map((issue) => (
-                <li key={issue}>{issue}</li>
-              ))}
+          {stepSetupIssues(graph, selectedNode).length > 0 && (
+            <ul className="my-4 space-y-3 rounded-lg border border-warning/40 p-3 text-sm">
+              {stepSetupIssues(graph, selectedNode).map((issue) => <li key={issue.control}>
+                <p>{issue.message}</p>
+                <Button variant="link" size="sm" className="mt-1 h-auto px-0" onClick={() => fixIssue(selectedNode.id, issue)}>{issue.action} →</Button>
+              </li>)}
             </ul>
           )}
+          {selectedNode.kind !== "resume_uploaded" && !graph.edges.some((e) => e.target === selectedNode.id) && <section className="my-4 space-y-2 rounded-lg border p-3">
+            <label htmlFor="connection-incoming" className="text-sm font-medium">Connect after</label>
+            <select id="connection-incoming" value="" disabled={!editable} className="h-10 w-full rounded border bg-background px-2 text-sm" onChange={(e) => {
+              if (!e.target.value) return;
+              const choice = freeInputs[Number(e.target.value)];
+              if (choice) connect({source: choice.source, target: selectedNode.id, sourceHandle: choice.outcome, targetHandle: "in"});
+            }}>
+              <option value="">Choose a previous step</option>
+              {freeInputs.map((choice, i) => <option key={choice.source + choice.outcome} value={i}>{displayNode(graph.nodes.find((n) => n.id === choice.source)!)} · {choice.outcome}</option>)}
+            </select>
+            {!freeInputs.length && <><p className="text-xs text-muted-foreground">No free outputs. Open a previous step and change its next connection.</p><Button variant="outline" size="sm" onClick={() => {if (compact) setSelected(null); setOutlineOpen(true);}}>Choose previous step</Button></>}
+          </section>}
           {outcomes(selectedNode.kind).length > 0 ? <section className="my-4 rounded-lg border p-3" aria-label="Next steps">
             <h3 className="text-sm font-medium">What happens next</h3>
             <div className="mt-3 space-y-3">
@@ -627,6 +666,7 @@ function EditorBody({
                     </select>
                     </details>
                     <Button
+                      id={`step-add-${outcome}`}
                       size="sm"
                       className="mt-1"
                       variant="ghost"
@@ -695,6 +735,7 @@ function EditorBody({
           </Link>
           <div className="flex flex-wrap items-center gap-2">
             <Input
+              id="workflow-name"
               aria-label="Workflow name"
               maxLength={120}
               value={name}
@@ -735,7 +776,7 @@ function EditorBody({
           </p>
         </div>
         <div aria-label="Workflow actions" className="flex max-w-full flex-wrap items-center gap-2">
-          <Button variant="outline" onClick={() => { if (compact) setSelected(null); setSampleOpen(true); }}><Play />Preview draft</Button>
+          <Button data-sample-preview-trigger variant="outline" onClick={() => { if (compact) setSelected(null); setSampleOpen(true); }}><Play />Preview draft</Button>
           <Button disabled={!editable} onClick={() => { setOverlapCheck("checking"); setPublishOpen(true); }}>
             {busy && <LoaderCircle className="animate-spin" />}Review &amp; publish
           </Button>
@@ -818,6 +859,10 @@ function EditorBody({
           forceMount
           className={tab !== "editor" ? "hidden" : "mt-4"}
         >
+          {preview && <section aria-label="Sample preview status" className="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-primary/30 bg-primary/5 p-3">
+            <div className="min-w-0"><p className="text-sm font-medium">{activePreview ? "Sample preview · no real actions performed" : "Sample preview is outdated"}</p><p role="status" className="mt-1 text-xs text-muted-foreground">{activePreview ? activePreview.halt : "The draft changed. Preview again to see its new path."}</p></div>
+            <div className="flex gap-2"><Button data-sample-preview-trigger variant="outline" size="sm" onClick={() => {if (compact) setSelected(null); setSampleOpen(true);}}>Edit sample</Button><Button variant="ghost" size="sm" onClick={() => setPreview(null)}>Clear preview</Button></div>
+          </section>}
           <div className="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-card p-3">
             <div className="min-w-0">
               <p className="text-xs text-muted-foreground">{workflow.published ? "Editing draft · new runs use the published version" : "Editing draft · publish when you’re ready to make it live"}</p>
@@ -995,6 +1040,7 @@ function EditorBody({
                   ...n,
                   data: {
                     ...n.data,
+                    preview: activePreview ? sampleNodeState(activePreview, n.id) : undefined,
                     issues: nodeIssues(
                       graph,
                       graph.nodes.find((g) => g.id === n.id)!,
@@ -1025,6 +1071,7 @@ function EditorBody({
                 }))}
                 edges={edges.map((e) => ({
                   ...e,
+                  ...(activePreview ? {style: sampleEdgeStyle(activePreview, e.id)} : {}),
                   data: {
                     onInsert: editable
                       ? (id) => {
@@ -1217,31 +1264,21 @@ function EditorBody({
               connections and approval paths.
             </SheetDescription>
           </SheetHeader>
-          {graph.nodes
-            .filter((n) => nodeIssues(graph, n).length)
-            .map((n) => (
-              <button
-                key={n.id}
-                className="rounded border p-3 text-left text-sm hover:bg-muted"
-                onClick={() => focus(n.id)}
-              >
-                <strong>{STEP_LABELS[n.kind]}</strong>
-                <span className="mt-1 block text-xs text-muted-foreground">
-                  {nodeIssues(graph, n).join(" ")} → Open step
-                </span>
-              </button>
-            ))}
-          {issues.length ? (
-            <ul className="list-disc space-y-2 pl-5 text-sm text-muted-foreground">
-              {issues.map((issue) => (
-                <li key={issue}>{issue}</li>
-              ))}
-            </ul>
-          ) : (
-            <p className="text-sm text-emerald-700">
-              Graph checks pass. Review integrations and changes before publishing.
-            </p>
-          )}
+          {(!name.trim() || name.length > 120) && <section className="space-y-2 rounded-lg border p-3 text-sm">
+            <p>Enter a workflow name within 120 characters.</p>
+            <Button variant="outline" size="sm" onClick={() => {setValidateOpen(false); setSelected(null); setSettingTarget({nodeId: null, control: "workflow-name"});}}>Enter workflow name →</Button>
+          </section>}
+          {actionableIssues.map(({node, issue}) => <section key={node.id + issue.control} className="space-y-2 rounded-lg border p-3 text-sm">
+            <h3 className="font-medium">{displayNode(node)}</h3>
+            <p className="text-muted-foreground">{issue.message}</p>
+            <Button size="sm" variant="outline" onClick={() => fixIssue(node.id, issue)}>{issue.action} →</Button>
+          </section>)}
+          {issues.length ? <details open={!actionableIssues.length} className="rounded-lg border p-3">
+            <summary className="cursor-pointer text-sm font-medium">Full graph checks · {issues.length}</summary>
+            <ul className="mt-3 list-disc space-y-2 pl-5 text-sm text-muted-foreground">{issues.map((issue) => <li key={issue}>{issue}</li>)}</ul>
+            <p className="mt-3 text-xs text-muted-foreground">For ordering or loops, change the next connection in step settings. Select a connection and press Delete to remove it.</p>
+          </details> : <p className="text-sm text-emerald-700 dark:text-emerald-400">Graph checks pass. Review integrations and changes before publishing.</p>}
+
         </SheetContent>
       </Sheet>
       <Dialog open={publishOpen} onOpenChange={setPublishOpen}>
@@ -1367,14 +1404,22 @@ function EditorBody({
         </DialogContent>
       </Dialog>
       <Dialog open={sampleOpen} onOpenChange={setSampleOpen}>
-        <DialogContent className="max-h-[90svh] overflow-y-auto sm:max-w-4xl">
+        <DialogContent className="max-h-[90svh] overflow-y-auto sm:max-w-4xl" style={{"--tw-enter-scale": 1, "--tw-exit-scale": 1} as CSSProperties} onPointerDownOutside={(event) => {
+          // An exiting dialog must not dismiss a preview that its trigger just reopened.
+          const target = event.detail.originalEvent.target;
+          if (target instanceof Element && target.closest("[data-sample-preview-trigger]")) event.preventDefault();
+        }}>
           <DialogHeader>
             <DialogTitle>Test with sample data</DialogTitle>
             <DialogDescription>
               Preview the current draft without running a live workflow.
             </DialogDescription>
           </DialogHeader>
-          <SampleTest graph={graph} options={options} onFocus={focus} />
+          <SampleTest graph={graph} options={options} onFocus={focus} initialSample={preview?.sample} onShowPath={(result, sample) => {
+            setPreview({signature: graphIdentity(graph), result, sample});
+            setSampleOpen(false); setSelected(null); setPaletteOpen(false); setTab("editor");
+            requestAnimationFrame(() => void flow.fitView({padding: 0.25, duration: 300}));
+          }} />
         </DialogContent>
       </Dialog>
       <Dialog

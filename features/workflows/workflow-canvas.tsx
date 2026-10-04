@@ -76,6 +76,7 @@ export type FlowNode = Node<
     ) => void;
     issues?: string[];
     status?: string;
+    preview?: {state: "followed" | "waiting" | "blocked" | "skipped"; label: string; reason: string};
     onAdd?: (id: string, outcome: string) => void;
     connectedOutcomes?: string[];
     readOnly?: boolean;
@@ -86,7 +87,11 @@ export type FlowEdge = Edge<{ onInsert?: (id: string) => void }, "workflow">;
 function StepCard({ id, data, selected }: NodeProps<FlowNode>) {
   const Icon = STEP_ICONS[data.kind];
   const color =
-    data.status === "completed"
+    data.preview?.state === "followed"
+      ? "border-primary"
+      : data.preview?.state === "waiting" || data.preview?.state === "blocked"
+        ? "border-amber-500"
+        : data.status === "completed"
       ? "border-emerald-500 bg-emerald-50/30 dark:bg-emerald-950/20"
       : data.status === "failed"
         ? "border-red-500"
@@ -116,7 +121,7 @@ function StepCard({ id, data, selected }: NodeProps<FlowNode>) {
     <ContextMenu>
       <ContextMenuTrigger asChild>
         <div
-          className={`relative w-56 rounded-xl border-2 bg-card p-4 shadow-sm ${color} ${selected ? "ring-2 ring-primary/30 border-primary" : ""}`}
+          className={`relative w-56 rounded-xl border-2 bg-card p-4 shadow-sm ${color} ${data.preview?.state === "skipped" ? "opacity-60" : ""} ${selected ? "ring-2 ring-primary/30 border-primary" : ""}`}
         >
           {data.kind !== "resume_uploaded" && (
             <Handle
@@ -191,6 +196,7 @@ function StepCard({ id, data, selected }: NodeProps<FlowNode>) {
               </DropdownMenuContent>
             </DropdownMenu>
           )}
+          {data.preview && <p title={data.preview.reason} className="mt-2 text-xs font-medium">{data.preview.label}</p>}
           {data.status && (
             <p className="mt-2 text-xs font-medium">
               {data.status === "not_reached"
@@ -283,7 +289,7 @@ function WorkflowEdgeView(props: EdgeProps<FlowEdge>) {
 }
 const nodeTypes = { step: StepCard },
   edgeTypes = { workflow: WorkflowEdgeView };
-export function WorkflowCanvas(props: ReactFlowProps<FlowNode, FlowEdge>) {
+export function WorkflowCanvas({showMiniMap = true, ...props}: ReactFlowProps<FlowNode, FlowEdge> & {showMiniMap?: boolean}) {
   const { resolvedTheme } = useTheme();
   return (
     <ReactFlow
@@ -300,7 +306,7 @@ export function WorkflowCanvas(props: ReactFlowProps<FlowNode, FlowEdge>) {
     >
       <Background gap={20} size={1} />
       <Controls showInteractive={false} />
-      <MiniMap
+      {showMiniMap && <MiniMap
         pannable
         zoomable
         nodeColor={(n) =>
@@ -311,7 +317,7 @@ export function WorkflowCanvas(props: ReactFlowProps<FlowNode, FlowEdge>) {
               : "#64748b"
         }
         className="!hidden sm:!block"
-      />
+      />}
     </ReactFlow>
   );
 }

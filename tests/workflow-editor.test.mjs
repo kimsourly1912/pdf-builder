@@ -12,6 +12,7 @@ const guide=await vite.ssrLoadModule("/features/workflows/guided-setup.ts");
 const attention=await vite.ssrLoadModule("/features/hr/attention.ts");
 const { candidateWork, candidateJourney } = await vite.ssrLoadModule('/features/hr/candidate-journey.ts');
 const { workflowBusinessSummary } = await vite.ssrLoadModule('/features/workflows/business-summary.ts');
+const setupDiagnostics = await vite.ssrLoadModule('/features/workflows/setup-issues.ts');
 function graph(){const g=defaultGraph();g.nodes.find(n=>n.kind==='assign_forms').config.forms=[{templateId:'form-1',roleId:'form_user'}];return g;}
 test('contextual insertion preserves approved branch and does not mutate the saved graph',()=>{
  const original=graph(),before=structuredClone(original),node=tools.newStep('condition',{x:500,y:100},'extra');
@@ -135,4 +136,31 @@ test('candidate journey names the actual actor without treating manual stages, a
 test('business summary reflects graph actions and preserves branching and no-paid-AI language', () => {
   const summary=workflowBusinessSummary(graph());assert.equal(summary.conditional,true);assert(summary.actions.includes('Reuse saved CV data (no paid AI)'));assert(!summary.actions.includes('Send Telegram invitation'));
   const draft=graph();draft.nodes.push(tools.newStep('send_telegram',{x:0,y:0},'send'));assert(workflowBusinessSummary(draft).actions.includes('Send Telegram invitation'));
+});
+
+test('sample path identifies exact branch edges and waiting points without treating untouched branches as followed',()=>{
+ const g=graph();g.nodes.push(tools.newStep('send_telegram',{x:0,y:0},'message'));g.edges=g.edges.filter(e=>e.id!=='assign-done');g.edges.push({id:'a-m',source:'assign',target:'message',outcome:'next'},{id:'m-d',source:'message',target:'done',outcome:'next'});
+ const before=structuredClone(g),sample={name:'TEST Dara',email:'dara@example.test',source:'telegram',appliedPosition:'Accountant',approved:true,existingAccount:false,telegramConfirmed:false};
+ const waiting=workspace.previewWorkflow(g,sample,[]);assert.equal(waiting.steps.at(-1).id,'message');assert.equal(waiting.steps.at(-1).state,'waiting');assert(waiting.followedEdgeIds.includes('a-m'));assert(!waiting.followedEdgeIds.includes('m-d'));assert(!waiting.followedEdgeIds.includes('review-stop'));
+ const rejected=workspace.previewWorkflow(g,{...sample,approved:false},[]);assert.equal(rejected.steps.at(-1).id,'stop');assert(rejected.followedEdgeIds.includes('review-stop'));assert(!rejected.followedEdgeIds.includes('review-account'));assert.deepEqual(g,before);
+});
+test('sample path blocks incomplete settings, missing connections and loops without inventing completion',()=>{
+ const g=graph(),sample={name:'TEST Dara',email:'dara@example.test',source:'telegram',appliedPosition:'Accountant',approved:true,existingAccount:false,telegramConfirmed:true};
+ g.nodes.find(n=>n.kind==='assign_forms').config.forms=[];const incomplete=workspace.previewWorkflow(g,sample,[]);assert.equal(incomplete.steps.at(-1).id,'assign');assert.equal(incomplete.steps.at(-1).state,'blocked');assert(!incomplete.followedEdgeIds.includes('assign-done'));
+ const missing=graph();missing.edges=missing.edges.filter(e=>e.source!=='extract');const disconnected=workspace.previewWorkflow(missing,sample,[]);assert.equal(disconnected.steps.at(-1).state,'blocked');assert.match(disconnected.halt,/Connect/);
+ const loop=graph();loop.edges.find(e=>e.source==='assign').target='review';const circular=workspace.previewWorkflow(loop,sample,[]);assert.equal(circular.steps.at(-1).state,'blocked');assert.match(circular.halt,/circular/);assert(!circular.followedEdgeIds.includes('assign-done'));
+});
+test('condition sample paths follow only the selected yes or no edge',()=>{
+ const g=tools.insertStep(graph(),{...tools.newStep('condition',{x:0,y:0},'choice'),config:{field:'source',value:'telegram'}},'review','approved');g.edges.push({id:'choice-no',source:'choice',target:'stop',outcome:'no'});
+ const sample={name:'TEST Dara',email:'dara@example.test',source:' TELEGRAM ',appliedPosition:'Accountant',approved:true,existingAccount:false,telegramConfirmed:true};
+ const yes=workspace.previewWorkflow(g,sample,[]);assert(yes.followedEdgeIds.includes(g.edges.find(e=>e.source==='choice'&&e.outcome==='yes').id));assert(!yes.followedEdgeIds.includes('choice-no'));
+ const no=workspace.previewWorkflow(g,{...sample,source:'other'},[]);assert(no.followedEdgeIds.includes('choice-no'));assert.equal(no.steps.at(-1).id,'stop');assert(!no.steps.some(n=>n.id==='account'));
+});
+test('setup diagnostics address exact controls and incoming choices never replace an occupied output',()=>{
+ const g=graph();g.nodes.find(n=>n.kind==='assign_forms').config.forms=[];assert(setupDiagnostics.stepSetupIssues(g,g.nodes.find(n=>n.id==='assign')).some(i=>i.control==='step-add-form'));
+ g.edges.find(e=>e.source==='review'&&e.outcome==='rejected').target='account';assert(setupDiagnostics.stepSetupIssues(g,g.nodes.find(n=>n.id==='review')).some(i=>i.action==='Fix rejected path'&&i.control==='connection-rejected'));
+ const isolated=tools.newStep('condition',{x:0,y:0},'isolated');g.nodes.push(isolated);const issues=setupDiagnostics.stepSetupIssues(g,isolated);assert(issues.some(i=>i.control==='condition-value'));assert(issues.some(i=>i.control==='connection-incoming'));assert(issues.some(i=>i.control==='connection-no'));
+ const withoutStop={...g,nodes:g.nodes.filter(n=>n.kind!=='stop'),edges:g.edges.filter(e=>e.outcome!=='rejected')};assert(setupDiagnostics.stepSetupIssues(withoutStop,withoutStop.nodes.find(n=>n.id==='review')).some(i=>i.control==='step-add-rejected'&&i.action==='Add Stop'));
+ g.nodes.find(n=>n.id==='assign').config.forms=[{templateId:'form-1',roleId:''}];assert(setupDiagnostics.stepSetupIssues(g,g.nodes.find(n=>n.id==='assign')).some(i=>i.control==='step-role-1'));
+ const before=structuredClone(g);for(const choice of setupDiagnostics.incomingChoices(g,'isolated'))assert(!g.edges.some(e=>e.source===choice.source&&e.outcome===choice.outcome));assert.deepEqual(g,before);
 });

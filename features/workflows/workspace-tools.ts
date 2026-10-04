@@ -80,6 +80,7 @@ export type SampleStep = {
   id: string;
   label: string;
   result: string;
+  state: "followed" | "waiting" | "blocked";
   outcome?: string;
   message?: string;
   forms?: string[];
@@ -92,7 +93,9 @@ export function previewWorkflow(
 ) {
   const issues = graphIssues(graph),
     steps: SampleStep[] = [],
-    visited = new Set<string>();
+    visited = new Set<string>(),
+    followedEdgeIds: string[] = [];
+  let halt = "This sample reaches the end of its path.";
   let node = graph.nodes.find((n) => n.kind === "resume_uploaded"),
     formCount = 0;
   while (node && steps.length < 32 && !visited.has(node.id)) {
@@ -101,9 +104,24 @@ export function previewWorkflow(
       id: node.id,
       label: displayNode(node),
       result: "Would continue",
+      state: "followed",
     };
     let outcome = "next",
       stop = false;
+    const setupProblem = node.kind === "assign_forms" && (!node.config.forms?.length || node.config.forms.some((f) => !f.templateId || !f.roleId))
+      ? "Choose a published form before this step can run."
+      : node.kind === "condition" && !node.config.value?.trim()
+        ? "Enter a condition value before choosing this path."
+        : node.kind === "send_telegram" && node.config.message !== undefined && !node.config.message.trim()
+          ? "Enter an invitation message before this step can run."
+          : null;
+    if (setupProblem) {
+      step.state = "blocked";
+      step.result = setupProblem;
+      steps.push(step);
+      halt = setupProblem;
+      break;
+    }
     switch (node.kind) {
       case "resume_uploaded":
         step.result = "Would start with the sample CV";
@@ -153,6 +171,7 @@ export function previewWorkflow(
           .replaceAll("{email}", sample.email)
           .replaceAll("{formCount}", String(formCount));
         stop = !sample.telegramConfirmed;
+        if (stop) { step.state = "waiting"; halt = "This sample would wait for Telegram contact confirmation."; }
         break;
       case "stop":
         step.result = "Would end this branch";
@@ -167,12 +186,23 @@ export function previewWorkflow(
     step.outcome = outcome;
     steps.push(step);
     if (stop) break;
-    const target = graph.edges.find(
+    const edge = graph.edges.find(
       (e) => e.source === node!.id && e.outcome === outcome,
-    )?.target;
-    node = graph.nodes.find((n) => n.id === target);
+    );
+    const target = graph.nodes.find((n) => n.id === edge?.target);
+    if (!edge || !target || visited.has(target.id)) {
+      step.state = "blocked";
+      halt = !edge ? `Connect the ${outcome === "next" ? "next step" : outcome + " branch"} to continue this sample.`
+        : !target ? "This connection points to a missing step."
+          : "This sample stops at a circular connection.";
+      step.result = halt;
+      break;
+    }
+    followedEdgeIds.push(edge.id);
+    node = target;
   }
-  return { issues, steps };
+  if (!steps.length) halt = "Add a starting event to preview this workflow.";
+  return { issues, steps, followedEdgeIds, halt };
 }
 export function stepEvidence(
   run: WorkflowRun,

@@ -65,6 +65,7 @@ export function StepSettings(props: {
             return (
               <div key={index} className="space-y-2 rounded border p-3">
                 <select
+                  id={`step-form-${index + 1}`}
                   aria-label={`Template ${index + 1}`}
                   className="h-10 w-full rounded border bg-background px-2 text-sm"
                   value={target.templateId}
@@ -93,6 +94,7 @@ export function StepSettings(props: {
                 </select>
                 {option && option.kind !== "form" && (
                   <select
+                    id={`step-role-${index + 1}`}
                     aria-label={`Recipient role ${index + 1}`}
                     value={target.roleId}
                     className="h-10 w-full rounded border bg-background px-2 text-sm"
@@ -128,6 +130,7 @@ export function StepSettings(props: {
             );
           })}
           <Button
+            id="step-add-form"
             type="button"
             variant="outline"
             className="w-full"

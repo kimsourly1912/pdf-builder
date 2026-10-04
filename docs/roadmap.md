@@ -123,3 +123,11 @@ A first-time HR usability trial remains necessary to establish comprehension wit
 - Searchable step outline, explicit branch destinations and direct next-step navigation.
 - Essential settings first, expandable metadata and connection changes, unified Data & behavior explanations.
 - One insertion control per connected path; draft/live behavior comparison remains available on demand.
+
+
+### Automation preview and setup fixes (2026-10-04)
+
+- Read-only sample path canvas with branch highlighting, simulated waiting/setup stops and optional editor overlay.
+- Stored sample inputs survive reopening; draft changes invalidate overlays.
+- Setup fixes focus exact form, message, condition and connection controls; missing incoming links use free validated outputs.
+- Existing execution and publication safeguards are unchanged. Execution-result and publication-summary proposals remain separate follow-up work.
