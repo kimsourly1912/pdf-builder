@@ -53,6 +53,8 @@ type ReviewData = {
     fullName: string;
     email: string;
     username: string;
+    confirmedCandidateId: string | null;
+    confirmedBy: string | null;
   }[];
   suggestedConnectionId: string | null;
   run: WorkflowRun;
@@ -174,7 +176,7 @@ function ReviewBody({
   const form = useForm({
     defaultValues: {
       telegramConnectionId: data.suggestedConnectionId ?? "",
-      confirmTelegram: false,
+      confirmTelegram: data.telegramConnections.some(c=>c.id===data.suggestedConnectionId && c.confirmedCandidateId===data.candidate?.id && !!c.confirmedBy),
       candidate: initialCandidate,
       checks: [false, false, false],
       note: "",
@@ -520,7 +522,7 @@ function ReviewBody({
                         value={field.state.value || "none"}
                         onValueChange={(v) => {
                           field.handleChange(v === "none" ? "" : v);
-                          form.setFieldValue("confirmTelegram", false);
+                          form.setFieldValue("confirmTelegram", data.telegramConnections.some(c=>c.id===v && c.confirmedCandidateId===data.candidate?.id && !!c.confirmedBy));
                         }}
                       >
                         <SelectTrigger
@@ -545,8 +547,9 @@ function ReviewBody({
                       </Select>
                     )}
                   </form.Field>
+                  <form.Subscribe selector={state=>state.values.telegramConnectionId}>{selectedContact=>(
                   <form.Field name="confirmTelegram">
-                    {(field) => (
+                    {(field) => data.telegramConnections.some(c=>c.id===selectedContact && c.confirmedCandidateId===data.candidate?.id && !!c.confirmedBy) ? <p className="text-sm">✓ Telegram contact confirmed for this candidate.</p> : (
                       <label className="flex items-start gap-2 text-sm">
                         <Checkbox
                           checked={field.state.value}
@@ -561,6 +564,7 @@ function ReviewBody({
                       </label>
                     )}
                   </form.Field>
+                  )}</form.Subscribe>
                   <p className="text-xs text-muted-foreground">
                     A name or email match alone does not confirm the contact.
                     Without a connection, the invitation waits after form

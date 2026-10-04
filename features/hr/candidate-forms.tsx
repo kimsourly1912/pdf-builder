@@ -92,6 +92,8 @@ export function CandidateForms({
   const assignments = item.assignments ?? item.forms;
   return (
     <div className="space-y-5">
+      <details className="rounded-xl border bg-card p-4" open={!assignments.length && !item.run}>
+        <summary className="cursor-pointer text-sm font-medium">{assignments.length ? "Assign an additional form" : "Form preparation options"}</summary>
       <section
         id="assign-forms"
         className="scroll-mt-24 rounded-xl border bg-card p-5"
@@ -181,6 +183,7 @@ export function CandidateForms({
           </p>
         )}
       </section>
+      </details>
       {error && (
         <p
           role="alert"

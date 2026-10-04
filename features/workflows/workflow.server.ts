@@ -321,6 +321,7 @@ export async function uploadWorkflowStatements(
         notArchived("workflow", workflows.id),
       ),
     )
+    .orderBy(workflows.id)
     .limit(50);
   return rows.flatMap((w) => {
     if (!w.publishedJson) return [];

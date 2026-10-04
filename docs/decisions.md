@@ -67,3 +67,7 @@ Workspace setup is an owner-scoped read-only check. Candidate preview uses immut
 ## Staging bulk reset (2026-10-04)
 
 The user identifies the current deployed workspace as staging despite its production-named Actions configuration. `TEST_DATA_RESET_ENABLED=true` explicitly enables an owner-only reset page. Normal Archive/evidence protection remains; confirmed resets may remove immutable submissions and previous audit history only through transient owner-scoped membership in an atomic checked batch. Admin access, integration secrets, migrations and minimal reset receipts survive. Disable the flag before retaining real HR data. See [Test data reset](test-data-reset.md).
+
+### Candidate approval and preparation share one review (2026-10-04)
+
+Contact confirmation belongs to the owned candidate/Telegram connection association, rather than to each UI screen. Reuse it for the same recipient; retain explicit changed-recipient and repeat-send decisions. Approval presents the current automatic/pending workflow configuration and form targets and verifies that snapshot atomically before committing. Preparation progress and recovery live in the candidate workspace. Saving unfinished CV edits never approves, starts paid AI or creates preparation.

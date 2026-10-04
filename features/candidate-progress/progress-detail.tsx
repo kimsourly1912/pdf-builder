@@ -1,16 +1,17 @@
 "use client";
+import { CandidateRunProgress } from "@/features/hr/candidate-run-progress";
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   ArrowLeft,
   RefreshCw,
-  AlertTriangle,
   CheckCircle2,
 } from "lucide-react";
 import { AppShell } from "@/components/patterns/app-shell";
 import { PageHeader } from "@/components/patterns/page-header";
 import { Button } from "@/components/ui/button";
+import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -49,9 +50,6 @@ import { candidateNextAction } from "./submission-progress";
 import { CvUpdatePanel } from "./cv-update-panel";
 import { ResumePdfPreview } from "@/features/resumes/resume-pdf-preview";
 import {
-  stageEvidence,
-  preparationLabel,
-  STAGE_DESCRIPTIONS,
 } from "./stage-evidence";
 import { MoveMenu, MoveDialog } from "./progress-actions";
 const PROFILE_TABS = [
@@ -187,9 +185,6 @@ export function ProgressDetail({
     }
   }
   const viewingCv = item ? candidateCvPreview(item, previewId) : null;
-  const runUrl = item?.run
-    ? `/workflows/${item.run.workflowId}?tab=runs&run=${item.run.id}`
-    : "/workflows";
   function nextAction() {
     if (!item) return null;
     if (!item.selectedCv.verified)
@@ -221,6 +216,8 @@ export function ProgressDetail({
           Review latest submission
         </Button>
       );
+    if (issue && item.run && ["run_failed","telegram","telegram_retry","uncertain","multiple_runs"].includes(issue.key))
+      return <Button onClick={()=>changeTab("overview")}>Resolve preparation</Button>;
     if (issue)
       return (
         <Button asChild>
@@ -234,8 +231,8 @@ export function ProgressDetail({
       )
     )
       return (
-        <Button asChild>
-          <Link href={runUrl}>{candidateNextAction(item).next}</Link>
+        <Button onClick={() => {changeTab("overview");document.getElementById("candidate-preparation")?.scrollIntoView({behavior:"smooth"});}}>
+          {candidateNextAction(item).next}
         </Button>
       );
     if (!item.facts.preparationCurrent)
@@ -318,47 +315,15 @@ export function ProgressDetail({
           <div className="flex flex-wrap items-center gap-2">
             <Badge
               variant="outline"
-              className={statusColor(STAGE_LABELS[item.stage])}
+              className={statusColor(STAGE_LABELS[item.automaticStage])}
             >
-              {STAGE_LABELS[item.stage]}
+              {STAGE_LABELS[item.automaticStage]}
             </Badge>
             <span className="text-sm text-muted-foreground">
               {stageAge(item.stage, item.stageSince)}
             </span>
-            {item.manual && (
-              <Badge variant="outline">
-                HR override · actual progress:{" "}
-                {STAGE_LABELS[item.automaticStage]}
-              </Badge>
-            )}
-            <Badge variant="secondary">
-              {item.facts.completed}/{item.facts.required} required forms
-              submitted
-            </Badge>
+            {item.facts.assigned > 0 && <Badge variant="secondary">{item.facts.completed}/{item.facts.required} required forms submitted</Badge>}
           </div>
-          <p className="text-sm text-muted-foreground">
-            {STAGE_DESCRIPTIONS[item.stage]} {stageEvidence(item)}
-          </p>
-          {preparationLabel(item) && (
-            <Alert
-              variant={
-                item.run?.status === "failed" ? "destructive" : "default"
-              }
-            >
-              <AlertDescription className="flex flex-wrap items-center justify-between gap-3">
-                <span>
-                  {preparationLabel(item)} · {item.run?.name}
-                </span>
-                <Button asChild variant="outline" size="sm">
-                  <Link href={runUrl}>
-                    {item.run?.status === "failed"
-                      ? "Resolve issue"
-                      : "View progress"}
-                  </Link>
-                </Button>
-              </AlertDescription>
-            </Alert>
-          )}
           <section
             aria-label="Candidate next step"
             className="rounded-xl border bg-card p-4 sm:p-5"
@@ -377,18 +342,15 @@ export function ProgressDetail({
                 <p className="mt-1 max-w-3xl break-words text-sm text-muted-foreground">
                   {candidateWork(item).message}
                 </p>
-                {!item.selectedCv.verified && (
-                  <p className="mt-2 text-xs text-muted-foreground">
-                    AI is optional. Approving the CV may start your published
-                    approval workflow.
-                  </p>
-                )}
+
               </div>
-              <div className="shrink-0 self-start">{nextAction()}</div>
+              <div className="shrink-0 self-start">{tab === "documents" && !item.selectedCv.verified ? null : nextAction()}</div>
             </div>
+            <details className="mt-4 border-t pt-3">
+              <summary className="cursor-pointer text-sm text-muted-foreground">Application milestones</summary>
             <ol
               aria-label="Candidate journey"
-              className="mt-4 grid gap-2 border-t pt-4 sm:grid-cols-3 xl:grid-cols-6"
+              className="mt-3 grid gap-2 sm:grid-cols-3 xl:grid-cols-6"
             >
               {candidateJourney(item).map((step) => (
                 <li
@@ -414,174 +376,36 @@ export function ProgressDetail({
                 </li>
               ))}
             </ol>
+            </details>
           </section>
           <Tabs value={tab} onValueChange={changeTab}>
-            <div className="min-w-0 overflow-x-auto pb-1">
+            <div className="flex min-w-0 items-center gap-2 overflow-x-auto pb-1">
               <TabsList variant="line" className="w-max">
-                {PROFILE_TABS.map((t) => (
+                {PROFILE_TABS.filter(t=>["overview","documents","forms"].includes(t.id) || t.id===tab).map((t) => (
                   <TabsTrigger key={t.id} value={t.id}>
                     {t.label}
                   </TabsTrigger>
                 ))}
               </TabsList>
+              <DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" size="sm">More</Button></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuItem onClick={()=>changeTab("communication")}>Communication</DropdownMenuItem><DropdownMenuItem onClick={()=>changeTab("history")}>Candidate history</DropdownMenuItem></DropdownMenuContent></DropdownMenu>
             </div>
             <TabsContent value="overview" className="mt-5 space-y-5">
-              <div className="grid min-w-0 gap-5">
-                <Card>
-                  <CardHeader>
-                    <CardTitle role="heading" aria-level={2}>
-                      Status summary
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <dl className="space-y-3">
-                      {[
-                        [
-                          "Contact",
-                          item.contactConfirmed
-                            ? "Telegram confirmed"
-                            : item.selectedCv.intakeId
-                              ? "Telegram confirmation needed"
-                              : "No Telegram submission",
-                        ],
-                        [
-                          "CV information",
-                          item.selectedCv.verified
-                            ? "Approved"
-                            : "Needs review",
-                        ],
-                        [
-                          "Account access",
-                          item.accountDisabled
-                            ? "Disabled"
-                            : item.accountCreated
-                              ? "Created / linked"
-                              : "Not created",
-                        ],
-                        [
-                          "Preparation",
-                          item.run
-                            ? runStatusLabel(
-                                item.run.status,
-                                item.run.waitingFor,
-                              )
-                            : item.facts.preparationCurrent
-                              ? "Forms assigned manually"
-                              : "Not started",
-                        ],
-                        [
-                          "Required forms",
-                          `${item.facts.completed}/${item.facts.required} submitted · ${item.facts.accepted ?? 0} accepted`,
-                        ],
-                      ].map(([label, value]) => (
-                        <div
-                          key={label}
-                          className="flex flex-wrap justify-between gap-2 border-b pb-2 last:border-0"
-                        >
-                          <dt className="text-sm text-muted-foreground">
-                            {label}
-                          </dt>
-                          <dd className="text-sm font-medium">{value}</dd>
-                        </div>
-                      ))}
-                    </dl>
-                    {item.accountId && (
-                      <Button asChild variant="outline" className="mt-4">
-                        <Link
-                          href={`/accounts?${new URLSearchParams({ account: item.accountId, search: item.accountEmail ?? item.email })}`}
-                        >
-                          Manage account access
-                        </Link>
-                      </Button>
-                    )}
-                  </CardContent>
-                </Card>
-              </div>
-              {item.issues.map((issue) => (
-                <Alert key={issue.key}>
-                  <AlertTriangle />
-                  <AlertDescription>
-                    <p>{issue.message}</p>
-                    <Button
-                      asChild
-                      variant="outline"
-                      size="sm"
-                      className="mt-3"
-                    >
-                      <Link href={issue.href}>{issue.action}</Link>
-                    </Button>
-                  </AlertDescription>
-                </Alert>
-              ))}
-              <Card>
-                <CardHeader>
-                  <CardTitle role="heading" aria-level={2}>
-                    Current preparation
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <p className="break-words text-sm">
-                    Preparation CV: <strong>{item.selectedCv.fileName}</strong>
-                  </p>
-                  {item.runs.some(
-                    (r) => r.resumeId === item.selectedCv.id && !r.archived,
-                  ) && (
-                    <div className="space-y-2">
-                      <label
-                        htmlFor="selected-run"
-                        className="text-sm font-medium"
-                      >
-                        Preparation to track
-                      </label>
-                      <Select
-                        value={item.run?.id ?? ""}
-                        onValueChange={(v) => {
-                          if (v) void select("select_run", v);
-                        }}
-                        disabled={busy}
-                      >
-                        <SelectTrigger
-                          id="selected-run"
-                          className="w-full min-w-0"
-                        >
-                          <SelectValue className="min-w-0 flex-1 !block truncate text-left" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {item.runs
-                            .filter(
-                              (r) =>
-                                r.resumeId === item.selectedCv.id &&
-                                !r.archived,
-                            )
-                            .map((r) => (
-                              <SelectItem key={r.id} value={r.id}>
-                                {r.name} ·{" "}
-                                {runStatusLabel(r.status, r.waitingFor)}
-                              </SelectItem>
-                            ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  )}
-                  <p className="text-xs text-muted-foreground">
-                    Each preparation keeps its approved CV and information
-                    snapshot. Previewing another CV does not change progress.
-                    Choosing a CV for a new preparation is a separate decision.
-                  </p>
-                  {item.run ? (
-                    <Button asChild variant="outline">
-                      <Link href={runUrl}>View preparation details</Link>
-                    </Button>
-                  ) : (
-                    item.selectedCv.verified && (
-                      <CandidatePreparation
-                        item={item}
-                        onChanged={() => void load()}
-                      />
-                    )
-                  )}
-                </CardContent>
-              </Card>
+              <CandidateRunProgress item={item} onChanged={()=>void load()} />
+              <Card><CardHeader><CardTitle>Candidate details</CardTitle></CardHeader><CardContent>
+                <dl className="grid gap-4 text-sm sm:grid-cols-2">
+                  <div><dt className="text-muted-foreground">Email</dt><dd className="break-all">{item.email || "Not provided"}</dd></div>
+                  <div><dt className="text-muted-foreground">Telegram</dt><dd>@{item.telegram || "Not connected"}{item.contactConfirmed ? " · Confirmed" : ""}</dd></div>
+                  <div className="sm:col-span-2"><dt className="text-muted-foreground">Current CV</dt><dd className="break-words">{item.selectedCv.fileName}</dd></div>
+                </dl>
+              </CardContent></Card>
+              {(item.assignments ?? item.forms).length > 0 && <Card><CardHeader><CardTitle>Candidate forms</CardTitle></CardHeader><CardContent><p className="text-sm text-muted-foreground">{item.facts.completed}/{item.facts.required} required forms submitted · {item.facts.accepted ?? 0} accepted</p><Button variant="outline" className="mt-4" onClick={()=>changeTab("forms")}>View forms and responses</Button></CardContent></Card>}
+              <details className="rounded-xl border bg-card p-5"><summary className="cursor-pointer text-sm font-medium">Application details & history</summary><div className="mt-4 space-y-4 text-sm">
+                {item.manual && <p>HR override: {STAGE_LABELS[item.stage]} · Actual progress: {STAGE_LABELS[item.automaticStage]}</p>}
+                <p>CV: {item.selectedCv.verified ? "Approved" : "Needs review"} · Account: {item.accountDisabled ? "Disabled" : item.accountCreated ? "Created / linked" : "Not created"}</p>
+                {item.issues.slice(1).map(issue=><p key={issue.key}>{issue.message} <Link className="underline" href={issue.href}>{issue.action}</Link></p>)}
+                {item.runs.filter(r=>r.resumeId===item.selectedCv.id && !r.archived).length > 1 && <><label htmlFor="selected-run">Preparation to track</label><Select value={item.run?.id ?? ""} onValueChange={v=>{if(v)void select("select_run",v);}} disabled={busy}><SelectTrigger id="selected-run" className="w-full min-w-0"><SelectValue /></SelectTrigger><SelectContent>{item.runs.filter(r=>r.resumeId===item.selectedCv.id && !r.archived).map(r=><SelectItem key={r.id} value={r.id}>{r.name} · {runStatusLabel(r.status,r.waitingFor)}</SelectItem>)}</SelectContent></Select></>}
+                <div className="flex flex-wrap gap-2"><Button variant="outline" onClick={()=>changeTab("history")}>View candidate history</Button>{item.accountId && <Button asChild variant="outline"><Link href={`/accounts?${new URLSearchParams({account:item.accountId,search:item.accountEmail ?? item.email})}`}>Manage account access</Link></Button>}</div>
+              </div></details>
             </TabsContent>
             <TabsContent value="documents" className="mt-5 space-y-5">
               {((item.cvUpdates?.length ?? 0) > 0 ||
@@ -595,7 +419,7 @@ export function ProgressDetail({
                   onReviewingChange={setReviewingUpdate}
                 />
               )}
-              {!reviewingUpdate && (
+              {!reviewingUpdate && item.cvs.length > 1 && (
                 <section className="rounded-xl border bg-card p-5">
                   <label htmlFor="selected-cv" className="text-sm font-medium">
                     Currently viewing CV
@@ -680,6 +504,7 @@ export function ProgressDetail({
                     embedded
                     onChanged={() => void load()}
                     onDirtyChange={setDirty}
+                    onApproved={()=>{setDirty(false);router.replace(`/candidates/${candidateId}?tab=overview`,{scroll:false});void load();}}
                   />
                 ))}
             </TabsContent>
@@ -754,7 +579,7 @@ export function ProgressDetail({
                   )}
                   {item.run && (
                     <Button asChild variant="outline">
-                      <Link href={runUrl}>View delivery details</Link>
+                      <Link href={`/candidates/${candidateId}?tab=overview#candidate-preparation`}>View invitation progress</Link>
                     </Button>
                   )}
                   {item.selectedCv.intakeId && (

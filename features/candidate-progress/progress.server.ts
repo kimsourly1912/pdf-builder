@@ -611,7 +611,7 @@ export async function detailProgress(owner: string, id: string) {
   const events = (
     await getDatabaseBinding()
       .prepare(
-        "SELECT id,action,actor_id actor,created_at at,metadata_json FROM audit_events WHERE owner_email=? AND target_type='candidate' AND target_id=? AND (action LIKE 'candidate.progress_%' OR action LIKE 'candidate.cv_update_%') ORDER BY created_at DESC LIMIT 100",
+        "SELECT id,action,actor_id actor,created_at at,metadata_json FROM audit_events WHERE owner_email=? AND target_type='candidate' AND target_id=? AND (action LIKE 'candidate.progress_%' OR action LIKE 'candidate.cv_update_%' OR action='candidate.changes_saved') ORDER BY created_at DESC LIMIT 100",
       )
       .bind(owner, id)
       .all<{
@@ -626,7 +626,7 @@ export async function detailProgress(owner: string, id: string) {
     ...events.map((a) => ({
       id: a.id,
       action:
-        a.action === "candidate.progress_stage_changed"
+        a.action === "candidate.changes_saved" ? "CV review draft saved" : a.action === "candidate.progress_stage_changed"
           ? "HR stage changed"
           : a.action === "candidate.progress_cv_selected"
             ? "Selected CV changed"

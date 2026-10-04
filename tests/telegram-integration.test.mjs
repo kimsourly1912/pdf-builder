@@ -2139,3 +2139,105 @@ test("attention queue is owner-scoped, paginated after search and read-only",asy
  await archiveService.archiveEntity(owner,'resume',submitted.resume_id);
  assert(!(await attentionService.listAttention(owner,new URLSearchParams({search:'attention-queue@example.com'}))).items.some(t=>t.type==='cv_review'));
 });
+
+test("guided approval previews published preparation, confirms contact once and completes without a second HR review", async () => {
+  const flags=d1.sqlite.prepare("SELECT id,active FROM workflows").all();
+  d1.sqlite.exec("UPDATE workflows SET active=0");
+  try {
+    const row=await submit(94001,"guided@example.com");
+    const automatic=await workflowWithTrigger("resume_verified");
+    const previewRoute=await vite.ssrLoadModule("/app/api/resumes/[id]/approval-preview/route.ts");
+    const context={params:Promise.resolve({id:row.resume_id})};
+    const detail=(await (await resumeRoute.GET(ownerRequest("/api/resumes/"+row.resume_id,null,"GET"),context)).json()).resume;
+    const before={runs:count("workflow_runs"),profiles:count("candidate_profile_versions"),users:count("user"),ai:aiCalls,sends:messages.length};
+    const previewResponse=await previewRoute.POST(ownerRequest("/api/resumes/"+row.resume_id+"/approval-preview",{email:detail.candidate.email}),context);
+    assert.equal(previewResponse.status,200,await previewResponse.clone().text());
+    const {plan}=await previewResponse.json();
+    assert.equal(plan.workflows.length,1);assert.equal(plan.workflows[0].id,automatic.id);
+    assert(plan.workflows[0].forms.length);assert(plan.workflows[0].forms.every(f=>f.versionId));
+    assert.equal(plan.contact.confirmed,false);
+    assert.deepEqual({runs:count("workflow_runs"),profiles:count("candidate_profile_versions"),users:count("user"),ai:aiCalls,sends:messages.length},before);
+    const body={action:"approve_cv",candidate:detail.candidate,confirmTelegram:true,approvalPlanRevision:plan.revision,resumeRevision:detail.updatedAt,candidateRevision:detail.candidateRevision};
+    const response=await resumeRoute.PATCH(ownerRequest("/api/resumes/"+row.resume_id,body,"PATCH"),context);
+    assert.equal(response.status,200,await response.clone().text());
+    const result=await response.json();assert.equal(result.approved,true);assert.equal(result.preparationRunIds.length,1);
+    const connectionsRoute=await vite.ssrLoadModule("/app/api/intake/connections/route.ts");
+    const contacts=await (await connectionsRoute.GET(ownerRequest("/api/intake/connections",null,"GET"))).json();
+    assert.equal(contacts.items.find(c=>c.id===row.connection_id).confirmedCandidateId,row.candidate_id);
+    await runner.processWorkflowRun(result.preparationRunIds[0]);
+    const prepared=await workflows.getRun(runtime.MANAGEMENT_EMAIL,result.preparationRunIds[0]);
+    assert.equal(prepared.status,"completed");assert(prepared.context.userId);
+    const delivery=await telegramActionRoute.GET(ownerRequest("/api/workflow-runs/"+prepared.id+"/telegram",null,"GET"),{params:Promise.resolve({id:prepared.id})});
+    assert.equal((await delivery.json()).delivery.status,"sent");
+    const secondPlan=(await (await previewRoute.POST(ownerRequest("/api/resumes/"+row.resume_id+"/approval-preview",{email:detail.candidate.email}),context)).json()).plan;
+    assert.equal(secondPlan.contact.confirmed,true);assert.equal(secondPlan.workflows.length,0);
+    assert.equal(aiCalls,before.ai);
+    assert.equal((await resumeRoute.PATCH(ownerRequest("/api/resumes/"+row.resume_id,body,"PATCH"),context)).status,409);
+    const unauthorized=await previewRoute.POST(new Request("http://localhost:5173/api/resumes/"+row.resume_id+"/approval-preview",{method:"POST",body:JSON.stringify({email:detail.candidate.email})}),context);
+    assert.equal(unauthorized.status,401);
+    const changed=await telegramActionRoute.POST(ownerRequest("/api/workflow-runs/"+prepared.id+"/telegram",{action:"resend",confirm:true,connectionId:row.connection_id,contactRevision:"stale",expectedUpdatedAt:prepared.updatedAt}),{params:Promise.resolve({id:prepared.id})});
+    assert.equal(changed.status,409);
+  } finally {for(const w of flags)d1.sqlite.prepare("UPDATE workflows SET active=? WHERE id=?").run(w.active,w.id);}
+});
+
+test("approval summary rejects changed setup and atomically rolls back a race without approval or sends",async()=>{
+  const flags=d1.sqlite.prepare("SELECT id,active FROM workflows").all();d1.sqlite.exec("UPDATE workflows SET active=0");
+  const originalBatch=d1.batch.bind(d1);
+  try {
+    const row=await submit(94002,"guided-race@example.com"),automatic=await workflowWithTrigger("resume_verified");
+    const route=await vite.ssrLoadModule("/app/api/resumes/[id]/approval-preview/route.ts"),context={params:Promise.resolve({id:row.resume_id})};
+    const detail=(await (await resumeRoute.GET(ownerRequest("/api/resumes/"+row.resume_id,null,"GET"),context)).json()).resume;
+    const getPlan=async()=>(await (await route.POST(ownerRequest("/api/resumes/"+row.resume_id+"/approval-preview",{email:detail.candidate.email}),context)).json()).plan;
+    const plan=await getPlan(),body={action:"approve_cv",candidate:detail.candidate,confirmTelegram:true,approvalPlanRevision:plan.revision,resumeRevision:detail.updatedAt,candidateRevision:detail.candidateRevision};
+    d1.sqlite.prepare("UPDATE workflows SET active=0 WHERE id=?").run(automatic.id);
+    assert.equal((await resumeRoute.PATCH(ownerRequest("/api/resumes/"+row.resume_id,body,"PATCH"),context)).status,409);
+    d1.sqlite.prepare("UPDATE workflows SET active=1 WHERE id=?").run(automatic.id);
+    body.approvalPlanRevision=(await getPlan()).revision;
+    const before={profiles:count("candidate_profile_versions"),runs:count("workflow_runs"),sends:messages.length};
+    let raced=false;
+    d1.batch=async statements=>{if(!raced){raced=true;d1.sqlite.prepare("UPDATE workflows SET name='Changed after preview' WHERE id=?").run(automatic.id);}return originalBatch(statements);};
+    assert.equal((await resumeRoute.PATCH(ownerRequest("/api/resumes/"+row.resume_id,body,"PATCH"),context)).status,409);
+    assert(raced);assert.deepEqual({profiles:count("candidate_profile_versions"),runs:count("workflow_runs"),sends:messages.length},before);
+    assert.equal(d1.sqlite.prepare("SELECT verification_status FROM resumes WHERE id=?").get(row.resume_id).verification_status,"unverified");
+  } finally {d1.batch=originalBatch;for(const w of flags)d1.sqlite.prepare("UPDATE workflows SET active=? WHERE id=?").run(w.active,w.id);}
+});
+
+test("guided approval requires explicit account reuse and returns a field-specific invalid-email error",async()=>{
+  const flags=d1.sqlite.prepare("SELECT id,active FROM workflows").all();d1.sqlite.exec("UPDATE workflows SET active=0");
+  try {
+    const row=await submit(94003,"guided-reuse@example.com");await workflowWithTrigger("resume_verified");
+    const accounts=await vite.ssrLoadModule("/app/api/accounts/route.ts");
+    const created=await accounts.POST(ownerRequest("/api/accounts",{name:"TEST Existing Guided",email:"guided-reuse@example.com",password:"LocalTestPassword!123",accountType:"candidate"}));
+    assert.equal(created.status,201,await created.clone().text());
+    // Model a reusable owner-created account which has not been linked to this candidate.
+    d1.sqlite.prepare("UPDATE candidates SET user_id=NULL WHERE id=?").run(row.candidate_id);
+    const preview=await vite.ssrLoadModule("/app/api/resumes/[id]/approval-preview/route.ts"),context={params:Promise.resolve({id:row.resume_id})};
+    const detail=(await (await resumeRoute.GET(ownerRequest("/api/resumes/"+row.resume_id,null,"GET"),context)).json()).resume;
+    const {plan}=await (await preview.POST(ownerRequest("/api/resumes/"+row.resume_id+"/approval-preview",{email:detail.candidate.email}),context)).json();
+    assert(plan.existingAccount);assert.equal(plan.existingAccount.linked,false);
+    const body={action:"approve_cv",candidate:detail.candidate,confirmTelegram:true,approvalPlanRevision:plan.revision,resumeRevision:detail.updatedAt,candidateRevision:detail.candidateRevision};
+    const blocked=await resumeRoute.PATCH(ownerRequest("/api/resumes/"+row.resume_id,body,"PATCH"),context);assert.equal(blocked.status,422);
+    const invalid=await resumeRoute.PATCH(ownerRequest("/api/resumes/"+row.resume_id,{...body,candidate:{...detail.candidate,email:"invalid"}},"PATCH"),context);
+    assert.equal(invalid.status,422);assert.match((await invalid.json()).error,/valid email address/);
+    const response=await resumeRoute.PATCH(ownerRequest("/api/resumes/"+row.resume_id,{...body,existingAccountId:plan.existingAccount.id},"PATCH"),context);
+    assert.equal(response.status,200,await response.clone().text());
+    const result=await response.json(),users=count("user");await runner.processWorkflowRun(result.preparationRunIds[0]);
+    const run=await workflows.getRun(runtime.MANAGEMENT_EMAIL,result.preparationRunIds[0]);
+    assert.equal(run.status,"completed");assert.equal(run.context.userId,plan.existingAccount.id);assert.equal(count("user"),users);
+  } finally {for(const w of flags)d1.sqlite.prepare("UPDATE workflows SET active=? WHERE id=?").run(w.active,w.id);}
+});
+
+test("invitation action rechecks contact identity inside its lease transaction and never sends after a contact race",async()=>{
+  const run=d1.sqlite.prepare("SELECT r.id FROM workflow_runs r JOIN telegram_deliveries d ON d.run_id=r.id WHERE d.status='sent' AND r.status='completed' ORDER BY r.created_at DESC LIMIT 1").get();
+  const current=await workflows.getRun(runtime.MANAGEMENT_EMAIL,run.id);
+  const connection=d1.sqlite.prepare("SELECT * FROM telegram_connections WHERE id=?").get(current.context.telegramConnectionId);
+  const originalBatch=d1.batch.bind(d1),before={sends:messages.length,accounts:count("user"),assignments:count("form_assignments")};let raced=false;
+  try {
+    d1.batch=async statements=>{if(!raced){raced=true;d1.sqlite.prepare("UPDATE telegram_connections SET confirmed_candidate_id=NULL,confirmed_by=NULL,updated_at=? WHERE id=?").run('2099-01-01T00:00:00Z',connection.id);}return originalBatch(statements);};
+    const response=await telegramActionRoute.POST(ownerRequest("/api/workflow-runs/"+run.id+"/telegram",{action:"resend",confirm:true,connectionId:connection.id,contactRevision:connection.updated_at,expectedUpdatedAt:current.updatedAt}),{params:Promise.resolve({id:run.id})});
+    assert.equal(response.status,409,await response.clone().text());assert(raced);
+    assert.deepEqual({sends:messages.length,accounts:count("user"),assignments:count("form_assignments")},before);
+    assert.equal(d1.sqlite.prepare("SELECT status FROM telegram_deliveries WHERE run_id=?").get(run.id).status,"sent");
+    assert.equal(d1.sqlite.prepare("SELECT confirmed_candidate_id FROM telegram_connections WHERE id=?").get(connection.id).confirmed_candidate_id,null);
+  } finally {d1.batch=originalBatch;d1.sqlite.prepare("UPDATE telegram_connections SET confirmed_candidate_id=?,confirmed_by=?,updated_at=? WHERE id=?").run(connection.confirmed_candidate_id,connection.confirmed_by,connection.updated_at,connection.id);}
+});

@@ -5,19 +5,9 @@ import { botConfiguration } from "@/features/telegram/bot.server";
 import { requireRequestOwner } from "@/features/templates/template.server";
 import { workflowResponse } from "@/features/workflows/api.server";
 export async function GET(request: Request) {
-  return workflowResponse(async () => ({
-    bot: botConfiguration(),
-    items: await getDb()
-      .select({
-        id: telegramConnections.id,
-        fullName: telegramConnections.fullName,
-        email: telegramConnections.email,
-        username: telegramConnections.username,
-      })
-      .from(telegramConnections)
-      .where(
-        eq(telegramConnections.ownerEmail, await requireRequestOwner(request)),
-      )
-      .limit(200),
-  }));
+  return workflowResponse(async () => {
+    const owner = await requireRequestOwner(request);
+    const rows = await getDb().select({id:telegramConnections.id,fullName:telegramConnections.fullName,email:telegramConnections.email,username:telegramConnections.username,confirmedCandidateId:telegramConnections.confirmedCandidateId,confirmedBy:telegramConnections.confirmedBy,revision:telegramConnections.updatedAt}).from(telegramConnections).where(eq(telegramConnections.ownerEmail,owner)).limit(200);
+    return {bot:botConfiguration(),items:rows.map(row=>({...row,confirmedCandidateId:row.confirmedBy===owner ? row.confirmedCandidateId : null}))};
+  });
 }

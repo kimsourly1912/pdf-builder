@@ -1,4 +1,5 @@
 "use client";
+import { validCandidateEmail, type ApprovalPlan } from "./approval-plan";
 import {
   archiveNotice,
   type ArchiveReceipt,
@@ -63,7 +64,7 @@ import type {
 
 type CandidateDraft = Omit<ResumeCandidateSummary, "id" | "verificationStatus">;
 
-export function ResumeDetailView(props: { resumeId: string; embedded?: boolean; hidePdfPreview?: boolean; onChanged?: () => void; onDirtyChange?: (dirty: boolean) => void }) {
+export function ResumeDetailView(props: { resumeId: string; embedded?: boolean; hidePdfPreview?: boolean; onChanged?: () => void; onDirtyChange?: (dirty: boolean) => void; onApproved?: () => void }) {
   const editorId = useId();
   const [resume, setResume] = useState<ResumeDetail | null>(null);
   const [draft, setDraft] = useState<CandidateDraft | null>(null);
@@ -72,6 +73,8 @@ export function ResumeDetailView(props: { resumeId: string; embedded?: boolean; 
   const [deleteOpen, setArchiveOpen] = useState(false);
   const [aiOpen, setAiOpen] = useState(false),
     [confirmTelegram, setConfirmTelegram] = useState(false);
+  const [approval, setApproval] = useState<ApprovalPlan | null>(null);
+  const [reuseAccount, setReuseAccount] = useState(false);
   const [decision, setDecision] = useState<"approve" | "save" | null>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -79,9 +82,7 @@ export function ResumeDetailView(props: { resumeId: string; embedded?: boolean; 
   const dirty =
     !!draft &&
     !!resume?.candidate &&
-    (JSON.stringify(draft) !==
-      JSON.stringify(candidateDraft(resume.candidate)) ||
-      confirmTelegram !== (resume.telegramContact?.confirmed ?? false));
+    JSON.stringify(draft) !== JSON.stringify(candidateDraft(resume.candidate));
   useUnsavedChanges(dirty);
   const { onDirtyChange } = props;
   useEffect(() => { onDirtyChange?.(dirty); }, [dirty, onDirtyChange]);
@@ -129,6 +130,22 @@ export function ResumeDetailView(props: { resumeId: string; embedded?: boolean; 
 
   async function saveCandidate(approve = false, confirmed = false) {
     if (!draft) return;
+    if (!confirmed && approve && !resume?.cvUpdate) {
+      if (!validCandidateEmail(draft.email)) {setError("Enter a valid email address.");return;}
+      setBusy(true);
+      setError("");
+      try {
+        const response = await fetch(`/api/resumes/${props.resumeId}/approval-preview`, {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({email:draft.email})});
+        const payload = await response.json() as {plan?:ApprovalPlan;error?:string};
+        if (!response.ok || !payload.plan) throw new Error(payload.error ?? "Could not check preparation setup.");
+        setApproval(payload.plan);
+        setConfirmTelegram(payload.plan.contact?.confirmed ?? false);
+        setReuseAccount(payload.plan.existingAccount?.linked ?? false);
+        setDecision("approve");
+      } catch (cause) {setError(cause instanceof Error ? cause.message : "Could not check preparation setup.");}
+      finally {setBusy(false);}
+      return;
+    }
     if (!confirmed && (approve || (resume?.verificationStatus === "verified" && !resume.cvUpdate))) {setDecision(approve ? "approve" : "save");return;}
     setDecision(null);
     setBusy(true);
@@ -145,6 +162,8 @@ export function ResumeDetailView(props: { resumeId: string; embedded?: boolean; 
           confirmInvalidateApproval: !approve && confirmed,
           candidate: draft,
           confirmTelegram,
+          approvalPlanRevision: approve && !resume?.cvUpdate ? approval?.revision : undefined,
+          existingAccountId: approve && reuseAccount ? approval?.existingAccount?.id : undefined,
           resumeRevision: resume?.updatedAt,
           candidateRevision: resume?.candidateRevision,
         }),
@@ -164,6 +183,7 @@ export function ResumeDetailView(props: { resumeId: string; embedded?: boolean; 
       );
       await loadResume();
       props.onChanged?.();
+      if (approve) props.onApproved?.();
     } catch (cause) {
       setError(
         cause instanceof Error
@@ -313,7 +333,8 @@ export function ResumeDetailView(props: { resumeId: string; embedded?: boolean; 
 
   return (
     <main className={props.embedded ? "min-w-0 text-foreground" : "min-h-screen bg-background text-foreground"}>
-      <header className={props.embedded ? "rounded-lg border bg-card" : "sticky top-0 z-30 border-b border-border/70 bg-card/95 backdrop-blur"}>
+      {props.embedded && <details className="mb-4 rounded-lg border bg-card p-3"><summary className="cursor-pointer text-sm font-medium">CV tools</summary><div className="mt-3 flex flex-wrap gap-2"><Button variant="outline" size="sm" disabled={busy} onClick={()=>setAiOpen(true)}>Optional AI extraction</Button><Button variant="outline" size="sm" disabled={busy} onClick={()=>setArchiveOpen(true)}>Archive CV</Button></div></details>}
+      {!props.embedded && <header className={props.embedded ? "rounded-lg border bg-card" : "sticky top-0 z-30 border-b border-border/70 bg-card/95 backdrop-blur"}>
         <div className="mx-auto flex min-h-16 max-w-[1500px] flex-wrap items-center justify-between gap-3 px-4 py-2 sm:px-6">
           <div className="flex min-w-0 items-center gap-3">
             <Button asChild variant="ghost" size="icon-sm">
@@ -358,7 +379,7 @@ export function ResumeDetailView(props: { resumeId: string; embedded?: boolean; 
             </Button>
           </div>
         </div>
-      </header>
+      </header>}
 
       {!props.embedded && resume.candidate && <div className="mx-auto max-w-7xl px-4 pt-4"><Alert><AlertDescription className="flex flex-wrap items-center justify-between gap-3"><span>This editor uses the same CV approval as the candidate profile. Follow overall progress and forms from the profile.</span><Button asChild variant="outline" size="sm"><Link href={`/candidates/${resume.candidate.id}?tab=documents`}>Open candidate profile</Link></Button></AlertDescription></Alert></div>}
       <div className={props.embedded ? "min-w-0 py-5" : "mx-auto max-w-[1500px] px-4 py-5 sm:px-6"}>
@@ -435,7 +456,10 @@ export function ResumeDetailView(props: { resumeId: string; embedded?: boolean; 
           </Card>}
 
           <section className="space-y-4">
-            <ResumeMeta resume={resume} />
+            <details className="rounded-lg border bg-card p-3">
+              <summary className="cursor-pointer text-sm font-medium">CV source and processing details</summary>
+              <div className="mt-3"><ResumeMeta resume={resume} /></div>
+            </details>
 
             {draft ? (
               <Card>
@@ -494,6 +518,7 @@ export function ResumeDetailView(props: { resumeId: string; embedded?: boolean; 
                           approvalRequired
                           inputId={`${editorId}-email`}
                           type="email"
+                          error={draft.email.trim() && !validCandidateEmail(draft.email) ? "Enter a valid email address." : undefined}
                           value={draft.email}
                           onChange={(value) =>
                             setDraft({ ...draft, email: value })
@@ -508,6 +533,9 @@ export function ResumeDetailView(props: { resumeId: string; embedded?: boolean; 
                           }
                           meta={fields?.phones}
                         />
+                        <details className="sm:col-span-2 rounded-lg border p-3">
+                          <summary className="cursor-pointer text-sm font-medium">Additional candidate information</summary>
+                          <div className="mt-4 grid gap-4 sm:grid-cols-2">
                         <TextField
                           label="Date of birth"
                           date
@@ -576,38 +604,11 @@ export function ResumeDetailView(props: { resumeId: string; embedded?: boolean; 
                             meta={fields?.[key]}
                           />
                         ))}
+                          </div>
+                        </details>
                       </div>
-                      {resume.telegramContact && (
-                        <label className="mt-5 flex items-start gap-2 text-sm">
-                          <Checkbox
-                            checked={confirmTelegram}
-                            onCheckedChange={(v) =>
-                              setConfirmTelegram(v === true)
-                            }
-                          />
-                          <span>
-                            I confirmed this Telegram contact belongs to this
-                            candidate (
-                            {resume.telegramContact.username
-                              ? `@${resume.telegramContact.username}`
-                              : "connected user"}
-                            ).
-                          </span>
-                        </label>
-                      )}
-                      <Button
-                        type="submit"
-                        disabled={busy || resume.archived}
-                        className="mt-5 w-full"
-                      >
-                        {busy ? (
-                          <LoaderCircle className="animate-spin" />
-                        ) : (
-                          <Save />
-                        )}
-                        Save changes
-                      </Button>
-                      <p className="mt-3 text-sm text-muted-foreground">{resume.cvUpdate ? "This update has a separate information draft. Approving makes it the current CV while preserving the existing preparation snapshot, account, forms and answers. No workflow starts automatically." : <>Saving changes requires approval again. Approving saves the current details and confirms this CV. <strong>This may start your published workflow.</strong></>}</p>
+                      {resume.telegramContact?.confirmed && <p className="mt-5 text-sm text-muted-foreground">Telegram contact confirmed · @{resume.telegramContact.username || "connected user"}</p>}
+                      <p className="mt-3 text-sm text-muted-foreground">{resume.cvUpdate ? "This update has a separate information draft. Approving makes it the current CV while preserving the existing preparation snapshot, account, forms and answers. No workflow starts automatically." : <>Save changes keeps unfinished work. <strong>Approving may start your published workflow.</strong> You’ll review the preparation summary first.</>}</p>
                       {(!draft.fullName.trim() || !draft.email.trim()) && (
                         <p id={`${editorId}-approval-requirements`} className="mt-3 text-sm text-warning-foreground" role="status">
                           To approve this CV, add {[
@@ -620,22 +621,36 @@ export function ResumeDetailView(props: { resumeId: string; embedded?: boolean; 
                         </p>
                       )}
                       {resume.archived && <p className="mt-3 text-sm text-muted-foreground">Restore this CV from Archive before approving.</p>}
+                      <div className="mt-4 grid gap-2 sm:grid-cols-2">
+                      <Button
+                        type="submit"
+                        variant="outline"
+                        disabled={busy || resume.archived}
+                        className="w-full"
+                      >
+                        {busy ? (
+                          <LoaderCircle className="animate-spin" />
+                        ) : (
+                          <Save />
+                        )}
+                        Save changes
+                      </Button>
                       <Button
                         type="button"
                         aria-describedby={!draft.fullName.trim() || !draft.email.trim() ? `${editorId}-approval-requirements` : undefined}
-                        className="mt-3 w-full"
-                        variant="outline"
+                        className="w-full"
                         disabled={
                           busy ||
                           resume.archived ||
                           !draft.fullName.trim() ||
-                          !draft.email.trim()
+                          !validCandidateEmail(draft.email)
                         }
                         onClick={() => void saveCandidate(true)}
                       >
                         <UserCheck />
                         {resume.cvUpdate ? "Approve updated CV" : "Approve CV"}
                       </Button>
+                      </div>
                     </fieldset>
                   </form>
                 </CardContent>
@@ -656,10 +671,27 @@ export function ResumeDetailView(props: { resumeId: string; embedded?: boolean; 
       </div>
 
       <AlertDialog open={!!decision} onOpenChange={open => {if (!open && !busy) setDecision(null);}}>
-        <AlertDialogContent><AlertDialogHeader><AlertDialogTitle>{decision === "save" ? "Save changes and require approval again?" : resume.cvUpdate ? "Approve this CV update?" : "Approve this CV?"}</AlertDialogTitle><AlertDialogDescription>
-          <span className="block break-words font-medium">{resume.fileName}</span>
-          {decision === "save" ? "The CV will need approval again. Existing preparation, account access and submitted answers remain preserved." : resume.cvUpdate ? "This becomes the current CV with its own approved information snapshot. Existing preparation, account access, assigned forms and submitted answers keep their original data. No workflow will rerun or invitation be resent." : "Confirm that you checked the candidate information against this CV. This may start your published workflow."}
-        </AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel disabled={busy}>Cancel</AlertDialogCancel><AlertDialogAction disabled={busy} onClick={() => void saveCandidate(decision === "approve", true)}>{decision === "save" ? "Save and require approval" : resume.cvUpdate ? "Approve updated CV" : "Approve CV"}</AlertDialogAction></AlertDialogFooter></AlertDialogContent>
+        <AlertDialogContent className="max-h-[85dvh] overflow-y-auto">
+          <AlertDialogHeader>
+            <AlertDialogTitle>{decision === "save" ? "Save changes and require approval again?" : resume.cvUpdate ? "Approve this CV update?" : approval?.workflows.length ? "Approve CV and start preparation?" : "Approve this CV?"}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {decision === "save" ? "Existing preparation and answers stay preserved. This CV will need approval again." : resume.cvUpdate ? "This update becomes the current CV. Existing preparation and answers keep their original snapshot; no workflow or invitation repeats." : "Check the candidate, CV, and preparation below before approving."}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <dl className="space-y-2 rounded-lg border p-3 text-sm">
+            <div><dt className="text-muted-foreground">Candidate</dt><dd className="break-words font-medium">{draft?.fullName} · {draft?.email}</dd></div>
+            <div><dt className="text-muted-foreground">CV</dt><dd className="break-words">{resume.fileName}</dd></div>
+          </dl>
+          {decision === "approve" && !resume.cvUpdate && approval && <>
+            {approval.contact && (approval.contact.confirmed ? <p className="text-sm">✓ Telegram confirmed · @{approval.contact.username || "connected user"}</p> : <label className="flex items-start gap-2 text-sm"><Checkbox checked={confirmTelegram} onCheckedChange={v=>setConfirmTelegram(v===true)} /><span>I confirmed @{approval.contact.username || "connected user"} belongs to {draft?.fullName}.</span></label>)}
+            {approval.workflows.length > 0 && approval.existingAccount && (approval.existingAccount.linked ? <p className="break-all text-sm">Using linked account: {approval.existingAccount.email}</p> : <label className="flex items-start gap-2 text-sm"><Checkbox checked={reuseAccount} onCheckedChange={v=>setReuseAccount(v===true)} /><span>Reuse existing candidate account: {approval.existingAccount.email}</span></label>)}
+            {approval.workflows.length ? <div className="space-y-3 rounded-lg bg-muted/40 p-3 text-sm"><p className="font-medium">Preparation after approval</p>{approval.workflows.map(w=><div key={w.id}><p>{w.name} · v{w.version}{w.continuation ? " · Continue existing preparation" : ""}</p><p className="mt-1 text-muted-foreground">{w.forms.length ? `Forms: ${w.forms.map(f=>f.name).join(", ")}` : "No forms configured on this workflow."}</p>{w.sendsTelegram && <p className="mt-1 text-muted-foreground">{confirmTelegram ? "Send Telegram invitation after forms are prepared." : "Invitation waits until the Telegram contact is confirmed."}</p>}</div>)}<p className="text-xs text-muted-foreground">Review gates and conditions decide which steps run. Existing preparation is not duplicated.</p></div> : <p className="text-sm text-muted-foreground">CV approval will be saved. No preparation workflow starts automatically. You can choose a published workflow from this candidate’s workspace afterwards.</p>}
+          </>}
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={busy}>Cancel</AlertDialogCancel>
+            <Button disabled={busy || (decision === "approve" && !!approval?.workflows.length && !!approval?.existingAccount && !reuseAccount && !approval.existingAccount.linked)} onClick={() => void saveCandidate(decision === "approve", true)}>{busy ? "Saving…" : decision === "save" ? "Save and require approval" : resume.cvUpdate ? "Approve updated CV" : approval?.workflows.length ? "Approve & prepare" : "Approve CV"}</Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
       </AlertDialog>
       {!props.embedded && resume.candidate && (
         <Button asChild variant="outline">
@@ -853,6 +885,7 @@ function TextField(props: {
   date?: boolean;
   approvalRequired?: boolean;
   inputId?: string;
+  error?: string;
   onChange: (value: string) => void;
   meta?: ResumeExtractionFields[keyof ResumeExtractionFields];
 }) {
@@ -873,11 +906,14 @@ function TextField(props: {
         <Input
           id={id}
           aria-label={props.label}
+          aria-invalid={!!props.error}
+          aria-describedby={props.error ? `${id}-error` : undefined}
           type={props.type ?? "text"}
           value={props.value}
           onChange={(event) => props.onChange(event.target.value)}
         />
       )}
+      {props.error && <p id={`${id}-error`} role="alert" className="text-sm text-destructive">{props.error}</p>}
       <Confidence meta={props.meta} />
     </div>
   );

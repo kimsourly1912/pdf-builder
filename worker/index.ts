@@ -16,7 +16,7 @@ import {
   responseWithRequestId,
 } from "../features/reliability/request-id";
 import { processStorageCleanupJobs } from "../features/storage/storage-cleanup.server";
-import { processPendingWorkflowRuns } from "../features/workflows/runner.server";
+import { processWorkflowRun, processPendingWorkflowRuns } from "../features/workflows/runner.server";
 
 type QueueMessage = {
   body: unknown;
@@ -46,6 +46,12 @@ const worker = {
       );
       if (path === "/api/telegram/webhook" && response.ok && context) {
         context.waitUntil(processTelegramUpdates().catch(() => console.error("Telegram inbox processing unavailable")));
+      }
+      if (request.method === "PATCH" && /^\/api\/resumes\/[^/]+$/.test(path) && response.ok && context) {
+        const result = await response.clone().json() as {approved?: boolean; preparationRunIds?: string[]};
+        if (result.approved && Array.isArray(result.preparationRunIds)) {
+          context.waitUntil((async () => {for (const id of result.preparationRunIds ?? []) await processWorkflowRun(id);})().catch(() => console.error("Candidate preparation processing unavailable")));
+        }
       }
       const durationMs = requestDurationMs(startedAt);
       console.info("Request completed", {

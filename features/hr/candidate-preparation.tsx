@@ -78,6 +78,8 @@ export function CandidatePreparation({
           );
           setIntake(i);
           setConfirmed(i?.confirmed ?? false);
+          const eligible = w.items.filter(w=>w.active && w.version>0 && w.hasPreparation && (!i || w.hasTelegram));
+          if (eligible.length === 1) setSelected(eligible[0].id);
         }
       })
       .catch((e) => {
@@ -188,7 +190,7 @@ export function CandidatePreparation({
               )}
               {intake && (
                 <>
-                  <label className="flex items-start gap-3 text-sm">
+                  {intake.confirmed ? <p className="text-sm">✓ Telegram confirmed · @{intake.contact.username || "connected user"}</p> : <label className="flex items-start gap-3 text-sm">
                     <Checkbox
                       checked={confirmed}
                       onCheckedChange={(v) => setConfirmed(v === true)}
@@ -198,7 +200,7 @@ export function CandidatePreparation({
                       {intake.contact.username || "connected Telegram user"}{" "}
                       belongs to {item.name} ({item.email}).
                     </span>
-                  </label>
+                  </label>}
                   {intake.existingAccount && (
                     <label className="flex items-start gap-3 text-sm">
                       <Checkbox

@@ -107,3 +107,11 @@ A first-time HR usability trial remains necessary to establish comprehension wit
 - Required and minimum-length text validation provide separate reasons in preview and live forms.
 - Mobile sign-out and CV editor controls retain accessible names. Empty candidate results offer intake/upload actions and filter recovery.
 - Telegram intake through activation, submission, correction and acceptance still needs the browser tester’s confirmed test contact; these fixes do not establish completion of that manual trial.
+
+### Guided candidate workspace (2026-10-04)
+
+- One next action, evidence-derived status, three primary tabs, and expandable supporting information.
+- One approval/preparation summary with saved contact reuse, explicit account reuse, pinned form names, stale-summary guards and immediate background processing.
+- Inline preparation and delivery recovery; actual delivery determines Send/Retry/Resend.
+- Field-specific email validation before approval and CV draft edits in History.
+- No natural-language agent or paid AI is included; full browser testing with a user-confirmed Telegram recipient remains a separate verification step.

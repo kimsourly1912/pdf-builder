@@ -1,4 +1,4 @@
-import { and, eq, isNull, lt, or } from "drizzle-orm";
+import { and, eq, isNull, lt, or, sql } from "drizzle-orm";
 import { getDb } from "@/db";
 import { candidates } from "@/db/schema";
 import {
@@ -21,6 +21,32 @@ import {
 } from "@/features/workflows/api.server";
 import { requireRequestOwner } from "@/features/templates/template.server";
 type Context = { params: Promise<{ id: string }> };
+export async function GET(request: Request, params: Context) {
+  return workflowResponse(async () => {
+    const owner = await requireRequestOwner(request),
+      id = (await params.params).id,
+      run = await getRun(owner, id);
+    const node = run.graph.nodes.find((n) => n.kind === "send_telegram");
+    const [delivery] = node
+      ? await getDb()
+          .select({
+            status: telegramDeliveries.status,
+            errorMessage: telegramDeliveries.errorMessage,
+            nextAttemptAt: telegramDeliveries.nextAttemptAt,
+            updatedAt: telegramDeliveries.updatedAt,
+          })
+          .from(telegramDeliveries)
+          .where(
+            and(
+              eq(telegramDeliveries.runId, id),
+              eq(telegramDeliveries.nodeId, node.id),
+            ),
+          )
+          .limit(1)
+      : [];
+    return { delivery: delivery ?? null };
+  });
+}
 export async function POST(request: Request, params: Context) {
   return workflowResponse(async () => {
     const owner = await requireRequestOwner(request),
@@ -87,6 +113,14 @@ export async function POST(request: Request, params: Context) {
           .limit(1)
       : [];
     if (!connection) fail("Choose a candidate Telegram connection.", 422);
+    if (
+      body.contactRevision !== undefined &&
+      body.contactRevision !== connection.updatedAt
+    )
+      fail(
+        "Telegram contact changed. Refresh and confirm the current recipient.",
+        409,
+      );
     const [delivery] = await db
       .select()
       .from(telegramDeliveries)
@@ -144,7 +178,11 @@ export async function POST(request: Request, params: Context) {
       await db.batch([
         db
           .insert(workflowExecutionGuards)
-          .values({ runId: id, lockToken: token, checkedAt: now }),
+          .values({
+            runId: id,
+            lockToken: sql<string>`CASE WHEN EXISTS(SELECT 1 FROM telegram_connections WHERE id=${connection.id} AND owner_email=${owner} AND updated_at=${connection.updatedAt} AND chat_id=${connection.chatId}) THEN ${token} ELSE '' END`,
+            checkedAt: now,
+          }),
         db
           .update(telegramConnections)
           .set({
@@ -196,6 +234,14 @@ export async function POST(request: Request, params: Context) {
         .update(workflowRuns)
         .set({ status: run.status, lockToken: null, lockedUntil: null })
         .where(and(eq(workflowRuns.id, id), eq(workflowRuns.lockToken, token)));
+      if (
+        error instanceof Error &&
+        /WORKFLOW_LEASE_CHANGED/.test(error.message)
+      )
+        fail(
+          "The run or Telegram contact changed. Refresh before continuing.",
+          409,
+        );
       throw error;
     }
     await processWorkflowRun(id);

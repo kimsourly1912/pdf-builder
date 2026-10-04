@@ -1,3 +1,5 @@
+import { approvalPlan, approvalSnapshotSql } from "@/features/resumes/approval-plan.server";
+import { validCandidateEmail } from "@/features/resumes/approval-plan";
 import { getCvUpdate, decideCvUpdate } from "@/features/candidate-progress/cv-updates.server";
 import { archiveEntity, isArchived } from "@/features/archive/archive.server";
 import {
@@ -193,6 +195,8 @@ export async function PATCH(
         "Link this resume to a candidate before editing it.",
         409,
       );
+    if (body.candidate && typeof body.candidate === "object" && "email" in body.candidate && typeof body.candidate.email === "string" && body.candidate.email.trim() && !validCandidateEmail(body.candidate.email))
+      return jsonError("Enter a valid email address.", 422);
     const update = parseCandidateUpdate(body.candidate);
     if (!update) return jsonError("Candidate information is invalid.", 422);
     const [candidate] = await getDb()
@@ -245,6 +249,15 @@ export async function PATCH(
           )
           .limit(1)
       : [];
+    const preview = approving && typeof body.approvalPlanRevision === "string"
+      ? await approvalPlan(ownerEmail, id, candidate.id, update.email)
+      : null;
+    if (preview && preview.plan.revision !== body.approvalPlanRevision)
+      return jsonError("Preparation setup or contact changed. Review a fresh approval summary.", 409);
+    if (preview?.plan.workflows.length && preview.plan.existingAccount && !preview.plan.existingAccount.linked && body.existingAccountId !== preview.plan.existingAccount.id)
+      return jsonError("Confirm reuse of the existing candidate account in the approval summary.", 422);
+    if (preview?.plan.contact && contact && JSON.parse(preview.snapshot).contact.updatedAt !== contact.updatedAt)
+      return jsonError("Telegram contact changed. Review a fresh approval summary.", 409);
     const now = new Date().toISOString();
     const nameParts = update.fullName.split(/\s+/u);
     const candidateUpdate = getDb()
@@ -372,7 +385,7 @@ export async function PATCH(
         resumeRevision: now,
         candidateRevision: now,
         profileVersionId: profileId,
-        existingAccountId: candidate.userId ?? undefined,
+        existingAccountId: preview?.plan.existingAccount && (preview.plan.existingAccount.linked || body.existingAccountId === preview.plan.existingAccount.id) ? preview.plan.existingAccount.id : candidate.userId ?? undefined,
       },
       telegramConnectionId: confirmed && contact ? contact.id : undefined,
       telegramChatId: confirmed && contact ? contact.chatId : undefined,
@@ -485,17 +498,24 @@ export async function PATCH(
     ];
     const binding = getDatabaseBinding();
     await binding.batch([
-      binding
-        .prepare(
-          "INSERT INTO resume_edit_guards(resume_id,owner_email,resume_revision,candidate_revision) VALUES(?,?,?,?)",
-        )
-        .bind(resume.id, ownerEmail, resume.updatedAt, candidate.updatedAt),
+      preview
+        ? binding.prepare(`INSERT INTO resume_edit_guards(resume_id,owner_email,resume_revision,candidate_revision) VALUES(?2,?1,?4,CASE WHEN (${approvalSnapshotSql})=?5 THEN ?6 ELSE '' END)`)
+            .bind(ownerEmail, resume.id, update.email.trim().toLowerCase(), resume.updatedAt, preview.snapshot, candidate.updatedAt)
+        : binding.prepare("INSERT INTO resume_edit_guards(resume_id,owner_email,resume_revision,candidate_revision) VALUES(?,?,?,?)")
+            .bind(resume.id, ownerEmail, resume.updatedAt, candidate.updatedAt),
       ...statements.map((q) => {
         const prepared = q.toSQL();
         return binding.prepare(prepared.sql).bind(...prepared.params);
       }),
     ]);
-    return Response.json({ candidate: verifiedCandidate });
+    let preparationRunIds: string[] = [];
+    try {
+      preparationRunIds = (await getDb().select({id:workflowRuns.id}).from(workflowRuns).where(and(eq(workflowRuns.ownerEmail,ownerEmail),eq(workflowRuns.resumeId,resume.id),eq(workflowRuns.status,"queued")))).map(r=>r.id);
+    } catch {
+      // Approval already committed. Scheduled processing can recover queued runs.
+      console.warn("Approval saved; immediate preparation scheduling deferred.");
+    }
+    return Response.json({ candidate: verifiedCandidate, approved: true, preparationRunIds });
   } catch (error) {
     if (isResponse(error)) return error;
     if (error instanceof Error && /RESUME_EDIT_CHANGED|CV_UPDATE_CHANGED/.test(error.message))
