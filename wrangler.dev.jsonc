@@ -6,6 +6,7 @@
   "compatibility_flags": ["nodejs_compat"],
   "vars": {
     "TELEGRAM_BOT_USERNAME": "anghr_bot",
+    "TEST_DATA_RESET_ENABLED": "true",
     "ENVIRONMENT": "development",
     "BETTER_AUTH_URL": "http://localhost:5173",
     "MANAGEMENT_EMAIL": "owner@localhost"

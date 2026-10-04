@@ -10,6 +10,7 @@
   },
   "vars": {
     "TELEGRAM_BOT_USERNAME": "anghr_bot",
+    "TEST_DATA_RESET_ENABLED": "true",
     "ENVIRONMENT": "production",
     "BETTER_AUTH_URL": "https://pdf-builder.kimsur61.workers.dev",
     "MANAGEMENT_EMAIL": "admin@gmail.com"

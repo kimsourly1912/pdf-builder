@@ -9,6 +9,7 @@ export const MANAGEMENT_PAGE_TITLES = {
   "/workflows": "Automation",
   "/intake": "Incoming candidates",
   "/archive": "Archive",
+  "/test-data": "Test data reset",
   "/candidates": "Candidates",
   "/analyses": "AI analysis history",
 };

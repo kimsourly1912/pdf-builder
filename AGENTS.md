@@ -56,7 +56,7 @@ npm test
 - Save changes and Approve CV are separate. Approval can trigger published workflows and must retain current-revision proof and review guards.
 - Do not bypass published-graph review gates, account reuse confirmation, pinned template versions, leases, idempotency, or database batch guards.
 - Telegram delivery success means sent, not read. Uncertain delivery requires explicit checking/resend; never send temporary passwords through Telegram.
-- Archive before permanent deletion. Preserve protected history, revision checks, and transactional storage-cleanup jobs.
+- Archive before permanent deletion in normal application flows. The explicitly enabled, owner-authorized staging [Test data reset](docs/test-data-reset.md) is the sole bulk reset exception; preserve its atomic preview checks and transactional storage-cleanup jobs.
 - Do not log or commit tokens, passwords, private CV contents, production exports, or local credentials. Mock external sends and paid AI in tests.
 
 ## Publishing and documentation

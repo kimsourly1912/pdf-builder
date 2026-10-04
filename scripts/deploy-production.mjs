@@ -450,6 +450,7 @@ async function verifyDeployment(hostname, authenticatedCookie) {
     "/api/workflow-runs",
     "/api/intake",
     "/api/archive",
+    "/api/test-data",
     "/api/candidates",
     "/api/ai-field-detection/runs",
     "/",
@@ -463,6 +464,7 @@ async function verifyDeployment(hostname, authenticatedCookie) {
     "/workflows",
     "/intake",
     "/archive",
+    "/test-data",
     "/candidates",
     "/analyses",
   ]) {
@@ -481,6 +483,21 @@ async function verifyDeployment(hostname, authenticatedCookie) {
     }
     if (path.startsWith("/api/")) {
       const body = await response.json();
+      if (path === "/api/test-data") {
+        if (typeof body.enabled !== "boolean") throw new Error("Test reset availability check failed.");
+        if (body.enabled) {
+          // Preview only: verify D1 query compatibility without deleting any deployed records.
+          const previewResponse = await waitForResponse(`https://${hostname}${path}`, {
+            method: "POST", headers: { Cookie: authenticatedCookie, Origin: `https://${hostname}`, "Content-Type": "application/json" },
+            body: JSON.stringify({ action: "preview", scope: "history", keepDefinitions: true }),
+          }, result => result.status === 200);
+          if (previewResponse.status !== 200) throw new Error("Test reset read-only preview check failed.");
+          const previewBody = await previewResponse.json();
+          if (typeof previewBody.preview?.revision !== "string" || !Array.isArray(previewBody.preview.counts)) throw new Error("Test reset preview response is invalid.");
+        }
+        console.log("Authenticated test data reset availability check passed; preview checked when enabled.");
+        continue;
+      }
       if (
         !Array.isArray(
           path === "/api/ai-field-detection/runs" ? body.runs : body.items,

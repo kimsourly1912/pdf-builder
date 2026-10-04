@@ -15,6 +15,7 @@ As of 2026-10-03. This page focuses on the recent candidate intake, workflow, ar
 | Web form builder | Click/drag fields, reorder, shared candidate preview, separate PDF mapping, immutable whole-form assignments, private media, JSON/PDF responses and PDF retry; legacy PDF templates remain available. |
 | HR workspace | Task-based Home/navigation, tabbed candidate profile, centered reading containers, HR form acceptance and new correction attempts preserving original history. |
 | Progress usability | Saved owner-scoped filters/view, useful page/column counts, event-based waiting times, sorting, consistent status presentation, issue-resolution links, responsive layouts. |
+| Test data reset | Staging-only explicit flag, owner-authorized preview/confirmation, linked cleanup, protected administrator, optional retention of definitions, durable file deletion and reset receipts. |
 | Appearance and spacing | Persistent Light/Dark/System selection, themed management and candidate forms, workflow/execution canvases and studio controls; separate workflow sections and wrapping actions. PDF paper and signature ink retain document colors. |
 
 Feature details live in the [documentation index](README.md). Automated integration and browser checks have covered the recent changes; actual HR usability sessions remain useful and are listed below.

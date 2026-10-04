@@ -684,3 +684,15 @@ export const candidateCvReviews = sqliteTable("candidate_cv_reviews", {
   startedBy: text("started_by").notNull(),
   startedAt: text("started_at").notNull(),
 });
+
+// Present only inside the atomic, owner-authorized staging reset batch.
+export const testDataResetGuards = sqliteTable("test_data_reset_guards", {
+  id: text("id").primaryKey(),
+  ownerEmail: text("owner_email").notNull(),
+  checkPassed: integer("check_passed").notNull(),
+}, t => [check("test_data_reset_checked", sql`${t.checkPassed}=1`)]);
+export const testDataResetTargets = sqliteTable("test_data_reset_targets", {
+  resetId: text("reset_id").notNull().references(() => testDataResetGuards.id, { onDelete: "cascade" }),
+  tableName: text("table_name").notNull(),
+  rowKey: text("row_key").notNull(),
+}, t => [uniqueIndex("test_data_reset_target_unique").on(t.resetId, t.tableName, t.rowKey)]);

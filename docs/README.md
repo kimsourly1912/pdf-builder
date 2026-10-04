@@ -24,3 +24,5 @@ Use the root [agent guide](../AGENTS.md) for a short working checklist. Read the
 - AI field detection: [phase 1](ai-field-detection-phase-1.md), [phase 2](ai-field-detection-phase-2.md), [phase 3](ai-field-detection-phase-3.md)
 
 For setup, configuration, and deployment commands, see the [root README](../README.md). Git history and GitHub Actions are the authoritative record of commits and deployment outcomes.
+
+- [Test data reset](test-data-reset.md): staging cleanup options, deployment flag, protected administrator and file cleanup.

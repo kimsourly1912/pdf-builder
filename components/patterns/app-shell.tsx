@@ -84,6 +84,7 @@ const navigationItems = [
       { href: "/analyses", label: "AI history" },
       { href: "/activity", label: "Activity" },
       { href: "/archive", label: "Archive" },
+      { href: "/test-data", label: "Test data reset" },
     ],
   },
 ];

@@ -63,3 +63,7 @@ Needs attention and HR Home share one owner-scoped projection of candidate, CV, 
 Candidate profile is the common workspace for linked candidate work. Home and attention responsibility filters separate HR actions from candidate waiting without removing independent blockers. The visible journey derives from approval, preparation, delivery and form-review evidence; manual stages cannot complete it. Account availability, copying a link and actual invitation delivery remain separate facts. No new direct-send or activation endpoint is introduced by this UX revision.
 
 Workspace setup is an owner-scoped read-only check. Candidate preview uses immutable published question/title/instruction snapshots and browser-only validation. Setup readiness does not attest webhook health, candidate authorization or delivery. New web forms default to preview/publication without PDF mapping; legacy PDF tools stay available under Advanced tools.
+
+## Staging bulk reset (2026-10-04)
+
+The user identifies the current deployed workspace as staging despite its production-named Actions configuration. `TEST_DATA_RESET_ENABLED=true` explicitly enables an owner-only reset page. Normal Archive/evidence protection remains; confirmed resets may remove immutable submissions and previous audit history only through transient owner-scoped membership in an atomic checked batch. Admin access, integration secrets, migrations and minimal reset receipts survive. Disable the flag before retaining real HR data. See [Test data reset](test-data-reset.md).
