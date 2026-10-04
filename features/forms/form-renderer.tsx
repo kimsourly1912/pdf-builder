@@ -1,4 +1,7 @@
 "use client";
+import { SelectField, SelectFieldOption } from "@/components/patterns/select-field";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Checkbox } from "@/components/ui/checkbox";
 import { useEffect, useRef, useState, useId } from "react";
 import Image from "next/image";
 import { Controller, useForm } from "react-hook-form";
@@ -215,7 +218,7 @@ export function FormFieldControl(props: {
           </span>
         )}
       </Label>
-      {definition.help && (
+      {definition.help && definition.type !== "checkbox" && (
         <p id={`${controlId}-help`} className="text-sm text-muted-foreground">
           {definition.help}
         </p>
@@ -232,9 +235,10 @@ export function FormFieldControl(props: {
             onBlur: field.onBlur,
             disabled,
             "aria-invalid": Boolean(error),
-            "aria-describedby": error
-              ? `${controlId}-error`
-              : `${controlId}-help`,
+            "aria-describedby": [
+              definition.help && definition.type !== "checkbox" ? `${controlId}-help` : null,
+              error ? `${controlId}-error` : null,
+            ].filter(Boolean).join(" ") || undefined,
           };
           const value =
             typeof field.value === "string" || typeof field.value === "number"
@@ -252,73 +256,80 @@ export function FormFieldControl(props: {
             );
           if (definition.type === "dropdown")
             return (
-              <select
+              <SelectField
                 {...shared}
                 className="h-10 w-full rounded-md border bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 value={value}
-                onChange={field.onChange}
+                onValueChange={field.onChange}
+                placeholder="Choose an option"
               >
-                <option value="">Choose an option</option>
+                <SelectFieldOption value="">Choose an option</SelectFieldOption>
                 {definition.options.map((o) => (
-                  <option key={o.id} value={o.id}>
+                  <SelectFieldOption key={o.id} value={o.id}>
                     {o.label}
-                  </option>
+                  </SelectFieldOption>
                 ))}
-              </select>
+              </SelectField>
             );
-          if (["radio", "checkboxes"].includes(definition.type))
+          if (definition.type === "radio")
             return (
-              <fieldset
-                disabled={disabled}
-                className="space-y-2"
+              <RadioGroup
+                {...shared}
                 aria-label={definition.label}
+                value={value}
+                onValueChange={field.onChange}
+                className="gap-2"
               >
-                {definition.options.map((o) => (
-                  <label
-                    key={o.id}
-                    className="flex cursor-pointer items-center gap-3 rounded-md border p-3 text-sm"
+                {definition.options.map((option) => (
+                  <Label
+                    key={option.id}
+                    htmlFor={`${controlId}-${option.id}`}
+                    className="flex cursor-pointer items-center gap-3 rounded-md border p-3 text-sm font-normal"
                   >
-                    <input
-                      type={definition.type === "radio" ? "radio" : "checkbox"}
+                    <RadioGroupItem id={`${controlId}-${option.id}`} value={option.id} />
+                    {option.label}
+                  </Label>
+                ))}
+              </RadioGroup>
+            );
+          if (definition.type === "checkboxes")
+            return (
+              <fieldset disabled={disabled} className="space-y-2" aria-label={definition.label}>
+                {definition.options.map((option, index) => (
+                  <Label
+                    key={option.id}
+                    htmlFor={`${controlId}-${option.id}`}
+                    className="flex cursor-pointer items-center gap-3 rounded-md border p-3 text-sm font-normal"
+                  >
+                    <Checkbox
+                      id={`${controlId}-${option.id}`}
+                      ref={index === 0 ? field.ref : undefined}
                       name={definition.id}
-                      value={o.id}
-                      checked={
-                        definition.type === "radio"
-                          ? value === o.id
-                          : Array.isArray(field.value) &&
-                            field.value.includes(o.id)
-                      }
+                      value={option.id}
+                      disabled={disabled}
+                      aria-invalid={Boolean(error)}
+                      aria-describedby={shared["aria-describedby"]}
+                      checked={Array.isArray(field.value) && field.value.includes(option.id)}
                       onBlur={field.onBlur}
-                      onChange={() =>
-                        field.onChange(
-                          definition.type === "radio"
-                            ? o.id
-                            : Array.isArray(field.value) &&
-                                field.value.includes(o.id)
-                              ? field.value.filter((v) => v !== o.id)
-                              : [
-                                  ...(Array.isArray(field.value)
-                                    ? field.value
-                                    : []),
-                                  o.id,
-                                ],
-                        )
-                      }
-                      className="size-4 accent-primary"
+                      onCheckedChange={(checked) => {
+                        const selected = Array.isArray(field.value) ? field.value : [];
+                        field.onChange(checked === true
+                          ? [...selected.filter((id) => id !== option.id), option.id]
+                          : selected.filter((id) => id !== option.id));
+                      }}
                     />
-                    {o.label}
-                  </label>
+                    {option.label}
+                  </Label>
                 ))}
               </fieldset>
             );
           if (definition.type === "checkbox")
             return (
               <label className="flex items-center gap-3 rounded-md border p-3 text-sm">
-                <input
+                <Checkbox
                   {...shared}
-                  type="checkbox"
                   checked={field.value === true}
-                  onChange={(e) => field.onChange(e.target.checked)}
+                  onCheckedChange={(checked) => field.onChange(checked === true)}
                   className="size-4 accent-primary"
                 />
                 {definition.help || "Yes"}
@@ -359,15 +370,13 @@ export function FormFieldControl(props: {
           );
         }}
       />
-      {error && (
-        <p
-          id={`${controlId}-error`}
-          role="alert"
-          className="text-sm text-destructive"
-        >
-          {String(error)}
-        </p>
-      )}
+      <p
+        id={`${controlId}-error`}
+        role={error ? "alert" : undefined}
+        className="min-h-5 text-sm text-destructive"
+      >
+        {error ? String(error) : null}
+      </p>
     </div>
   );
 }

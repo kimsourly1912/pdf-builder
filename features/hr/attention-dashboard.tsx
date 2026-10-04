@@ -1,4 +1,5 @@
 "use client";
+import { SelectField, SelectFieldOption } from "@/components/patterns/select-field";
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { RefreshCw, CheckCircle2 } from "lucide-react";
@@ -137,33 +138,33 @@ export function AttentionDashboard({
           value={filters.search}
           onChange={(e) => setFilters({ search: e.target.value, page: "1" })}
         />
-        <select
+        <SelectField
           aria-label="Issue type"
           className="h-10 max-w-full rounded-md border bg-background px-3 text-sm"
           disabled={!ready}
           value={filters.type}
-          onChange={(e) => setFilters({ type: e.target.value, page: "1" })}
+          onValueChange={(value) => setFilters({ type: value, page: "1" })}
         >
-          <option value="all">All task types</option>
+          <SelectFieldOption value="all">All task types</SelectFieldOption>
           {Object.entries(ATTENTION_TYPES).map(([key, label]) => (
-            <option key={key} value={key}>
+            <SelectFieldOption key={key} value={key}>
               {label}
               {data
                 ? ` (${data.counts[key as keyof typeof ATTENTION_TYPES]})`
                 : ""}
-            </option>
+            </SelectFieldOption>
           ))}
-        </select>
-        <select
+        </SelectField>
+        <SelectField
           aria-label="Task order"
           className="h-10 rounded-md border bg-background px-3 text-sm"
           disabled={!ready}
           value={filters.sort}
-          onChange={(e) => setFilters({ sort: e.target.value, page: "1" })}
+          onValueChange={(value) => setFilters({ sort: value, page: "1" })}
         >
-          <option value="priority">Blockers first</option>
-          <option value="oldest">Longest waiting</option>
-        </select>
+          <SelectFieldOption value="priority">Blockers first</SelectFieldOption>
+          <SelectFieldOption value="oldest">Longest waiting</SelectFieldOption>
+        </SelectField>
         <Button
           variant="ghost"
           disabled={!ready}

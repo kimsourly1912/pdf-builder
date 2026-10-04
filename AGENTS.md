@@ -28,6 +28,8 @@ User instructions determine scope. These documents guide implementation; roadmap
 
 Prefer extending an existing feature or shared pattern over creating a parallel implementation. Keep server-only dependencies out of client bundles. Follow nearby formatting and avoid unrelated rewrites.
 
+For UI work, use shadcn controls (no native selects), give each label/control group `space-y-2`, and wrap action rows with `gap-2`. Read the concrete control and spacing rules in [UI standards](docs/standards/ui.md#controls-and-field-spacing) before editing. Verify keyboard interaction and mobile layout, not just appearance.
+
 ## Local setup and checks
 
 Use Node 22.13 or newer. Follow [README](README.md) for local configuration:

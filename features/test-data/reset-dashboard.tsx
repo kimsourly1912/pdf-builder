@@ -1,4 +1,5 @@
 "use client";
+import { Checkbox } from "@/components/ui/checkbox";
 import { useState } from "react";
 import { AlertTriangle, LoaderCircle, RotateCcw, Trash2 } from "lucide-react";
 import { AppShell } from "@/components/patterns/app-shell";
@@ -142,11 +143,10 @@ export function TestDataDashboard({
             </div>
             {option.scope === "all" && (
               <label className="flex items-start gap-3 rounded-lg border bg-muted/30 p-3 text-sm">
-                <input
-                  type="checkbox"
+                <Checkbox
                   className="mt-1 size-4 accent-primary"
                   checked={keepDefinitions}
-                  onChange={(e) => setKeepDefinitions(e.target.checked)}
+                  onCheckedChange={(checked) => setKeepDefinitions(checked === true)}
                   disabled={busy}
                 />
                 <span>

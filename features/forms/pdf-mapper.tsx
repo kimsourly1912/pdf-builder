@@ -1,4 +1,7 @@
 "use client";
+import { SelectField, SelectFieldOption } from "@/components/patterns/select-field";
+import { Textarea } from "@/components/ui/textarea";
+import { Checkbox } from "@/components/ui/checkbox";
 import { useEffect, useRef, useState } from "react";
 import { Rnd } from "react-rnd";
 import Image from "next/image";
@@ -176,7 +179,7 @@ export function PdfMapper(props: {
   const alignment = (value: PdfMapping["alignment"]) =>
     mapping && update(mapping.id, { alignment: value });
   const alignButtons = mapping && (
-    <div className="flex gap-1" role="group" aria-label="Answer alignment">
+    <div className="flex gap-2" role="group" aria-label="Answer alignment">
       {(
         [
           ["left", AlignLeft],
@@ -253,7 +256,7 @@ export function PdfMapper(props: {
       </div>
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-card p-3">
         <div
-          className="flex flex-wrap items-center gap-1"
+          className="flex flex-wrap items-center gap-2"
           role="group"
           aria-label="PDF tools"
         >
@@ -308,37 +311,36 @@ export function PdfMapper(props: {
           >
             Fit page
           </Button>
-          <select
+          <SelectField
             aria-label="PDF zoom"
             className="h-8 rounded border bg-background px-2 text-sm"
             value={fit ? "fit" : zoom}
-            onChange={(e) => {
+            onValueChange={(value) => {
+              if (value === "fit") return;
               setFit(null);
-              setZoom(Number(e.target.value));
+              setZoom(Number(value));
             }}
           >
-            {fit && <option value="fit">Fit {fit}</option>}
+            {fit && <SelectFieldOption value="fit">Fit {fit}</SelectFieldOption>}
             {[50, 75, 100, 125, 150, 200].map((z) => (
-              <option key={z} value={z}>
+              <SelectFieldOption key={z} value={z}>
                 {z}%
-              </option>
+              </SelectFieldOption>
             ))}
-          </select>
+          </SelectField>
         </div>
         <div className="flex flex-wrap items-center gap-3 text-sm">
           <label className="flex items-center gap-2">
-            <input
-              type="checkbox"
+            <Checkbox
               checked={snap}
-              onChange={(e) => setSnap(e.target.checked)}
+              onCheckedChange={(checked) => setSnap(checked === true)}
             />
             Snap guides
           </label>
           <label className="flex items-center gap-2">
-            <input
-              type="checkbox"
+            <Checkbox
               checked={showSamples}
-              onChange={(e) => setShowSamples(e.target.checked)}
+              onCheckedChange={(checked) => setShowSamples(checked === true)}
             />
             Show sample answers
           </label>
@@ -358,43 +360,44 @@ export function PdfMapper(props: {
           </Button>
         </div>
       </div>
-      <div className="rounded-lg border bg-card p-3 xl:hidden">
+      <div className="rounded-lg border bg-card p-3 xl:hidden space-y-2">
         <Label htmlFor="mobile-mapping-field">Form field</Label>
-        <select
+        <SelectField
           id="mobile-mapping-field"
           disabled={props.busy}
           value={fieldId}
-          onChange={(e) => activate(e.target.value)}
+          onValueChange={(value) => activate(value)}
           className="h-10 w-full rounded border bg-background px-2 text-sm"
         >
           {fields.map((f) => (
-            <option key={f.id} value={f.id}>
+            <SelectFieldOption key={f.id} value={f.id}>
               {f.label} —{" "}
               {f.excludeFromPdf
                 ? "Excluded"
                 : props.definition.mappings.some((m) => m.fieldId === f.id)
                   ? "Mapped"
                   : "Unmapped"}
-            </option>
+            </SelectFieldOption>
           ))}
-        </select>
+        </SelectField>
         {field && field.options.length > 0 && (
-          <div className="mt-2">
+          <div className="mt-2 space-y-2">
             <Label htmlFor="mobile-mapping-choice">Answer or checkbox</Label>
-            <select
+            <SelectField
               id="mobile-mapping-choice"
               disabled={props.busy}
               value={choice}
-              onChange={(e) => activate(field.id, e.target.value)}
+              onValueChange={(value) => activate(field.id, value)}
               className="h-10 w-full rounded border bg-background px-2 text-sm"
+              placeholder="Answer text"
             >
-              <option value="">Answer text</option>
+              <SelectFieldOption value="">Answer text</SelectFieldOption>
               {field.options.map((o) => (
-                <option key={o.id} value={o.id}>
+                <SelectFieldOption key={o.id} value={o.id}>
                   Checkbox: {o.label}
-                </option>
+                </SelectFieldOption>
               ))}
-            </select>
+            </SelectField>
           </div>
         )}
         <p className="mt-2 text-xs text-muted-foreground">
@@ -478,7 +481,7 @@ export function PdfMapper(props: {
         </aside>
         <div className="min-w-0 space-y-2">
           <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
-            <div className="flex items-center gap-1">
+            <div className="flex items-center gap-2">
               <Button
                 size="icon-sm"
                 variant="outline"
@@ -488,18 +491,18 @@ export function PdfMapper(props: {
               >
                 <ChevronLeft />
               </Button>
-              <select
+              <SelectField
                 aria-label="PDF page"
                 value={page}
-                onChange={(e) => setPage(Number(e.target.value))}
+                onValueChange={(value) => setPage(Number(value))}
                 className="h-8 rounded border bg-background px-2"
               >
                 {Array.from({ length: props.definition.pageCount }, (_, i) => (
-                  <option key={i} value={i + 1}>
+                  <SelectFieldOption key={i} value={i + 1}>
                     Page {i + 1} of {props.definition.pageCount}
-                  </option>
+                  </SelectFieldOption>
                 ))}
-              </select>
+              </SelectField>
               <Button
                 size="icon-sm"
                 variant="outline"
@@ -896,12 +899,12 @@ export function PdfMapper(props: {
                                     ? m.height * size.height + 8
                                     : -44,
                               }}
-                              className="placement-toolbar absolute z-20 flex w-max items-center gap-1 rounded-md border bg-card p-1 text-foreground shadow-md"
+                              className="placement-toolbar absolute z-20 flex w-max items-center gap-2 rounded-md border bg-card p-1 text-foreground shadow-md"
                               onPointerDown={(e) => e.stopPropagation()}
                             >
-                              <label className="flex items-center gap-1 text-xs">
+                              <label className="flex items-center gap-2 text-xs">
                                 Size
-                                <input
+                                <Input
                                   aria-label="Quick text size"
                                   type="number"
                                   min={6}
@@ -1042,23 +1045,23 @@ export function PdfMapper(props: {
                   field?.type !== "signature" &&
                   field?.type !== "checkbox" && (
                     <>
-                      <div>
+                      <div className="space-y-2">
                         <Label htmlFor="placement-mode">Answer layout</Label>
-                        <select
+                        <SelectField
                           id="placement-mode"
                           className="h-9 w-full rounded border bg-background px-2"
                           value={mapping.textMode ?? "wrap"}
-                          onChange={(e) =>
+                          onValueChange={(value) =>
                             update(mapping.id, {
-                              textMode: e.target.value as "single" | "wrap",
+                              textMode: value as "single" | "wrap",
                             })
                           }
                         >
-                          <option value="single">Single line</option>
-                          <option value="wrap">Wrap into multiple lines</option>
-                        </select>
+                          <SelectFieldOption value="single">Single line</SelectFieldOption>
+                          <SelectFieldOption value="wrap">Wrap into multiple lines</SelectFieldOption>
+                        </SelectField>
                       </div>
-                      <div>
+                      <div className="space-y-2">
                         <Label htmlFor="placement-text-size">Text size</Label>
                         <Input
                           id="placement-text-size"
@@ -1081,7 +1084,7 @@ export function PdfMapper(props: {
                         />
                       </div>
                       {alignButtons}
-                      <div>
+                      <div className="space-y-2">
                         <Label htmlFor="placement-color">Text color</Label>
                         <Input
                           id="placement-color"
@@ -1093,11 +1096,11 @@ export function PdfMapper(props: {
                         />
                       </div>
                       {showSamples && field && !field.options.length && (
-                        <div>
+                        <div className="space-y-2">
                           <Label htmlFor="placement-sample">
                             Sample answer
                           </Label>
-                          <textarea
+                          <Textarea
                             id="placement-sample"
                             className="min-h-20 w-full rounded border bg-background p-2 text-sm"
                             value={String(sampleValue)}
@@ -1117,21 +1120,21 @@ export function PdfMapper(props: {
                     </>
                   )}
                 {(field?.type === "photo" || field?.type === "signature") && (
-                  <div>
+                  <div className="space-y-2">
                     <Label htmlFor="placement-image-fit">Image fit</Label>
-                    <select
+                    <SelectField
                       id="placement-image-fit"
                       value={mapping.imageFit ?? "contain"}
-                      onChange={(e) =>
+                      onValueChange={(value) =>
                         update(mapping.id, {
-                          imageFit: e.target.value as "contain" | "stretch",
+                          imageFit: value as "contain" | "stretch",
                         })
                       }
                       className="h-9 w-full rounded border bg-background px-2"
                     >
-                      <option value="contain">Keep proportions</option>
-                      <option value="stretch">Fill box (stretch)</option>
-                    </select>
+                      <SelectFieldOption value="contain">Keep proportions</SelectFieldOption>
+                      <SelectFieldOption value="stretch">Fill box (stretch)</SelectFieldOption>
+                    </SelectField>
                     <Label htmlFor="mapping-sample-image" className="mt-3">
                       Sample image
                     </Label>
@@ -1157,12 +1160,11 @@ export function PdfMapper(props: {
                 <div className="space-y-2">
                   <Label>Background</Label>
                   <label className="flex gap-2 text-sm">
-                    <input
-                      type="checkbox"
+                    <Checkbox
                       checked={Boolean(mapping.background)}
-                      onChange={(e) =>
+                      onCheckedChange={(checked) =>
                         update(mapping.id, {
-                          background: e.target.checked ? "#ffffff" : undefined,
+                          background: (checked === true) ? "#ffffff" : undefined,
                         })
                       }
                     />
@@ -1186,7 +1188,7 @@ export function PdfMapper(props: {
                   <div className="mt-3 space-y-3">
                     <div className="grid grid-cols-2 gap-2">
                       {(["x", "y", "width", "height"] as const).map((key) => (
-                        <div key={key}>
+                        <div key={key} className="space-y-2">
                           <Label htmlFor={`map-${key}`}>{key} (%)</Label>
                           <Input
                             id={`map-${key}`}
@@ -1204,7 +1206,7 @@ export function PdfMapper(props: {
                         </div>
                       ))}
                     </div>
-                    <div>
+                    <div className="space-y-2">
                       <Label htmlFor="placement-min-size">
                         Minimum text size
                       </Label>
@@ -1227,7 +1229,7 @@ export function PdfMapper(props: {
                         }
                       />
                     </div>
-                    <div>
+                    <div className="space-y-2">
                       <Label htmlFor="placement-line-spacing">
                         Line spacing
                       </Label>

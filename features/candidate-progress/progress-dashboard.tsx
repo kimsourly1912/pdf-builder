@@ -205,7 +205,7 @@ export function ProgressDashboard({
         >
           {item.name}
         </Link>
-        <div className="flex shrink-0 items-center">
+        <div className="flex shrink-0 items-center gap-2">
           <GripVertical className="size-4 text-muted-foreground" aria-hidden />
           <MoveMenu item={item} onMove={(i, s) => void requestMove(i, s)} />
         </div>
@@ -269,9 +269,9 @@ export function ProgressDashboard({
         title="Candidates"
         description="Follow CV review, candidate preparation and form completion. Drag a card or use Move to… to update the HR stage."
         actions={
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <div
-              className="flex rounded-md border p-1"
+              className="flex gap-2 rounded-md border p-1"
               role="group"
               aria-label="Progress view"
             >

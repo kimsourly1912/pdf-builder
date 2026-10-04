@@ -1,4 +1,6 @@
 "use client";
+import { SelectField, SelectFieldOption } from "@/components/patterns/select-field";
+import { Checkbox } from "@/components/ui/checkbox";
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { AppShell } from "@/components/patterns/app-shell";
@@ -383,7 +385,7 @@ export function WorkflowSetup({ displayName }: { displayName: string }) {
               )}
               {step === 1 && (
                 <>
-                  <div>
+                  <div className="space-y-2">
                     <Label htmlFor="setup-name">Workflow name</Label>
                     <Input
                       id="setup-name"
@@ -431,15 +433,14 @@ export function WorkflowSetup({ displayName }: { displayName: string }) {
                                 className="space-y-2 rounded-lg border p-3"
                               >
                                 <label className="flex items-start gap-3">
-                                  <input
-                                    type="checkbox"
+                                  <Checkbox
                                     disabled={
                                       busy || (!selected && forms.length >= 20)
                                     }
                                     checked={!!selected}
-                                    onChange={(e) => {
+                                    onCheckedChange={(checked) => {
                                       setForms(
-                                        e.target.checked
+                                        (checked === true)
                                           ? [
                                               ...forms,
                                               {
@@ -468,15 +469,15 @@ export function WorkflowSetup({ displayName }: { displayName: string }) {
                                 {selected && option.roles.length > 1 && (
                                   <label className="block text-sm">
                                     Legacy form recipient role
-                                    <select
+                                    <SelectField
                                       aria-label={`Form role for ${option.name}`}
                                       value={selected.roleId}
-                                      className="mt-1 block w-full rounded-md border bg-background p-2"
-                                      onChange={(e) => {
+                                      className="mt-2 w-full rounded-md border bg-background p-2"
+                                      onValueChange={(value) => {
                                         setForms(
                                           forms.map((f) =>
                                             f.templateId === option.id
-                                              ? { ...f, roleId: e.target.value }
+                                              ? { ...f, roleId: value }
                                               : f,
                                           ),
                                         );
@@ -484,11 +485,11 @@ export function WorkflowSetup({ displayName }: { displayName: string }) {
                                       }}
                                     >
                                       {option.roles.map((role) => (
-                                        <option key={role.id} value={role.id}>
+                                        <SelectFieldOption key={role.id} value={role.id}>
                                           {role.name}
-                                        </option>
+                                        </SelectFieldOption>
                                       ))}
-                                    </select>
+                                    </SelectField>
                                   </label>
                                 )}
                               </div>
@@ -571,10 +572,9 @@ export function WorkflowSetup({ displayName }: { displayName: string }) {
                 <>
                   <SampleTest graph={graph} options={options} />
                   <label className="flex items-start gap-2 text-sm">
-                    <input
-                      type="checkbox"
+                    <Checkbox
                       checked={reviewedSample}
-                      onChange={(e) => setReviewedSample(e.target.checked)}
+                      onCheckedChange={(checked) => setReviewedSample(checked === true)}
                       className="mt-1"
                     />
                     I reviewed this sample preview. It did not run a real

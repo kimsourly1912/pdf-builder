@@ -1,4 +1,5 @@
 "use client";
+import { Checkbox } from "@/components/ui/checkbox";
 import { SampleCanvas, type SampleResult } from "./sample-canvas";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -49,11 +50,10 @@ export function SampleTest({
             ] as const
           ).map(([key, label]) => (
             <label key={key} className="flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
+              <Checkbox
                 checked={sample[key]}
-                onChange={(e) =>
-                  setSample({ ...sample, [key]: e.target.checked })
+                onCheckedChange={(checked) =>
+                  setSample({ ...sample, [key]: (checked === true) })
                 }
               />
               {label}
@@ -70,7 +70,7 @@ export function SampleTest({
               ["appliedPosition", "Applied position"],
             ] as const
           ).map(([key, label]) => (
-            <div key={key}>
+            <div key={key} className="space-y-2">
               <Label htmlFor={`sample-${key}`}>{label}</Label>
               <Input
                 id={`sample-${key}`}

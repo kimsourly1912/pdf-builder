@@ -5,6 +5,18 @@ import nextTs from "eslint-config-next/typescript";
 const eslintConfig = defineConfig([
   ...nextVitals,
   ...nextTs,
+  {
+    files: ["app/**/*.tsx", "features/**/*.tsx", "components/patterns/**/*.tsx"],
+    rules: {
+      "no-restricted-syntax": ["error", {
+        selector: "JSXOpeningElement[name.name='select']",
+        message: "Use shadcn Select (or SelectField) for application dropdowns. See docs/standards/ui.md.",
+      }, {
+        selector: "JSXOpeningElement[name.name=/^NativeSelect/]",
+        message: "Use shadcn Select for application dropdowns. NativeSelect is not the application standard.",
+      }],
+    },
+  },
   // Override default ignores of eslint-config-next.
   globalIgnores([
     // Default ignores of eslint-config-next:

@@ -1,4 +1,5 @@
 "use client";
+import { SelectField, SelectFieldOption } from "@/components/patterns/select-field";
 import { WORKFLOW_PRESETS, type WorkflowPreset } from "./presets";
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
@@ -187,12 +188,12 @@ export function WorkflowList(props: {
               value={filters.workflowSearch}
               onChange={(e) => setFilters({ workflowSearch: e.target.value })}
             />
-            <select
+            <SelectField
               aria-label="Workflow status filter"
               disabled={!filtersReady}
               className="h-10 rounded border bg-background px-3 text-sm"
               value={filters.workflowStatus}
-              onChange={(e) => setFilters({ workflowStatus: e.target.value })}
+              onValueChange={(value) => setFilters({ workflowStatus: value })}
             >
               {[
                 ["all", "All statuses"],
@@ -200,25 +201,25 @@ export function WorkflowList(props: {
                 ["paused", "Paused"],
                 ["draft", "Draft"],
               ].map(([v, l]) => (
-                <option key={v} value={v}>
+                <SelectFieldOption key={v} value={v}>
                   {l}
-                </option>
+                </SelectFieldOption>
               ))}
-            </select>
-            <select
+            </SelectField>
+            <SelectField
               aria-label="Starting event filter"
               disabled={!filtersReady}
               className="h-10 max-w-full rounded border bg-background px-3 text-sm"
               value={filters.workflowTrigger}
-              onChange={(e) => setFilters({ workflowTrigger: e.target.value })}
+              onValueChange={(value) => setFilters({ workflowTrigger: value })}
             >
-              <option value="all">All starting events</option>
+              <SelectFieldOption value="all">All starting events</SelectFieldOption>
               {Object.entries(TRIGGER_LABELS).map(([v, l]) => (
-                <option key={v} value={v}>
+                <SelectFieldOption key={v} value={v}>
                   {l}
-                </option>
+                </SelectFieldOption>
               ))}
-            </select>
+            </SelectField>
             <Button variant="ghost" onClick={() => setFilters(FILTERS)}>
               Clear filters
             </Button>

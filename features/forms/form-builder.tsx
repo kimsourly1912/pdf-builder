@@ -1,4 +1,6 @@
 "use client";
+import { SelectField, SelectFieldOption } from "@/components/patterns/select-field";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   lazy,
   Suspense,
@@ -546,7 +548,7 @@ export function FormBuilder(props: { id: string; displayName: string }) {
       {document && step === "build" && (
         <>
           <div className="grid grid-cols-1 gap-4 rounded-lg border bg-card p-4 md:grid-cols-2">
-            <div>
+            <div className="space-y-2">
               <Label htmlFor="form-name">Template name</Label>
               <Input
                 id="form-name"
@@ -558,7 +560,7 @@ export function FormBuilder(props: { id: string; displayName: string }) {
                 }
               />
             </div>
-            <div>
+            <div className="space-y-2">
               <Label htmlFor="form-description">
                 Instructions for the user
               </Label>
@@ -1245,7 +1247,7 @@ function SortableField(props: {
       >
         +
       </button>
-      <div className="mb-2 flex flex-wrap items-center justify-between gap-1">
+      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
         <button
           type="button"
           ref={handleRef}
@@ -1255,7 +1257,7 @@ function SortableField(props: {
         >
           <GripVertical className="size-4" />
         </button>
-        <div className="flex gap-1">
+        <div className="flex gap-2">
           <Button
             variant="ghost"
             size="icon-sm"
@@ -1319,7 +1321,7 @@ function FieldSettings(props: {
     props.onChange({ ...field, ...patch });
   return (
     <fieldset disabled={props.disabled} className="space-y-4">
-      <div>
+      <div className="space-y-2">
         <Label htmlFor="field-label">Label</Label>
         <Input
           id="field-label"
@@ -1328,7 +1330,7 @@ function FieldSettings(props: {
           onChange={(e) => set({ label: e.target.value })}
         />
       </div>
-      <div>
+      <div className="space-y-2">
         <Label htmlFor="field-help">Help text</Label>
         <Textarea
           id="field-help"
@@ -1344,7 +1346,7 @@ function FieldSettings(props: {
             <summary className="cursor-pointer text-sm font-medium">
               Export settings
             </summary>
-            <div className="mt-3">
+            <div className="mt-3 space-y-2">
               <Label htmlFor="field-key">Export key</Label>
               <Input
                 id="field-key"
@@ -1357,32 +1359,31 @@ function FieldSettings(props: {
             </div>
           </details>
           <label className="flex items-center gap-2 text-sm">
-            <input
-              type="checkbox"
+            <Checkbox
               checked={field.required}
-              onChange={(e) => set({ required: e.target.checked })}
+              onCheckedChange={(checked) => set({ required: (checked === true) })}
             />
             Required
           </label>
-          <div>
+          <div className="space-y-2">
             <Label htmlFor="field-width">Layout</Label>
-            <select
+            <SelectField
               id="field-width"
               className="h-10 w-full rounded-md border bg-background px-2"
               value={field.width}
-              onChange={(e) =>
-                set({ width: e.target.value as FormField["width"] })
+              onValueChange={(value) =>
+                set({ width: value as FormField["width"] })
               }
             >
-              <option value="full">Full width</option>
-              <option value="half">Half width on desktop</option>
-            </select>
+              <SelectFieldOption value="full">Full width</SelectFieldOption>
+              <SelectFieldOption value="half">Half width on desktop</SelectFieldOption>
+            </SelectField>
           </div>
           {field.options.length > 0 && (
             <div className="space-y-2">
               <Label>Choices</Label>
               {field.options.map((o, i) => (
-                <div key={o.id} className="flex gap-1">
+                <div key={o.id} className="flex gap-2">
                   <Input
                     aria-label={`Choice ${i + 1}`}
                     value={o.label}
@@ -1441,35 +1442,35 @@ function FieldSettings(props: {
                 Autofill
               </summary>
               <div className="mt-3 space-y-3">
-                <div>
+                <div className="space-y-2">
                   <Label htmlFor="field-autofill">
                     Autofill from candidate data
                   </Label>
-                  <select
+                  <SelectField
                     id="field-autofill"
                     className="h-10 w-full rounded-md border bg-background px-2 text-sm"
                     value={field.autofill ?? ""}
-                    onChange={(e) =>
+                    onValueChange={(value) =>
                       set({
                         autofill: CANDIDATE_PREFILL_OPTIONS.find(
-                          (o) => o.key === e.target.value,
+                          (o) => o.key === value,
                         )?.key,
                       })
                     }
+                    placeholder="No autofill"
                   >
-                    <option value="">No autofill</option>
+                    <SelectFieldOption value="">No autofill</SelectFieldOption>
                     {CANDIDATE_PREFILL_OPTIONS.map((option) => (
-                      <option key={option.key} value={option.key}>
+                      <SelectFieldOption key={option.key} value={option.key}>
                         {option.label}
-                      </option>
+                      </SelectFieldOption>
                     ))}
-                  </select>
+                  </SelectField>
                 </div>
                 <label className="flex items-center gap-2 text-sm">
-                  <input
-                    type="checkbox"
+                  <Checkbox
                     checked={field.editable}
-                    onChange={(e) => set({ editable: e.target.checked })}
+                    onCheckedChange={(checked) => set({ editable: (checked === true) })}
                   />
                   User can edit prefilled values
                 </label>
@@ -1482,7 +1483,7 @@ function FieldSettings(props: {
                 Validation
               </summary>
               <div className="mt-3 grid grid-cols-2 gap-2">
-                <div>
+                <div className="space-y-2">
                   <Label htmlFor="field-min-length">Min length</Label>
                   <Input
                     id="field-min-length"
@@ -1499,7 +1500,7 @@ function FieldSettings(props: {
                     }
                   />
                 </div>
-                <div>
+                <div className="space-y-2">
                   <Label htmlFor="field-max-length">Max length</Label>
                   <Input
                     id="field-max-length"
@@ -1525,7 +1526,7 @@ function FieldSettings(props: {
                 Validation
               </summary>
               <div className="mt-3 grid grid-cols-2 gap-2">
-                <div>
+                <div className="space-y-2">
                   <Label htmlFor="field-min">Minimum</Label>
                   <Input
                     id="field-min"
@@ -1540,7 +1541,7 @@ function FieldSettings(props: {
                     }
                   />
                 </div>
-                <div>
+                <div className="space-y-2">
                   <Label htmlFor="field-max">Maximum</Label>
                   <Input
                     id="field-max"

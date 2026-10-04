@@ -14,6 +14,30 @@ Keep related controls at least `gap-2` apart and distinct page sections `gap-6`/
 
 Use one clear page title, a short purpose description, and a visible next action. Put supporting details below the decision the user needs to make. Product copy should describe the HR task, not database, queue, or implementation details.
 
+## Controls and field spacing
+
+Use the installed shadcn primitives for application controls: `Button`, `Input`, `Textarea`, `Select`, `Checkbox`, `RadioGroup`, and the existing dialog/menu components. Do not use native `<select>` or `NativeSelect` in application screens, including filters, toolbars, form previews, and PDF dropdown overlays. ESLint enforces this rule outside the vendored primitives. Do not add another control library for these tasks.
+
+Use `components/patterns/select-field.tsx` for controlled dropdowns when convenient. It composes shadcn Select and supports numeric values, empty/clear options, a placeholder, and a focusable trigger. Its `onValueChange` callback receives a string; convert numeric values explicitly. Retain control IDs used by labels and setup diagnostics, disabled states, form names, and validation focus refs. A clear item must produce an actual empty value, never an internal sentinel in submitted data.
+
+Every label and its input need an explicit field wrapper, including inside settings panels and dialogs:
+
+```tsx
+<div className="space-y-2">
+  <Label htmlFor="form-layout">Layout</Label>
+  <SelectField id="form-layout" value={layout} onValueChange={setLayout}>
+    <SelectFieldOption value="full">Full width</SelectFieldOption>
+    <SelectFieldOption value="half">Half width</SelectFieldOption>
+  </SelectField>
+</div>
+```
+
+Keep field groups `space-y-4` apart and major sections `space-y-6` apart. Use `flex flex-wrap items-center gap-2` for action rows and toolbars; grid children also need an explicit gap. A parent's section gap does not create spacing between a label and the input inside its child. Do not repair spacing with global label margins or empty spacer elements. Use `min-w-0` on shrinking containers and `w-full` on full-width field triggers; compact toolbar selectors should keep their intrinsic width. Reserve an error-message row when validation runs on blur so errors cannot move the submit button during a click. Only reference existing help/error IDs in `aria-describedby`.
+
+Use Checkbox's `onCheckedChange` (`checked === true`) and RadioGroup's `onValueChange`; preserve labels and keyboard selection. Native file pickers, specialized date/color inputs through Input, and document-coordinate text/drawing controls are legitimate browser/document controls. Their appearance must preserve PDF geometry. This exception does not apply to ordinary management controls or native dropdowns. Document overlays can customize the Select trigger's dimensions/color and hide its default icon when a scaled PDF icon is already present; the popup still uses the themed shadcn component.
+
+Before finishing UI changes, search the touched screens for native controls and missing field/control-row gaps. Open dropdowns in dialogs, test Escape and arrow keys, clear an optional value, and verify long options, disabled states, validation focus, both themes, and narrow screens. Keep popup content inside the viewport and ensure spacing fixes do not hide overflow. These checks are part of delivery, not an optional visual polish step.
+
 ## Actions and progress
 
 Show one primary next action for the current state. Replace unavailable or already-running actions with View progress, Resolve issue, or the appropriate completed-state link. Explain a disabled action's missing requirement and provide a direct path to fix it.

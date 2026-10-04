@@ -543,7 +543,7 @@ function ResumeLibrary(props: { displayName: string; initialUpload?: boolean }) 
                     </FormField>
                   </div>
                 </div>
-                <div className="flex justify-between border-t p-4">
+                <div className="flex flex-wrap justify-between gap-2 border-t p-4">
                   <Button
                     type="button"
                     variant="ghost"

@@ -463,7 +463,7 @@ export function ResumeDetailView(props: { resumeId: string; embedded?: boolean; 
 
             {draft ? (
               <Card>
-                <CardHeader className="flex flex-row items-start justify-between">
+                <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-3">
                   <div>
                     <CardTitle>Candidate information</CardTitle>
                     <CardDescription>
@@ -813,7 +813,7 @@ function DuplicateComparison(props: {
 function ResumeMeta(props: { resume: ResumeDetail }) {
   return (
     <Card>
-      <CardHeader className="flex flex-row items-center">
+      <CardHeader className="flex flex-row items-center gap-3">
         <span className="flex size-10 items-center justify-center rounded-xl bg-primary/10 text-primary">
           <FileText className="size-5" />
         </span>

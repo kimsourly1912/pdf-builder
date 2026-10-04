@@ -1,5 +1,6 @@
 "use client";
 
+import { SelectField, SelectFieldOption } from "@/components/patterns/select-field";
 import { ThemeToggle } from "@/components/patterns/theme-toggle";
 
 import {
@@ -5844,26 +5845,27 @@ export function PdfEditor(props: { initialTemplateId?: string }) {
                         {annotation.type === "dropdown" && (
                           editorMode === "fill" ? (
                             <span className="relative block size-full">
-                              <select
+                              <SelectField
                                 value={annotation.options?.find((option) => option.checked)?.id ?? ""}
                                 required={annotation.required}
                                 onPointerDown={(event) => event.stopPropagation()}
-                                onChange={(event) =>
+                                onValueChange={(value) =>
                                   updateAnnotationValue(annotation.id, {
-                                    options: (annotation.options ?? []).map((option) => ({ ...option, checked: option.id === event.target.value })),
+                                    options: (annotation.options ?? []).map((option) => ({ ...option, checked: option.id === value })),
                                   })
                                 }
-                                className="size-full appearance-none rounded-md border bg-white px-2 pr-9 outline-none"
+                                aria-label={annotation.fieldName || annotation.label || "Select an option"}
+                                className="size-full rounded-md border bg-white px-2 pr-9 outline-none dark:bg-white dark:hover:bg-white"
                                 style={{
                                   color: annotation.color,
                                   borderColor: annotation.borderColor ?? DEFAULT_ELEMENT_BORDER_COLOR,
                                   fontSize: annotationFontSize * zoom,
                                   paddingRight: fieldIconSize + 12,
                                 }}
-                              >
-                                <option value="">{annotation.label || "Select an option"}</option>
-                                {(annotation.options ?? []).map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}
-                              </select>
+                               hideIndicator placeholder={annotation.label || "Select an option"}>
+                                <SelectFieldOption value="">{annotation.label || "Select an option"}</SelectFieldOption>
+                                {(annotation.options ?? []).map((option) => <SelectFieldOption key={option.id} value={option.id}>{option.label}</SelectFieldOption>)}
+                              </SelectField>
                               <ChevronDown
                                 aria-hidden="true"
                                 className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-slate-500"

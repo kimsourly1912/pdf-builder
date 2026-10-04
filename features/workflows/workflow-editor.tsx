@@ -1,4 +1,5 @@
 "use client";
+import { SelectField, SelectFieldOption } from "@/components/patterns/select-field";
 import { stepSetupIssues, incomingChoices, type SetupIssue } from "./setup-issues";
 import { sampleNodeState, sampleEdgeStyle, type SampleResult } from "./sample-canvas";
 import type { SampleInput } from "./workspace-tools";
@@ -592,14 +593,14 @@ function EditorBody({
           )}
           {selectedNode.kind !== "resume_uploaded" && !graph.edges.some((e) => e.target === selectedNode.id) && <section className="my-4 space-y-2 rounded-lg border p-3">
             <label htmlFor="connection-incoming" className="text-sm font-medium">Connect after</label>
-            <select id="connection-incoming" value="" disabled={!editable} className="h-10 w-full rounded border bg-background px-2 text-sm" onChange={(e) => {
-              if (!e.target.value) return;
-              const choice = freeInputs[Number(e.target.value)];
+            <SelectField id="connection-incoming" value="" disabled={!editable} className="h-10 w-full rounded border bg-background px-2 text-sm" onValueChange={(value) => {
+              if (!value) return;
+              const choice = freeInputs[Number(value)];
               if (choice) connect({source: choice.source, target: selectedNode.id, sourceHandle: choice.outcome, targetHandle: "in"});
-            }}>
-              <option value="">Choose a previous step</option>
-              {freeInputs.map((choice, i) => <option key={choice.source + choice.outcome} value={i}>{displayNode(graph.nodes.find((n) => n.id === choice.source)!)} · {choice.outcome}</option>)}
-            </select>
+            }} placeholder="Choose a previous step">
+              <SelectFieldOption value="">Choose a previous step</SelectFieldOption>
+              {freeInputs.map((choice, i) => <SelectFieldOption key={choice.source + choice.outcome} value={i}>{displayNode(graph.nodes.find((n) => n.id === choice.source)!)} · {choice.outcome}</SelectFieldOption>)}
+            </SelectField>
             {!freeInputs.length && <><p className="text-xs text-muted-foreground">No free outputs. Open a previous step and change its next connection.</p><Button variant="outline" size="sm" onClick={() => {if (compact) setSelected(null); setOutlineOpen(true);}}>Choose previous step</Button></>}
           </section>}
           {outcomes(selectedNode.kind).length > 0 ? <section className="my-4 rounded-lg border p-3" aria-label="Next steps">
@@ -622,13 +623,13 @@ function EditorBody({
                     </Button>}
                     <details className="mt-1">
                     <summary className="cursor-pointer text-xs text-muted-foreground">{edge ? "Change connection" : "Connect an existing step"}</summary>
-                    <select
+                    <SelectField
                       id={`connection-${outcome}`}
                       disabled={!editable}
                       className="h-10 w-full rounded border bg-background px-2 text-xs"
                       value={edge?.target ?? ""}
-                      onChange={(e) => {
-                        if (!e.target.value) {
+                      onValueChange={(value) => {
+                        if (!value) {
                           commit({
                             ...graph,
                             edges: graph.edges.filter((e) => e.id !== edge?.id),
@@ -638,7 +639,7 @@ function EditorBody({
                         connect(
                           {
                             source: selectedNode.id,
-                            target: e.target.value,
+                            target: value,
                             sourceHandle: outcome,
                             targetHandle: "in",
                           },
@@ -647,8 +648,9 @@ function EditorBody({
                             : undefined,
                         );
                       }}
+                      placeholder="Not connected"
                     >
-                      <option value="">Not connected</option>
+                      <SelectFieldOption value="">Not connected</SelectFieldOption>
                       {graph.nodes
                         .filter(
                           (n) =>
@@ -659,11 +661,11 @@ function EditorBody({
                               n.kind === "stop"),
                         )
                         .map((n) => (
-                          <option key={n.id} value={n.id}>
+                          <SelectFieldOption key={n.id} value={n.id}>
                             {displayNode(n)}
-                          </option>
+                          </SelectFieldOption>
                         ))}
-                    </select>
+                    </SelectField>
                     </details>
                     <Button
                       id={`step-add-${outcome}`}

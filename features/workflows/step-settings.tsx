@@ -1,4 +1,6 @@
 "use client";
+import { SelectField, SelectFieldOption } from "@/components/patterns/select-field";
+import { Checkbox } from "@/components/ui/checkbox";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -35,20 +37,20 @@ export function StepSettings(props: {
       {node.kind === "resume_uploaded" && (
         <div className="space-y-2">
           <Label htmlFor="workflow-trigger">Starting event</Label>
-          <select
+          <SelectField
             id="workflow-trigger"
             value={config.trigger ?? "staff_upload"}
             className="h-10 w-full rounded border bg-background px-2 text-sm"
-            onChange={(e) =>
-              patch({ trigger: e.target.value as StepConfig["trigger"] })
+            onValueChange={(value) =>
+              patch({ trigger: value as StepConfig["trigger"] })
             }
           >
             {Object.entries(TRIGGER_LABELS).map(([value, label]) => (
-              <option key={value} value={value}>
+              <SelectFieldOption key={value} value={value}>
                 {label}
-              </option>
+              </SelectFieldOption>
             ))}
-          </select>
+          </SelectField>
           <p className="text-xs text-muted-foreground">
             Publishing activates this event. CV approval does not require AI
             extraction.
@@ -64,55 +66,57 @@ export function StepSettings(props: {
             );
             return (
               <div key={index} className="space-y-2 rounded border p-3">
-                <select
+                <SelectField
                   id={`step-form-${index + 1}`}
                   aria-label={`Template ${index + 1}`}
                   className="h-10 w-full rounded border bg-background px-2 text-sm"
                   value={target.templateId}
-                  onChange={(e) => {
+                  onValueChange={(value) => {
                     const option = props.options.find(
-                      (o) => o.id === e.target.value,
+                      (o) => o.id === value,
                     );
                     patch({
                       forms: (config.forms ?? []).map((f, i) =>
                         i === index
                           ? {
-                              templateId: e.target.value,
+                              templateId: value,
                               roleId: option?.roles[0]?.id ?? "",
                             }
                           : f,
                       ),
                     });
                   }}
+                  placeholder="Choose published form"
                 >
-                  <option value="">Choose published form</option>
+                  <SelectFieldOption value="">Choose published form</SelectFieldOption>
                   {props.options.map((o) => (
-                    <option key={o.id} value={o.id}>
+                    <SelectFieldOption key={o.id} value={o.id}>
                       {o.name}
-                    </option>
+                    </SelectFieldOption>
                   ))}
-                </select>
+                </SelectField>
                 {option && option.kind !== "form" && (
-                  <select
+                  <SelectField
                     id={`step-role-${index + 1}`}
                     aria-label={`Recipient role ${index + 1}`}
                     value={target.roleId}
                     className="h-10 w-full rounded border bg-background px-2 text-sm"
-                    onChange={(e) =>
+                    onValueChange={(value) =>
                       patch({
                         forms: (config.forms ?? []).map((f, i) =>
-                          i === index ? { ...f, roleId: e.target.value } : f,
+                          i === index ? { ...f, roleId: value } : f,
                         ),
                       })
                     }
+                    placeholder="Choose PDF recipient role"
                   >
-                    <option value="">Choose PDF recipient role</option>
+                    <SelectFieldOption value="">Choose PDF recipient role</SelectFieldOption>
                     {option?.roles.map((r) => (
-                      <option key={r.id} value={r.id}>
+                      <SelectFieldOption key={r.id} value={r.id}>
                         {r.name}
-                      </option>
+                      </SelectFieldOption>
                     ))}
-                  </select>
+                  </SelectField>
                 )}
                 <Button
                   type="button"
@@ -155,10 +159,9 @@ export function StepSettings(props: {
             </p>
           )}
           <label className="flex items-center gap-2 text-sm">
-            <input
-              type="checkbox"
+            <Checkbox
               checked={config.skipExisting !== false}
-              onChange={(e) => patch({ skipExisting: e.target.checked })}
+              onCheckedChange={(checked) => patch({ skipExisting: (checked === true) })}
             />
             Keep forms already assigned
           </label>
@@ -178,7 +181,7 @@ export function StepSettings(props: {
             value={config.message ?? DEFAULT_INVITATION}
             onChange={(e) => patch({ message: e.target.value })}
           />
-          <div className="flex flex-wrap gap-1">
+          <div className="flex flex-wrap gap-2">
             {["name", "email", "formCount"].map((token) => (
               <Button
                 key={token}
@@ -217,17 +220,17 @@ export function StepSettings(props: {
       {node.kind === "condition" && (
         <div className="space-y-3">
           <Label htmlFor="condition-field">Compare CV field</Label>
-          <select
+          <SelectField
             id="condition-field"
             value={config.field ?? "source"}
             className="h-10 w-full rounded border bg-background px-2 text-sm"
-            onChange={(e) =>
-              patch({ field: e.target.value as "source" | "appliedPosition" })
+            onValueChange={(value) =>
+              patch({ field: value as "source" | "appliedPosition" })
             }
           >
-            <option value="source">Source</option>
-            <option value="appliedPosition">Applied position</option>
-          </select>
+            <SelectFieldOption value="source">Source</SelectFieldOption>
+            <SelectFieldOption value="appliedPosition">Applied position</SelectFieldOption>
+          </SelectField>
           <Label htmlFor="condition-value">Equals</Label>
           <Input
             id="condition-value"
@@ -251,7 +254,7 @@ export function StepSettings(props: {
         <details className="rounded-lg border p-3">
           <summary className="cursor-pointer text-sm font-medium">Name &amp; internal note</summary>
           <div className="mt-3 space-y-3">
-          <div>
+          <div className="space-y-2">
             <Label htmlFor="step-label">Step name</Label>
             <Input
               id="step-label"
@@ -261,7 +264,7 @@ export function StepSettings(props: {
               onChange={(e) => props.onMetadata?.({ label: e.target.value })}
             />
           </div>
-          <div>
+          <div className="space-y-2">
             <Label htmlFor="step-note">Annotation</Label>
             <Textarea
               id="step-note"
