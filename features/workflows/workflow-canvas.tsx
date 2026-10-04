@@ -77,6 +77,7 @@ export type FlowNode = Node<
     issues?: string[];
     status?: string;
     onAdd?: (id: string, outcome: string) => void;
+    connectedOutcomes?: string[];
     readOnly?: boolean;
   },
   "step"
@@ -222,7 +223,7 @@ function StepCard({ id, data, selected }: NodeProps<FlowNode>) {
                   {outcome}
                 </span>
               )}
-              {data.onAdd && !data.readOnly && (
+              {data.onAdd && !data.readOnly && !data.connectedOutcomes?.includes(outcome) && (
                 <button
                   type="button"
                   className="nodrag nopan absolute -top-2 left-4 flex size-6 items-center justify-center rounded-full border bg-card text-primary shadow-sm hover:bg-primary/10"

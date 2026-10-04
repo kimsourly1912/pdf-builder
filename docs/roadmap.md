@@ -115,3 +115,11 @@ A first-time HR usability trial remains necessary to establish comprehension wit
 - Inline preparation and delivery recovery; actual delivery determines Send/Retry/Resend.
 - Field-specific email validation before approval and CV draft edits in History.
 - No natural-language agent or paid AI is included; full browser testing with a user-confirmed Telegram recipient remains a separate verification step.
+
+
+### Automation editor clarity (2026-10-04)
+
+- Canvas-first layout with compact Preview / Review & publish actions and secondary live-run controls.
+- Searchable step outline, explicit branch destinations and direct next-step navigation.
+- Essential settings first, expandable metadata and connection changes, unified Data & behavior explanations.
+- One insertion control per connected path; draft/live behavior comparison remains available on demand.

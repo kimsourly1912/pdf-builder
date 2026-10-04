@@ -12,7 +12,7 @@ import {
   type StepConfig,
   type TemplateOption,
 } from "./workflow";
-import { DATA_HELP, DEFAULT_INVITATION } from "./editor-tools";
+import { DEFAULT_INVITATION } from "./editor-tools";
 export function StepSettings(props: {
   node: WorkflowNode;
   options: TemplateOption[];
@@ -32,33 +32,6 @@ export function StepSettings(props: {
           {STEP_DESCRIPTIONS[node.kind]}
         </p>
       </div>
-      {props.onMetadata && (
-        <div className="space-y-3">
-          <div>
-            <Label htmlFor="step-label">Step name</Label>
-            <Input
-              id="step-label"
-              maxLength={80}
-              placeholder={STEP_LABELS[node.kind]}
-              value={node.label ?? ""}
-              onChange={(e) => props.onMetadata?.({ label: e.target.value })}
-            />
-          </div>
-          <div>
-            <Label htmlFor="step-note">Annotation</Label>
-            <Textarea
-              id="step-note"
-              maxLength={2000}
-              placeholder="Explain this step for HR…"
-              value={node.note ?? ""}
-              onChange={(e) => props.onMetadata?.({ note: e.target.value })}
-            />
-            <p className="mt-1 text-xs text-muted-foreground">
-              Internal workflow note. Never sent to candidates.
-            </p>
-          </div>
-        </div>
-      )}
       {node.kind === "resume_uploaded" && (
         <div className="space-y-2">
           <Label htmlFor="workflow-trigger">Starting event</Label>
@@ -118,7 +91,7 @@ export function StepSettings(props: {
                     </option>
                   ))}
                 </select>
-                {option?.kind !== "form" && (
+                {option && option.kind !== "form" && (
                   <select
                     aria-label={`Recipient role ${index + 1}`}
                     value={target.roleId}
@@ -265,24 +238,41 @@ export function StepSettings(props: {
           </p>
         </div>
       )}
-      <details className="rounded border p-3">
-        <summary className="cursor-pointer text-sm font-medium">
-          Input & output
-        </summary>
-        <div className="mt-3 space-y-3 text-xs">
-          <p>
-            <strong>Input:</strong> {DATA_HELP[node.kind].input}
-          </p>
-          <p>
-            <strong>Output:</strong> {DATA_HELP[node.kind].output}
-          </p>
-        </div>
-      </details>
       {node.kind === "review_resume" && (
         <p className="text-sm text-muted-foreground">
-          Pauses for HR approval. Configure account details during CV review.
-          Rejected CVs must go directly to Stop.
+          Uses the current saved CV approval; otherwise waits for HR review.
+          Rejected CVs go directly to Stop.
         </p>
+      )}
+      {props.onMetadata && (
+        <details className="rounded-lg border p-3">
+          <summary className="cursor-pointer text-sm font-medium">Name &amp; internal note</summary>
+          <div className="mt-3 space-y-3">
+          <div>
+            <Label htmlFor="step-label">Step name</Label>
+            <Input
+              id="step-label"
+              maxLength={80}
+              placeholder={STEP_LABELS[node.kind]}
+              value={node.label ?? ""}
+              onChange={(e) => props.onMetadata?.({ label: e.target.value })}
+            />
+          </div>
+          <div>
+            <Label htmlFor="step-note">Annotation</Label>
+            <Textarea
+              id="step-note"
+              maxLength={2000}
+              placeholder="Explain this step for HR…"
+              value={node.note ?? ""}
+              onChange={(e) => props.onMetadata?.({ note: e.target.value })}
+            />
+            <p className="mt-1 text-xs text-muted-foreground">
+              Internal workflow note. Never sent to candidates.
+            </p>
+          </div>
+          </div>
+        </details>
       )}
       <p className="text-xs text-muted-foreground">
         Settings update the draft immediately. Publish to use them in new runs.

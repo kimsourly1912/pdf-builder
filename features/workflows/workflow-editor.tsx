@@ -1,4 +1,6 @@
 "use client";
+import { WorkflowOutline } from "./workflow-outline";
+import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import { BusinessSummaryCard } from "./business-summary-card";
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
@@ -23,7 +25,9 @@ import {
   LayoutGrid,
   Maximize2,
   Minimize2,
-  Search,
+  ListOrdered,
+  MoreHorizontal,
+  Info,
   CheckCircle2,
 } from "lucide-react";
 import { AppShell } from "@/components/patterns/app-shell";
@@ -188,7 +192,8 @@ function EditorBody({
   );
   const [focusMode, setFocusMode] = useState(false),
     [sampleOpen, setSampleOpen] = useState(false),
-    [nodeSearch, setNodeSearch] = useState(""),
+    [outlineOpen, setOutlineOpen] = useState(false),
+    [overviewOpen, setOverviewOpen] = useState(false),
     [inspectorTab, setInspectorTab] = useState("parameters");
   const [recovery, setRecovery] = useState<WorkflowDetail | null>(null);
   const [compact, setCompact] = useState(false);
@@ -374,7 +379,7 @@ function EditorBody({
     restore(future[0]);
   };
   const openPalette = (source?: string, outcome?: string) => {
-    if (compact) setSelected(null);
+    setSelected(null);
     if (!editable) return;
     setAddContext({ source, outcome: outcome as WorkflowEdge["outcome"] });
     setPaletteOpen(true);
@@ -487,6 +492,7 @@ function EditorBody({
   };
   const selectedNode = graph.nodes.find((n) => n.id === selected);
   const select = (id: string) => {
+    setPaletteOpen(false);
     setSelected(id);
     setInspectorTab("parameters");
     setNodes((ns) => ns.map((n) => ({ ...n, selected: n.id === id })));
@@ -506,7 +512,7 @@ function EditorBody({
     <>
       <div className="mb-4 flex items-center justify-between">
         <p className="text-xs font-medium text-muted-foreground">
-          STEP SETTINGS
+          CONFIGURE STEP
         </p>
         <Button
           size="icon-sm"
@@ -519,40 +525,14 @@ function EditorBody({
       </div>
       <Tabs value={inspectorTab} onValueChange={setInspectorTab}>
         <TabsList className="w-full">
-          <TabsTrigger value="parameters">Parameters</TabsTrigger>
-          <TabsTrigger value="input">Input</TabsTrigger>
-          <TabsTrigger value="output">Output</TabsTrigger>
+          <TabsTrigger value="parameters">Configure</TabsTrigger>
+          <TabsTrigger value="input">Data &amp; behavior</TabsTrigger>
         </TabsList>
-        <TabsContent value="input" className="space-y-3 text-sm">
-          <p>{DATA_HELP[selectedNode.kind].input}</p>
-          <p className="text-muted-foreground">
-            This is a draft. Open an execution to inspect recorded input, or
-            preview the planned path with sample data.
-          </p>
-          <Button
-            variant="outline"
-            onClick={() => {
-              if (compact) setSelected(null);
-              setSampleOpen(true);
-            }}
-          >
-            Test with sample data
-          </Button>
-        </TabsContent>
-        <TabsContent value="output" className="space-y-3 text-sm">
-          <p>{DATA_HELP[selectedNode.kind].output}</p>
-          <p className="text-muted-foreground">
-            No live result exists for draft changes.
-          </p>
-          <Button
-            variant="outline"
-            onClick={() => {
-              if (compact) setSelected(null);
-              setSampleOpen(true);
-            }}
-          >
-            Preview planned result
-          </Button>
+        <TabsContent value="input" className="space-y-4 text-sm">
+          <div><h3 className="font-medium">Receives</h3><p className="mt-2 text-muted-foreground">{DATA_HELP[selectedNode.kind].input}</p></div>
+          <div><h3 className="font-medium">Produces</h3><p className="mt-2 text-muted-foreground">{DATA_HELP[selectedNode.kind].output}</p></div>
+          <p className="text-xs text-muted-foreground">This describes the draft. Recorded results are available in Executions.</p>
+          <Button variant="outline" onClick={() => { if (compact) setSelected(null); setSampleOpen(true); }}>Preview with sample data</Button>
         </TabsContent>
         <TabsContent value="parameters">
           <StepSettings
@@ -583,10 +563,8 @@ function EditorBody({
               ))}
             </ul>
           )}
-          <details className="my-4 rounded border p-3" open>
-            <summary className="cursor-pointer text-sm font-medium">
-              Connections
-            </summary>
+          {outcomes(selectedNode.kind).length > 0 ? <section className="my-4 rounded-lg border p-3" aria-label="Next steps">
+            <h3 className="text-sm font-medium">What happens next</h3>
             <div className="mt-3 space-y-3">
               {outcomes(selectedNode.kind).map((outcome) => {
                 const edge = graph.edges.find(
@@ -595,11 +573,16 @@ function EditorBody({
                 return (
                   <div key={outcome}>
                     <label
-                      className="text-xs"
+                      className="text-xs font-medium capitalize"
                       htmlFor={`connection-${outcome}`}
                     >
                       {outcome === "next" ? "Next step" : outcome}
                     </label>
+                    {edge && <Button type="button" variant="link" size="sm" className="mb-1 h-auto w-full justify-start whitespace-normal px-0 text-left" onClick={() => focus(edge.target)}>
+                      Open {(() => { const target = graph.nodes.find((n) => n.id === edge.target); return target ? displayNode(target) : "missing step"; })()} →
+                    </Button>}
+                    <details className="mt-1">
+                    <summary className="cursor-pointer text-xs text-muted-foreground">{edge ? "Change connection" : "Connect an existing step"}</summary>
                     <select
                       id={`connection-${outcome}`}
                       disabled={!editable}
@@ -638,10 +621,11 @@ function EditorBody({
                         )
                         .map((n) => (
                           <option key={n.id} value={n.id}>
-                            {displayNode(n)} · {n.id.slice(0, 8)}
+                            {displayNode(n)}
                           </option>
                         ))}
                     </select>
+                    </details>
                     <Button
                       size="sm"
                       className="mt-1"
@@ -655,7 +639,7 @@ function EditorBody({
                 );
               })}
             </div>
-          </details>
+          </section> : <p className="my-4 rounded-lg border p-3 text-sm text-muted-foreground">This step ends its path.</p>}
           {selectedNode.kind !== "resume_uploaded" && (
             <div className="flex flex-wrap gap-2">
               <Button
@@ -740,54 +724,31 @@ function EditorBody({
               : dirty && saveState !== "Saving…"
                 ? "Unsaved changes"
                 : saveState}{" "}
-            · Draft trigger: {TRIGGER_LABELS[workflowTrigger(graph)]}
-            {workflow.published && (
+            · Draft edits autosave.
+            {workflow.published && workflowTrigger(workflow.published) !== workflowTrigger(graph) && (
               <span className="block">
-                Live trigger:{" "}
+                Published starts when:{" "}
                 {TRIGGER_LABELS[workflowTrigger(workflow.published)]}
                 {!workflow.active ? " · Automatic runs paused" : ""}
               </span>
             )}
           </p>
         </div>
-        <div aria-label="Workflow actions" className="flex w-full flex-wrap items-center gap-2 rounded-lg border bg-card p-3 xl:w-auto">
-          <Button
-            variant="outline"
-            onClick={() => {
-              if (compact) setSelected(null);
-              setSampleOpen(true);
-            }}
-          >
-            Test with sample data
+        <div aria-label="Workflow actions" className="flex max-w-full flex-wrap items-center gap-2">
+          <Button variant="outline" onClick={() => { if (compact) setSelected(null); setSampleOpen(true); }}><Play />Preview draft</Button>
+          <Button disabled={!editable} onClick={() => { setOverlapCheck("checking"); setPublishOpen(true); }}>
+            {busy && <LoaderCircle className="animate-spin" />}Review &amp; publish
           </Button>
-          {workflow.version > 0 && (
-            <Button
-              variant="outline"
-              disabled={busy || workflow.archived}
-              onClick={() => setStartOpen(true)}
-            >
-              <Play />
-              Run published workflow
-            </Button>
-          )}
-          <Button
-            variant="outline"
-            disabled={!editable || !canSaveDraft || !name.trim()}
-            onClick={() => void save("save").catch(() => {})}
-          >
-            <Save />
-            Save draft
-          </Button>
-          <Button
-            disabled={!editable}
-            onClick={() => {
-              setOverlapCheck("checking");
-              setPublishOpen(true);
-            }}
-          >
-            {busy && <LoaderCircle className="animate-spin" />}Review changes
-            &amp; publish
-          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild><Button variant="outline" size="icon" aria-label="More workflow actions"><MoreHorizontal /></Button></DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem disabled={!editable || !canSaveDraft || !name.trim()} onSelect={() => void save("save").catch(() => {})}><Save />Save draft now</DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => setOverviewOpen(true)}><Info />Compare draft &amp; live</DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem disabled={!workflow.version || busy || workflow.archived} onSelect={() => setStartOpen(true)}><Play />Run published workflow…</DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => setHelpOpen(true)}>Shortcuts &amp; help</DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </div>
       {workflow.archived && (
@@ -846,21 +807,6 @@ function EditorBody({
           <AlertDescription>{notice}</AlertDescription>
         </Alert>
       )}
-      {tab === "editor" && (
-        <div className={`grid min-w-0 gap-4 ${workflow.published ? "lg:grid-cols-2" : ""}`}>
-          <BusinessSummaryCard graph={graph} title="Draft behavior" />
-          {workflow.published && (
-            <BusinessSummaryCard
-              graph={workflow.published}
-              title={
-                workflow.active
-                  ? "Published behavior"
-                  : "Published behavior (automatic runs paused)"
-              }
-            />
-          )}
-        </div>
-      )}
       <Tabs value={tab} onValueChange={setTab}>
         <TabsList className="max-w-full gap-1">
           <TabsTrigger value="editor">Editor</TabsTrigger>
@@ -872,8 +818,15 @@ function EditorBody({
           forceMount
           className={tab !== "editor" ? "hidden" : "mt-4"}
         >
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-card p-3">
+            <div className="min-w-0">
+              <p className="text-xs text-muted-foreground">{workflow.published ? "Editing draft · new runs use the published version" : "Editing draft · publish when you’re ready to make it live"}</p>
+              <Button variant="link" className="mt-1 h-auto max-w-full justify-start whitespace-normal p-0 text-left" onClick={() => { const start = graph.nodes.find((n) => n.kind === "resume_uploaded"); if (start) focus(start.id); }}>Starts when: {TRIGGER_LABELS[workflowTrigger(graph)]} →</Button>
+            </div>
+            <Button variant="outline" size="sm" onClick={() => { if (compact) setSelected(null); setOutlineOpen(true); }}><ListOrdered />Steps · {nodes.length}</Button>
+          </div>
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-card p-2">
-            <div className="flex flex-wrap gap-1">
+            <div className="flex flex-wrap gap-2">
               <Button
                 size="sm"
                 disabled={!editable || nodes.length >= 32}
@@ -924,18 +877,18 @@ function EditorBody({
                 Fit workflow
               </Button>
             </div>
-            <div className="flex flex-wrap gap-1">
+            <div className="flex flex-wrap gap-2">
               <Button
                 size="sm"
                 variant="outline"
                 onClick={() => setValidateOpen(true)}
               >
                 {issues.length ? (
-                  `${issues.length} setup issues`
+                  `${issues.length} setup ${issues.length === 1 ? "issue" : "issues"}`
                 ) : (
                   <>
                     <CheckCircle2 />
-                    Ready to publish
+                    Graph complete
                   </>
                 )}
               </Button>
@@ -947,52 +900,8 @@ function EditorBody({
                 {focusMode ? <Minimize2 /> : <Maximize2 />}
                 {focusMode ? "Exit focus mode" : "Focus mode"}
               </Button>
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={() => setHelpOpen(true)}
-              >
-                Shortcuts & help
-              </Button>
+
             </div>
-          </div>
-          <div className="relative mb-3 max-w-sm">
-            <Search className="pointer-events-none absolute left-3 top-3 size-4 text-muted-foreground" />
-            <Input
-              aria-label="Find workflow step"
-              placeholder="Find a step…"
-              className="pl-9"
-              value={nodeSearch}
-              onChange={(e) => setNodeSearch(e.target.value)}
-            />
-            {nodeSearch && (
-              <div className="absolute top-full z-20 max-h-60 w-full overflow-y-auto rounded-lg border bg-popover p-2 shadow-lg">
-                {graph.nodes
-                  .filter((n) =>
-                    (displayNode(n) + " " + (n.note ?? ""))
-                      .toLowerCase()
-                      .includes(nodeSearch.toLowerCase()),
-                  )
-                  .map((n) => (
-                    <Button
-                      key={n.id}
-                      variant="ghost"
-                      className="w-full justify-start"
-                      onClick={() => {
-                        focus(n.id);
-                        setNodeSearch("");
-                      }}
-                    >
-                      {displayNode(n)}
-                    </Button>
-                  ))}
-                {!graph.nodes.some((n) =>
-                  (displayNode(n) + " " + (n.note ?? ""))
-                    .toLowerCase()
-                    .includes(nodeSearch.toLowerCase()),
-                ) && <p className="p-2 text-sm">No matching steps.</p>}
-              </div>
-            )}
           </div>
           <div
             className={`grid min-w-0 items-start gap-3 ${paletteOpen ? (selectedNode ? "xl:grid-cols-[240px_minmax(0,1fr)_340px]" : "xl:grid-cols-[240px_minmax(0,1fr)]") : selectedNode ? "xl:grid-cols-[minmax(0,1fr)_340px]" : "grid-cols-1"}`}
@@ -1062,7 +971,7 @@ function EditorBody({
               </aside>
             )}
             <div
-              className={`relative ${focusMode ? "h-[calc(100svh-240px)]" : "h-[calc(100svh-330px)]"} min-h-[420px] min-w-0 overflow-hidden rounded-xl border bg-muted/20`}
+              className={`relative ${focusMode ? "h-[calc(100svh-240px)]" : "h-[calc(100svh-360px)]"} min-h-[420px] min-w-0 overflow-hidden rounded-xl border bg-muted/20`}
               aria-label="Workflow canvas"
               onDragOver={(e) => {
                 if (!editable) return;
@@ -1091,6 +1000,7 @@ function EditorBody({
                       graph.nodes.find((g) => g.id === n.id)!,
                     ),
                     onAdd: editable ? openPalette : undefined,
+                    connectedOutcomes: graph.edges.filter((e) => e.source === n.id).map((e) => e.outcome),
                     onAction: editable
                       ? (action, id) => {
                           if (action === "duplicate") duplicate(id);
@@ -1157,8 +1067,7 @@ function EditorBody({
                     );
                 }}
                 onNodeClick={(_, n) => {
-                  setSelected(n.id);
-                  setInspectorTab("parameters");
+                  select(n.id);
                 }}
                 onNodeDoubleClick={(_, n) => focus(n.id)}
                 onPaneClick={() => setSelected(null)}
@@ -1180,7 +1089,7 @@ function EditorBody({
               )}
             </div>
             {selectedNode && !compact && (
-              <aside className="max-h-[80svh] min-w-0 overflow-y-auto rounded-xl border bg-card p-4">
+              <aside className="max-h-[calc(100svh-360px)] min-h-[420px] min-w-0 overflow-y-auto rounded-xl border bg-card p-4">
                 {inspector}
               </aside>
             )}
@@ -1190,8 +1099,8 @@ function EditorBody({
                 if (!open) setSelected(null);
               }}
             >
-              <SheetContent className="w-full overflow-y-auto p-4 sm:max-w-md">
-                <SheetHeader>
+              <SheetContent showCloseButton={false} className="w-full overflow-y-auto p-4 sm:max-w-md">
+                <SheetHeader className="sr-only">
                   <SheetTitle>Step settings</SheetTitle>
                 </SheetHeader>
                 {inspector}
@@ -1199,9 +1108,7 @@ function EditorBody({
             </Sheet>
           </div>
           <p className="mt-2 text-xs text-muted-foreground">
-            Drag nodes to arrange. Use + to add a connected step. Drag output
-            handles to input handles, or use Connections in step settings. Draft
-            changes autosave; executions use the published version.
+            Click a step to configure it. Use + to insert a connected step. Drag to arrange; scroll to zoom.
           </p>
         </TabsContent>
         <TabsContent value="runs" className="mt-4">
@@ -1286,6 +1193,21 @@ function EditorBody({
           </Card>
         </TabsContent>
       </Tabs>
+      <Dialog open={outlineOpen} onOpenChange={setOutlineOpen}>
+        <DialogContent className="max-h-[85svh] overflow-y-auto sm:max-w-lg">
+          <DialogHeader><DialogTitle>Workflow steps</DialogTitle><DialogDescription>Follow each path from the starting event. Choose a step to configure it.</DialogDescription></DialogHeader>
+          <WorkflowOutline graph={graph} onSelect={(id) => { setOutlineOpen(false); focus(id); }} />
+        </DialogContent>
+      </Dialog>
+      <Dialog open={overviewOpen} onOpenChange={setOverviewOpen}>
+        <DialogContent className="max-h-[85svh] overflow-y-auto sm:max-w-4xl">
+          <DialogHeader><DialogTitle>Draft &amp; published behavior</DialogTitle><DialogDescription>Draft edits affect future runs only after publishing. Existing executions keep their saved version.</DialogDescription></DialogHeader>
+          <div className={`grid min-w-0 gap-4 ${workflow.published ? "md:grid-cols-2" : ""}`}>
+            <BusinessSummaryCard graph={graph} title="Draft behavior" />
+            {workflow.published ? <BusinessSummaryCard graph={workflow.published} title={workflow.active ? "Published behavior" : "Published behavior (paused)"} /> : <p className="text-sm text-muted-foreground">This workflow has not been published.</p>}
+          </div>
+        </DialogContent>
+      </Dialog>
       <Sheet open={validateOpen} onOpenChange={setValidateOpen}>
         <SheetContent className="w-full overflow-y-auto p-5 sm:max-w-md">
           <SheetHeader>
@@ -1317,13 +1239,13 @@ function EditorBody({
             </ul>
           ) : (
             <p className="text-sm text-emerald-700">
-              All graph checks pass. Ready to publish.
+              Graph checks pass. Review integrations and changes before publishing.
             </p>
           )}
         </SheetContent>
       </Sheet>
       <Dialog open={publishOpen} onOpenChange={setPublishOpen}>
-        <DialogContent>
+        <DialogContent className="max-h-[90svh] overflow-y-auto sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle>Publish workflow</DialogTitle>
             <DialogDescription>
@@ -1408,6 +1330,7 @@ function EditorBody({
             Approved paths can create accounts, assign forms and send Telegram
             invitations. Editing or saving a draft never executes them.
           </p>
+          {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
           <Button
             disabled={
               busy || issues.length > 0 || !editable || overlapCheck !== "ready"

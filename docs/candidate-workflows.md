@@ -126,3 +126,10 @@ New workflow opens `/workflows/new`: Purpose → Forms → Readiness → Sample 
 Readiness checks cover invitation and Telegram intake bot configuration, selected forms and required versions. A sample preview is local only; HR can explore approval, rejection and missing contact without external calls. Review checks other active workflows with the same event, requires sample acknowledgement and readiness, then explicitly confirms publication. The guide rechecks readiness immediately before publishing and uses the existing owner/revision-guarded publication API. Publication pins forms and activates future events; it does not process historical CVs.
 
 Advanced canvas setup remains available. Published, archived or customized drafts continue in the editor; the guide never rebuilds custom graph edits from a preset. Draft edits require an explicit save and retain unsaved-change protection.
+
+
+## Canvas-first editor (October 2026)
+
+The editor keeps the canvas visible beneath a compact header. Preview draft is a local simulation; Review & publish retains integration checks, graph validation, active-workflow overlap warnings and explicit publication. Drafts autosave. More workflow actions contains Save draft now, Compare draft & live, explicit Run published workflow and help. Live execution remains a separate confirmed action and never uses draft settings.
+
+Starts when opens the protected starting step. Steps opens a searchable outline of branch destinations and setup issues, including disconnected steps; selecting one centers the canvas and opens its configuration. Essential step settings appear first, while custom names and internal notes are expandable. Data & behavior combines the input/output explanation. What happens next shows each connected destination with a direct navigation action, plus insertion and expandable connection changes. Terminal steps explicitly end their path. Connected paths show one insertion button on the connection; unconnected outputs retain their add button. Mobile uses the existing step-settings sheet. Draft recovery, undo/redo, published versions and execution guards are unchanged.

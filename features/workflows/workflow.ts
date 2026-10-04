@@ -158,14 +158,14 @@ export const STEP_LABELS: Record<StepKind, string> = {
 export const STEP_DESCRIPTIONS: Record<StepKind, string> = {
   resume_uploaded: "Choose the event that starts this workflow",
   extract_resume: "Reuse saved data or review manually; AI is optional",
-  review_resume: "Pause for manual approval",
+  review_resume: "Use saved CV approval or wait for HR review",
   create_account: "Create or use a reviewed account",
   link_resume: "Attach the approved resume",
-  assign_forms: "Assign templates with resume mappings",
+  assign_forms: "Choose forms the candidate needs to complete",
   send_telegram: "Send account access to a confirmed Telegram contact",
   condition: "Branch by source or applied position",
-  complete: "Workflow complete",
-  stop: "End this workflow",
+  complete: "Finish preparation; form submissions are tracked separately",
+  stop: "End this path",
 };
 
 export function defaultGraph(): WorkflowGraph {
