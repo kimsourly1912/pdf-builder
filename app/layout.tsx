@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 
 import { Toaster } from "@/components/ui/sonner";
+import { ThemeProvider } from "@/components/patterns/theme-provider";
 
 import "./globals.css";
 
@@ -23,10 +24,12 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
       <body>
-        {children}
-        <Toaster />
+        <ThemeProvider>
+          {children}
+          <Toaster />
+        </ThemeProvider>
       </body>
     </html>
   );

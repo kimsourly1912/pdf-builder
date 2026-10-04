@@ -220,7 +220,7 @@ export function AttentionDashboard({
                   <Badge
                     variant="outline"
                     className={
-                      task.urgent ? "border-amber-300 text-amber-700" : ""
+                      task.urgent ? "border-amber-300 text-amber-700 dark:border-amber-800 dark:text-amber-300" : ""
                     }
                   >
                     {ATTENTION_TYPES[task.type]}

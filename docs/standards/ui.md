@@ -8,6 +8,10 @@ Use `components/patterns/app-shell.tsx` and `page-header.tsx` for application pa
 
 Reuse `components/ui/` primitives and `components/patterns/` feedback, status, pagination, and data-view components. Use existing Tailwind theme tokens for background, border, text, and focus states; support dark mode. Follow nearby spacing, type sizes, and corner styles rather than introducing a second visual system. Prefer shared variants over copied component markup.
 
+Appearance uses the root `next-themes` provider with Light, Dark, and System options, persisted on the device. Use the shared `ThemeToggle` in page headers outside the management shell. Keep PDF paper and signature canvases white so document output stays faithful; surrounding controls must use theme tokens. Workflow and execution canvases follow the resolved theme. Check both themes and system preference changes without changing document colors.
+
+Keep related controls at least `gap-2` apart and distinct page sections `gap-6`/`space-y-6` apart. Action rows must wrap on narrow screens. Avoid unlayered global font shorthands on controls: they override Tailwind text sizes and make compact toolbars grow unexpectedly.
+
 Use one clear page title, a short purpose description, and a visible next action. Put supporting details below the decision the user needs to make. Product copy should describe the HR task, not database, queue, or implementation details.
 
 ## Actions and progress

@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 
 import { getChatGPTUser, safeRelativeReturnPath } from "@/app/chatgpt-auth";
 import { SignInForm } from "@/app/sign-in/sign-in-form";
+import { ThemeToggle } from "@/components/patterns/theme-toggle";
 import {
   Card,
   CardContent,
@@ -35,7 +36,10 @@ export default async function SignInPage(props: {
     <main className="flex min-h-[100dvh] items-center justify-center bg-background p-5 text-foreground">
       <Card className="w-full max-w-md">
         <CardHeader>
-          <p className="text-sm font-semibold text-primary">PDF Studio</p>
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-sm font-semibold text-primary">PDF Studio</p>
+            <ThemeToggle />
+          </div>
           <CardTitle>Sign in to PDF Studio</CardTitle>
           <CardDescription>
             Owners manage templates and submissions. Candidates and employees
@@ -49,4 +53,3 @@ export default async function SignInPage(props: {
     </main>
   );
 }
-

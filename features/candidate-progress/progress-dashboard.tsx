@@ -223,7 +223,7 @@ export function ProgressDashboard({
       <p className="mt-2 break-words text-xs text-muted-foreground">{stageEvidence(item)}</p>
       {item.manual && <p className="mt-1 break-words text-xs text-muted-foreground">{overrideEvidence(item)}</p>}
       {preparationLabel(item) && <p className="mt-1 text-xs font-medium">{preparationLabel(item)}</p>}
-      {(item.cvUpdates ?? []).some(u => ["pending", "reviewing"].includes(u.status)) && <p className="mt-1 text-xs text-amber-700">CV update pending · application unchanged</p>}
+      {(item.cvUpdates ?? []).some(u => ["pending", "reviewing"].includes(u.status)) && <p className="mt-1 text-xs text-amber-700 dark:text-amber-300">CV update pending · application unchanged</p>}
       <p className="mt-3 truncate text-xs" title={item.currentCv?.fileName ?? item.selectedCv.fileName}>
         Current CV: {item.currentCv?.fileName ?? item.selectedCv.fileName}
       </p>

@@ -16,6 +16,7 @@ import {
   type ReactFlowProps,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
+import { useTheme } from "next-themes";
 import {
   Send,
   FileUp,
@@ -282,9 +283,11 @@ function WorkflowEdgeView(props: EdgeProps<FlowEdge>) {
 const nodeTypes = { step: StepCard },
   edgeTypes = { workflow: WorkflowEdgeView };
 export function WorkflowCanvas(props: ReactFlowProps<FlowNode, FlowEdge>) {
+  const { resolvedTheme } = useTheme();
   return (
     <ReactFlow
       {...props}
+      colorMode={resolvedTheme === "dark" ? "dark" : "light"}
       nodeTypes={nodeTypes}
       edgeTypes={edgeTypes}
       fitView

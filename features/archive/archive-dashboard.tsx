@@ -178,7 +178,7 @@ export function ArchiveDashboard({ displayName }: { displayName: string }) {
         }}
       >
         <div className="overflow-x-auto">
-          <TabsList>
+          <TabsList className="grid !h-auto w-full grid-cols-2 gap-1 sm:grid-cols-3 lg:grid-cols-5">
             <TabsTrigger value="all">All records</TabsTrigger>
             {ARCHIVE_TYPES.map((t) => (
               <TabsTrigger key={t} value={t}>

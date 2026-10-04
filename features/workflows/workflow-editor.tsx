@@ -700,8 +700,8 @@ function EditorBody({
     <div
       className={
         focusMode
-          ? "fixed inset-0 z-40 overflow-y-auto bg-background p-3"
-          : "min-w-0"
+          ? "fixed inset-0 z-40 space-y-6 overflow-y-auto bg-background p-3 sm:p-6"
+          : "min-w-0 space-y-6"
       }
     >
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -750,7 +750,7 @@ function EditorBody({
             )}
           </p>
         </div>
-        <div className="flex flex-wrap gap-2">
+        <div aria-label="Workflow actions" className="flex w-full flex-wrap items-center gap-2 rounded-lg border bg-card p-3 xl:w-auto">
           <Button
             variant="outline"
             onClick={() => {
@@ -847,7 +847,7 @@ function EditorBody({
         </Alert>
       )}
       {tab === "editor" && (
-        <div className="grid min-w-0 gap-3 lg:grid-cols-2">
+        <div className={`grid min-w-0 gap-4 ${workflow.published ? "lg:grid-cols-2" : ""}`}>
           <BusinessSummaryCard graph={graph} title="Draft behavior" />
           {workflow.published && (
             <BusinessSummaryCard
@@ -862,7 +862,7 @@ function EditorBody({
         </div>
       )}
       <Tabs value={tab} onValueChange={setTab}>
-        <TabsList>
+        <TabsList className="max-w-full gap-1">
           <TabsTrigger value="editor">Editor</TabsTrigger>
           <TabsTrigger value="runs">Executions</TabsTrigger>
           <TabsTrigger value="settings">Settings</TabsTrigger>

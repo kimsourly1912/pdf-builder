@@ -183,17 +183,22 @@ body {
   overscroll-behavior: none;
 }
 
-button,
-input,
-textarea {
-  font: inherit;
-}
-
 .upload-shell {
   background:
     radial-gradient(circle at 12% 15%, rgba(191, 219, 254, 0.75), transparent 27rem),
     radial-gradient(circle at 92% 85%, rgba(224, 231, 255, 0.75), transparent 30rem),
     #f8fafc;
+}
+
+.dark .upload-shell {
+  background:
+    radial-gradient(circle at 12% 15%, oklch(0.3 0.06 262 / 35%), transparent 27rem),
+    radial-gradient(circle at 92% 85%, oklch(0.3 0.05 280 / 35%), transparent 30rem),
+    var(--background);
+}
+
+.dark .upload-card::before {
+  background: linear-gradient(135deg, oklch(1 0 0 / 4%), transparent 45%);
 }
 
 .upload-card::before {

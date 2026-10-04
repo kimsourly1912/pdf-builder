@@ -13,6 +13,7 @@ import {
 import { useCallback, useEffect, useState } from "react";
 
 import { SignOutButton } from "@/components/auth/sign-out-button";
+import { ThemeToggle } from "@/components/patterns/theme-toggle";
 import { FeedbackAlert } from "@/components/patterns/feedback-alert";
 import { MetricCard } from "@/components/patterns/metric-card";
 import { PageHeader } from "@/components/patterns/page-header";
@@ -113,7 +114,10 @@ export function RecipientPortal(props: {
               </p>
             </div>
           </div>
-          <SignOutButton />
+          <div className="flex shrink-0 items-center gap-2">
+            <ThemeToggle />
+            <SignOutButton />
+          </div>
         </div>
       </header>
       <div className="mx-auto max-w-5xl px-4 py-8 sm:px-6">

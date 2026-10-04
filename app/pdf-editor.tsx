@@ -1,5 +1,7 @@
 "use client";
 
+import { ThemeToggle } from "@/components/patterns/theme-toggle";
+
 import {
   AlignLeft,
   ArrowDown,
@@ -1049,7 +1051,7 @@ function ToolButton(props: {
         <span className="flex items-center gap-2">
           {props.label}
           {props.shortcut && (
-            <kbd className="rounded border border-slate-300 bg-white/80 px-1.5 py-0.5 font-mono text-[10px] font-semibold text-slate-600 shadow-sm">
+            <kbd className="rounded border border-slate-300 dark:border-border bg-white/80 dark:bg-card px-1.5 py-0.5 font-mono text-[10px] font-semibold text-slate-600 dark:text-muted-foreground shadow-sm">
               {props.shortcut}
             </kbd>
           )}
@@ -1156,7 +1158,7 @@ function FontSizeControl(props: {
           }
           className="min-w-0 flex-1"
         />
-        <label className="flex shrink-0 items-center gap-1 text-[11px] font-medium text-slate-500">
+        <label className="flex shrink-0 items-center gap-1 text-[11px] font-medium text-slate-500 dark:text-muted-foreground">
           <span className="sr-only">Exact font size</span>
           <Input
             type="number"
@@ -1168,7 +1170,7 @@ function FontSizeControl(props: {
               if (!event.target.value) return;
               onChange(clampFontSize(Number(event.target.value)));
             }}
-            className="h-8 w-16 rounded-md border border-slate-200 bg-white px-2 text-right text-xs font-semibold tabular-nums text-slate-700 shadow-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+            className="h-8 w-16 rounded-md border border-slate-200 dark:border-border bg-white dark:bg-card px-2 text-right text-xs font-semibold tabular-nums text-slate-700 dark:text-foreground shadow-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
           />
           pt
         </label>
@@ -1242,7 +1244,7 @@ function GroupFieldEditor(props: {
         value={props.annotation.label ?? ""}
         onChange={(event) => props.onChange({ label: event.target.value })}
         placeholder="Group label"
-        className={`${props.compact ? "h-8 w-40 rounded-md px-2" : "h-9 w-full rounded-lg px-3 shadow-sm"} border border-slate-200 bg-white text-sm text-slate-800 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100`}
+        className={`${props.compact ? "h-8 w-40 rounded-md px-2" : "h-9 w-full rounded-lg px-3 shadow-sm"} border border-slate-200 dark:border-border bg-white dark:bg-card text-sm text-slate-800 dark:text-foreground outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100`}
       />
       <div className={props.compact ? "flex items-center gap-2" : "space-y-2"}>
         {options.map((option) => (
@@ -1251,7 +1253,7 @@ function GroupFieldEditor(props: {
               type="button"
               aria-label={`${option.checked ? "Unselect" : "Select"} ${option.label}`}
               onClick={() => toggleOption(option.id)}
-              className={`flex size-6 shrink-0 items-center justify-center border-2 bg-white transition hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500 ${isRadio ? "rounded-full" : "rounded-md"}`}
+              className={`flex size-6 shrink-0 items-center justify-center border-2 bg-white dark:bg-card transition hover:bg-slate-50 dark:hover:bg-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500 ${isRadio ? "rounded-full" : "rounded-md"}`}
               style={{ borderColor: props.annotation.color }}
             >
               {option.checked &&
@@ -1274,14 +1276,14 @@ function GroupFieldEditor(props: {
               onChange={(event) =>
                 updateOption(option.id, { label: event.target.value })
               }
-              className={`${props.compact ? "h-8 w-28 rounded-md px-2 text-xs" : "h-9 min-w-0 flex-1 rounded-lg px-3 text-sm shadow-sm"} border border-slate-200 bg-white text-slate-800 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100`}
+              className={`${props.compact ? "h-8 w-28 rounded-md px-2 text-xs" : "h-9 min-w-0 flex-1 rounded-lg px-3 text-sm shadow-sm"} border border-slate-200 dark:border-border bg-white dark:bg-card text-slate-800 dark:text-foreground outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100`}
             />
             <Button variant="ghost"
               type="button"
               aria-label={`Remove ${option.label}`}
               disabled={options.length <= 1}
               onClick={() => removeOption(option.id)}
-              className="flex size-9 shrink-0 items-center justify-center rounded-lg text-slate-400 transition hover:bg-rose-50 hover:text-rose-600 focus-visible:outline-2 focus-visible:outline-rose-500 disabled:opacity-30"
+              className="flex size-9 shrink-0 items-center justify-center rounded-lg text-slate-400 dark:text-muted-foreground transition hover:bg-rose-50 hover:text-rose-600 focus-visible:outline-2 focus-visible:outline-rose-500 disabled:opacity-30"
             >
               <Minus className="size-3.5" />
             </Button>
@@ -1308,17 +1310,17 @@ function GazetteerFieldEditor(props: {
 }) {
   return (
     <div className={props.compact ? "flex min-w-max items-center gap-2" : "space-y-3"}>
-      <label className="block text-[11px] font-semibold text-slate-500">
+      <label className="block text-[11px] font-semibold text-slate-500 dark:text-muted-foreground">
         <span className={props.compact ? "sr-only" : "block"}>Field label</span>
         <Input
           aria-label="Cambodia address field label"
           value={props.annotation.label ?? ""}
           onChange={(event) => props.onChange({ label: event.target.value })}
           placeholder="Cambodia address"
-          className={`${props.compact ? "h-8 w-40 rounded-md px-2 text-xs" : "mt-1.5 h-9 w-full rounded-lg px-3 text-sm shadow-sm"} border border-slate-200 bg-white font-normal text-slate-800 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100`}
+          className={`${props.compact ? "h-8 w-40 rounded-md px-2 text-xs" : "mt-1.5 h-9 w-full rounded-lg px-3 text-sm shadow-sm"} border border-slate-200 dark:border-border bg-white dark:bg-card font-normal text-slate-800 dark:text-foreground outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100`}
         />
       </label>
-      <label className="block text-[11px] font-semibold text-slate-500">
+      <label className="block text-[11px] font-semibold text-slate-500 dark:text-muted-foreground">
         <span className={props.compact ? "sr-only" : "block"}>Display language</span>
         <Select
           value={props.annotation.gazetteerLanguage ?? "bilingual"}
@@ -1346,7 +1348,7 @@ function GazetteerFieldEditor(props: {
           </SelectContent>
         </Select>
       </label>
-      <label className="block text-[11px] font-semibold text-slate-500">
+      <label className="block text-[11px] font-semibold text-slate-500 dark:text-muted-foreground">
         <span className={props.compact ? "sr-only" : "block"}>Address depth</span>
         <Select
           value={props.annotation.gazetteerLevel ?? "village"}
@@ -1404,12 +1406,12 @@ function ShortcutsDialog(props: {
           {TOOL_SHORTCUT_ITEMS.map((item) => (
             <div
               key={item.key}
-              className="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50 px-3 py-2"
+              className="flex items-center justify-between rounded-lg border border-slate-200 dark:border-border bg-slate-50 dark:bg-muted px-3 py-2"
             >
-              <span className="text-sm font-medium text-slate-700">
+              <span className="text-sm font-medium text-slate-700 dark:text-foreground">
                 {item.label}
               </span>
-              <kbd className="flex size-7 items-center justify-center rounded-md border border-slate-300 bg-white font-mono text-xs font-bold text-slate-700 shadow-sm">
+              <kbd className="flex size-7 items-center justify-center rounded-md border border-slate-300 dark:border-border bg-white dark:bg-card font-mono text-xs font-bold text-slate-700 dark:text-foreground shadow-sm">
                 {item.key}
               </kbd>
             </div>
@@ -1422,8 +1424,8 @@ function ShortcutsDialog(props: {
           <div className="mt-3 grid gap-3 text-sm sm:grid-cols-2">
             {EDITOR_SHORTCUT_ITEMS.map(([shortcut, description]) => (
               <div key={shortcut}>
-                <p className="font-semibold text-slate-800">{shortcut}</p>
-                <p className="mt-0.5 text-xs text-slate-500">
+                <p className="font-semibold text-slate-800 dark:text-foreground">{shortcut}</p>
+                <p className="mt-0.5 text-xs text-slate-500 dark:text-muted-foreground">
                   {description}
                 </p>
               </div>
@@ -1508,7 +1510,7 @@ function SignatureDialog(props: {
             browser and is only added to your PDF when you place it.
           </DialogDescription>
         </DialogHeader>
-        <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+        <div className="overflow-hidden rounded-xl border border-slate-200 dark:border-border bg-white dark:bg-card">
           <svg
             ref={padRef}
             role="img"
@@ -1649,10 +1651,10 @@ function PageThumbnail(props: {
     >
       <span
         aria-hidden="true"
-        className={`pointer-events-none absolute right-1.5 top-1.5 z-10 flex size-6 items-center justify-center rounded-md border bg-white/90 shadow-sm backdrop-blur transition-[opacity,transform,color] duration-200 [&_svg]:size-3.5 ${
+        className={`pointer-events-none absolute right-1.5 top-1.5 z-10 flex size-6 items-center justify-center rounded-md border bg-white/90 dark:bg-card shadow-sm backdrop-blur transition-[opacity,transform,color] duration-200 [&_svg]:size-3.5 ${
           props.dragging
             ? "scale-110 border-blue-300 text-blue-600 opacity-100"
-            : "border-slate-200 text-slate-400 opacity-0 group-hover:opacity-100"
+            : "border-slate-200 dark:border-border text-slate-400 dark:text-muted-foreground opacity-0 group-hover:opacity-100"
         }`}
       >
         <GripVertical />
@@ -4708,11 +4710,12 @@ export function PdfEditor(props: { initialTemplateId?: string }) {
 
   if (!document) {
     return (
-      <main className="upload-shell min-h-screen text-slate-950">
+      <main className="upload-shell min-h-screen text-slate-950 dark:text-foreground">
         <style>{`@font-face{font-family:"${KHMER_FONT_FAMILY}";src:url("${khmerFontUrl}") format("truetype");font-style:normal;font-weight:400;font-display:block}`}</style>
         <header className="mx-auto flex w-full max-w-6xl items-center justify-between px-5 py-6 sm:px-8">
           <Brand />
-          <div className="flex items-center gap-2 text-xs font-medium text-slate-500">
+          <div className="flex items-center gap-2 text-xs font-medium text-slate-500 dark:text-muted-foreground">
+            <ThemeToggle />
             <LockKeyhole className="size-3.5 text-emerald-600" />
             Files stay on your device
           </div>
@@ -4724,14 +4727,14 @@ export function PdfEditor(props: { initialTemplateId?: string }) {
                 <Check className="size-3.5" /> No sign-up. No upload to a
                 server.
               </div>
-              <h1 className="text-balance text-5xl font-semibold leading-[1.04] tracking-[-0.045em] text-slate-950 sm:text-6xl">
+              <h1 className="text-balance text-5xl font-semibold leading-[1.04] tracking-[-0.045em] text-slate-950 dark:text-foreground sm:text-6xl">
                 Make changes to a PDF, right where it opens.
               </h1>
-              <p className="mt-6 max-w-lg text-lg leading-8 text-slate-600">
+              <p className="mt-6 max-w-lg text-lg leading-8 text-slate-600 dark:text-muted-foreground">
                 Add text, fill fields, sign, highlight details, draw notes, and
                 export a clean copy—all inside your browser.
               </p>
-              <div className="mt-8 flex flex-wrap gap-x-6 gap-y-3 text-sm font-medium text-slate-500">
+              <div className="mt-8 flex flex-wrap gap-x-6 gap-y-3 text-sm font-medium text-slate-500 dark:text-muted-foreground">
                 <span className="flex items-center gap-2">
                   <Check className="size-4 text-emerald-600" /> Private by
                   default
@@ -4748,7 +4751,7 @@ export function PdfEditor(props: { initialTemplateId?: string }) {
             </div>
 
             <div
-              className="upload-card relative overflow-hidden rounded-[2rem] border border-white/80 bg-white/80 p-4 shadow-2xl shadow-blue-950/10 backdrop-blur sm:p-6"
+              className="upload-card relative overflow-hidden rounded-[2rem] border border-white/80 bg-white/80 dark:bg-card p-4 shadow-2xl shadow-blue-950/10 backdrop-blur sm:p-6"
               onDragOver={(event) => event.preventDefault()}
               onDrop={(event) => {
                 event.preventDefault();
@@ -4756,7 +4759,7 @@ export function PdfEditor(props: { initialTemplateId?: string }) {
                 if (file) requestOpenFile(file);
               }}
             >
-              <Empty className="min-h-[390px] rounded-[1.5rem] border-2 border-dashed border-blue-200 bg-gradient-to-b from-blue-50/80 to-white px-6">
+              <Empty className="min-h-[390px] rounded-[1.5rem] border-2 border-dashed border-blue-200 bg-gradient-to-b from-blue-50/80 to-white px-6 dark:border-border dark:from-card dark:to-card">
                 <EmptyHeader>
                   <EmptyMedia
                     className="size-16 rounded-2xl bg-primary text-primary-foreground shadow-lg shadow-primary/20"
@@ -4768,10 +4771,10 @@ export function PdfEditor(props: { initialTemplateId?: string }) {
                       <UploadCloud className="size-7" />
                     )}
                   </EmptyMedia>
-                  <EmptyTitle className="mt-3 text-2xl font-semibold text-slate-900">
+                  <EmptyTitle className="mt-3 text-2xl font-semibold text-slate-900 dark:text-foreground">
                     {isLoading ? "Opening your PDF…" : "Drop your PDF here"}
                   </EmptyTitle>
-                  <EmptyDescription className="max-w-xs text-slate-500">
+                  <EmptyDescription className="max-w-xs text-slate-500 dark:text-muted-foreground">
                     Or choose a file from your device. PDF files up to 35 MB are
                     supported.
                   </EmptyDescription>
@@ -4779,10 +4782,10 @@ export function PdfEditor(props: { initialTemplateId?: string }) {
                 <EmptyContent>
                   {availableDraft && (
                     <div className="mb-3 w-full max-w-sm rounded-xl border border-blue-200 bg-blue-50 p-3 text-left">
-                      <p className="truncate text-sm font-semibold text-slate-800">
+                      <p className="truncate text-sm font-semibold text-slate-800 dark:text-foreground">
                         Continue {availableDraft.fileName}
                       </p>
-                      <p className="mt-0.5 text-xs text-slate-500">
+                      <p className="mt-0.5 text-xs text-slate-500 dark:text-muted-foreground">
                         Saved {formatLocalDateTime(availableDraft.savedAt)}
                       </p>
                       <div className="mt-3 flex gap-2">
@@ -4835,17 +4838,17 @@ export function PdfEditor(props: { initialTemplateId?: string }) {
 
   return (
     <TooltipProvider>
-      <main className="flex h-[100dvh] min-h-0 flex-col overflow-hidden bg-slate-100 text-slate-950">
+      <main className="flex h-[100dvh] min-h-0 flex-col overflow-hidden bg-slate-100 dark:bg-muted text-slate-950 dark:text-foreground">
         <style>{`@font-face{font-family:"${KHMER_FONT_FAMILY}";src:url("${khmerFontUrl}") format("truetype");font-style:normal;font-weight:400;font-display:block}`}</style>
-        <header className="z-20 flex min-h-14 shrink-0 items-center justify-between border-b border-slate-200 bg-white px-3 py-2 sm:h-16 sm:px-5 sm:py-0">
+        <header className="z-20 flex min-h-14 shrink-0 items-center justify-between border-b border-slate-200 dark:border-border bg-white dark:bg-card px-3 py-2 sm:h-16 sm:px-5 sm:py-0">
           <div className="flex min-w-0 items-center gap-3">
             <Brand compact />
-            <div className="hidden h-7 w-px bg-slate-200 sm:block" />
+            <div className="hidden h-7 w-px bg-slate-200 dark:bg-muted sm:block" />
             <div className="min-w-0">
-              <p className="max-w-[180px] truncate text-sm font-semibold text-slate-800 sm:max-w-[320px]">
+              <p className="max-w-[180px] truncate text-sm font-semibold text-slate-800 dark:text-foreground sm:max-w-[320px]">
                 {fileName}
               </p>
-              <p className="flex items-center gap-1 text-[11px] font-medium text-slate-400">
+              <p className="flex items-center gap-1 text-[11px] font-medium text-slate-400 dark:text-muted-foreground">
                 {draftStatus === "saving" ? (
                   <Spinner className="size-3 text-primary" />
                 ) : (
@@ -4856,6 +4859,7 @@ export function PdfEditor(props: { initialTemplateId?: string }) {
             </div>
           </div>
           <div className="flex items-center gap-2">
+            <ThemeToggle />
             <Tabs
               value={editorMode}
               onValueChange={(nextMode) => {
@@ -4894,7 +4898,7 @@ export function PdfEditor(props: { initialTemplateId?: string }) {
               </TooltipTrigger>
               <TooltipContent side="bottom">Keyboard shortcuts</TooltipContent>
             </Tooltip>
-            <Button asChild type="button" variant="ghost" size="sm" className="hidden text-slate-600 lg:flex">
+            <Button asChild type="button" variant="ghost" size="sm" className="hidden text-slate-600 dark:text-muted-foreground lg:flex">
               <a href="/templates">
                 <FolderOpen className="size-4" /> Templates
               </a>
@@ -4919,7 +4923,7 @@ export function PdfEditor(props: { initialTemplateId?: string }) {
               type="button"
               variant="ghost"
               size="sm"
-              className="hidden text-slate-600 sm:flex"
+              className="hidden text-slate-600 dark:text-muted-foreground sm:flex"
               onClick={() => inputRef.current?.click()}
             >
               <RotateCcw className="size-4" /> Replace
@@ -5022,12 +5026,12 @@ export function PdfEditor(props: { initialTemplateId?: string }) {
         </header>
 
         <div className="flex min-h-0 flex-1">
-          <aside className="hidden w-40 shrink-0 flex-col border-r border-slate-200 bg-slate-50/90 md:flex">
-            <div className="flex h-12 items-center justify-between border-b border-slate-200 px-4">
-              <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+          <aside className="hidden w-40 shrink-0 flex-col border-r border-slate-200 dark:border-border bg-slate-50/90 dark:bg-muted md:flex">
+            <div className="flex h-12 items-center justify-between border-b border-slate-200 dark:border-border px-4">
+              <span className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-muted-foreground">
                 Pages
               </span>
-              <span className="rounded-md bg-slate-200 px-1.5 py-0.5 text-[10px] font-bold text-slate-500">
+              <span className="rounded-md bg-slate-200 dark:bg-muted px-1.5 py-0.5 text-[10px] font-bold text-slate-500 dark:text-muted-foreground">
                 {pageOrder.length}
               </span>
             </div>
@@ -5064,8 +5068,8 @@ export function PdfEditor(props: { initialTemplateId?: string }) {
           </aside>
 
           <section className="flex min-w-0 flex-1 flex-col">
-            <div className="z-10 flex shrink-0 flex-col gap-2 border-b border-slate-200 bg-white px-2 py-2 shadow-sm sm:min-h-14 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:px-4">
-              <div className={`scrollbar-none flex w-full items-center gap-1 overflow-x-auto rounded-xl border border-slate-200 bg-slate-50 p-1 sm:w-auto sm:max-w-full sm:rounded-lg ${editorMode === "fill" ? "pointer-events-none opacity-45" : ""}`}>
+            <div className="z-10 flex shrink-0 flex-col gap-2 border-b border-slate-200 dark:border-border bg-white dark:bg-card px-2 py-2 shadow-sm sm:min-h-14 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:px-4">
+              <div className={`scrollbar-none flex w-full items-center gap-1 overflow-x-auto rounded-xl border border-slate-200 dark:border-border bg-slate-50 dark:bg-muted p-1 sm:w-auto sm:max-w-full sm:rounded-lg ${editorMode === "fill" ? "pointer-events-none opacity-45" : ""}`}>
                 <ToolButton
                   label="Select"
                   shortcut="A"
@@ -5271,7 +5275,7 @@ export function PdfEditor(props: { initialTemplateId?: string }) {
                 >
                   <Redo2 />
                 </ToolButton>
-                <div className="mx-1 h-6 w-px bg-slate-200" />
+                <div className="mx-1 h-6 w-px bg-slate-200 dark:bg-muted" />
                 <ToolButton
                   label="Fit page to screen"
                   active={fitMode}
@@ -5297,7 +5301,7 @@ export function PdfEditor(props: { initialTemplateId?: string }) {
                   }
                   className="hidden w-24 cursor-ew-resize sm:flex"
                 />
-                <span className="w-11 text-center text-xs font-semibold tabular-nums text-slate-500">
+                <span className="w-11 text-center text-xs font-semibold tabular-nums text-slate-500 dark:text-muted-foreground">
                   {Math.round(zoom * 100)}%
                 </span>
                 <ToolButton
@@ -5309,7 +5313,7 @@ export function PdfEditor(props: { initialTemplateId?: string }) {
                 </ToolButton>
               </div>
               <div className="hidden items-center gap-2 lg:flex">
-                <span className="text-xs font-medium text-slate-400">Ink</span>
+                <span className="text-xs font-medium text-slate-400 dark:text-muted-foreground">Ink</span>
                 <ColorControl
                   compact
                   value={color}
@@ -5334,8 +5338,8 @@ export function PdfEditor(props: { initialTemplateId?: string }) {
             )}
 
             {selectedAnnotation && (
-              <div className="flex shrink-0 items-center gap-2 overflow-x-auto border-b border-slate-200 bg-white px-3 py-2 xl:hidden">
-                <span className="shrink-0 text-xs font-semibold capitalize text-slate-500">
+              <div className="flex shrink-0 items-center gap-2 overflow-x-auto border-b border-slate-200 dark:border-border bg-white dark:bg-card px-3 py-2 xl:hidden">
+                <span className="shrink-0 text-xs font-semibold capitalize text-slate-500 dark:text-muted-foreground">
                   {selectedIds.length > 1
                     ? `${selectedIds.length} selected`
                     : selectedAnnotation.type}
@@ -5357,7 +5361,7 @@ export function PdfEditor(props: { initialTemplateId?: string }) {
                         updateSelected({ text: event.target.value })
                       }
                       rows={2}
-                      className="h-14 min-w-56 flex-1 resize-none rounded-md border border-slate-200 bg-slate-50 px-2 py-1.5 text-sm outline-none focus:border-blue-500"
+                      className="h-14 min-w-56 flex-1 resize-none rounded-md border border-slate-200 dark:border-border bg-slate-50 dark:bg-muted px-2 py-1.5 text-sm outline-none focus:border-blue-500"
                     />
                   ) : (
                     <Input
@@ -5375,7 +5379,7 @@ export function PdfEditor(props: { initialTemplateId?: string }) {
                       onChange={(event) =>
                         updateSelected({ text: event.target.value })
                       }
-                      className="h-8 min-w-40 flex-1 rounded-md border border-slate-200 bg-slate-50 px-2 text-sm outline-none focus:border-blue-500"
+                      className="h-8 min-w-40 flex-1 rounded-md border border-slate-200 dark:border-border bg-slate-50 dark:bg-muted px-2 text-sm outline-none focus:border-blue-500"
                     />
                   )
                 )}
@@ -5430,7 +5434,7 @@ export function PdfEditor(props: { initialTemplateId?: string }) {
                       onChange={(event) =>
                         updateSelected({ label: event.target.value })
                       }
-                      className="h-8 w-36 rounded-md border border-slate-200 bg-slate-50 px-2 text-sm outline-none focus:border-blue-500"
+                      className="h-8 w-36 rounded-md border border-slate-200 dark:border-border bg-slate-50 dark:bg-muted px-2 text-sm outline-none focus:border-blue-500"
                     />
                     <Button
                       type="button"
@@ -5459,7 +5463,7 @@ export function PdfEditor(props: { initialTemplateId?: string }) {
                   selectedAnnotation.type === "image-placeholder" ||
                   selectedAnnotation.type === "cambodia-address") && (
                   <div className="flex shrink-0 items-center gap-2">
-                    <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                    <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-400 dark:text-muted-foreground">
                       Border
                     </span>
                     <ColorControl
@@ -5489,7 +5493,7 @@ export function PdfEditor(props: { initialTemplateId?: string }) {
                         <Maximize2 className="size-3.5" /> Standard size
                       </Button>
                     )}
-                    <label className="flex shrink-0 items-center gap-1.5 text-xs font-semibold text-slate-600">
+                    <label className="flex shrink-0 items-center gap-1.5 text-xs font-semibold text-slate-600 dark:text-muted-foreground">
                       <Checkbox checked={selectedAnnotation.required ?? false} onCheckedChange={(checked) => updateSelected({ required: checked === true })} />
                       Required
                     </label>
@@ -6206,21 +6210,21 @@ export function PdfEditor(props: { initialTemplateId?: string }) {
             </div>
           </section>
 
-          <aside className="scrollbar-thin hidden w-80 shrink-0 overflow-y-auto border-l border-slate-200 bg-white xl:block">
-            <div className="sticky top-0 z-10 flex h-12 items-center border-b border-slate-200 bg-white/95 px-4 backdrop-blur">
-              <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+          <aside className="scrollbar-thin hidden w-80 shrink-0 overflow-y-auto border-l border-slate-200 dark:border-border bg-white dark:bg-card xl:block">
+            <div className="sticky top-0 z-10 flex h-12 items-center border-b border-slate-200 dark:border-border bg-white/95 dark:bg-card px-4 backdrop-blur">
+              <span className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-muted-foreground">
                 Properties
               </span>
             </div>
             {selectedAnnotation ? (
               <div className="space-y-4 p-4">
-                <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                  <p className="text-sm font-semibold text-slate-800">
+                <div className="rounded-xl border border-slate-200 dark:border-border bg-slate-50 dark:bg-muted p-3">
+                  <p className="text-sm font-semibold text-slate-800 dark:text-foreground">
                     {selectedIds.length > 1
                       ? `${selectedIds.length} elements selected`
                       : formatAnnotationTypeLabel(selectedAnnotation.type)}
                   </p>
-                  <p className="mt-1 text-xs leading-5 text-slate-400">
+                  <p className="mt-1 text-xs leading-5 text-slate-400 dark:text-muted-foreground">
                     Page {selectedAnnotation.page} · {selectedIds.length > 1
                       ? "Style, move, duplicate, or delete them together."
                       : "Select another tool to add more."}
@@ -6230,7 +6234,7 @@ export function PdfEditor(props: { initialTemplateId?: string }) {
                   selectedAnnotation.type === "input" ||
                   selectedAnnotation.type === "textarea" ||
                   selectedAnnotation.type === "initials") && (
-                  <label className="block rounded-xl border border-slate-200 bg-slate-50/70 p-3 text-xs font-semibold text-slate-600">
+                  <label className="block rounded-xl border border-slate-200 dark:border-border bg-slate-50/70 dark:bg-muted p-3 text-xs font-semibold text-slate-600 dark:text-muted-foreground">
                     {selectedAnnotation.type === "input"
                       ? "Value"
                       : selectedAnnotation.type === "textarea"
@@ -6244,12 +6248,12 @@ export function PdfEditor(props: { initialTemplateId?: string }) {
                         updateSelected({ text: event.target.value })
                       }
                       rows={selectedAnnotation.type === "textarea" ? 6 : 4}
-                      className="mt-2 w-full resize-none rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-normal text-slate-800 shadow-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                      className="mt-2 w-full resize-none rounded-lg border border-slate-200 dark:border-border bg-white dark:bg-card px-3 py-2 text-sm font-normal text-slate-800 dark:text-foreground shadow-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                     />
                   </label>
                 )}
                 {selectedAnnotation.type === "date" && (
-                  <label className="block rounded-xl border border-slate-200 bg-slate-50/70 p-3 text-xs font-semibold text-slate-600">
+                  <label className="block rounded-xl border border-slate-200 dark:border-border bg-slate-50/70 dark:bg-muted p-3 text-xs font-semibold text-slate-600 dark:text-muted-foreground">
                     Date
                     <DatePicker
                       value={selectedAnnotation.text ?? ""}
@@ -6258,7 +6262,7 @@ export function PdfEditor(props: { initialTemplateId?: string }) {
                       aria-label="Field date"
                       className="mt-2 h-9"
                     />
-                    <span className="mt-1.5 block font-normal text-slate-400">
+                    <span className="mt-1.5 block font-normal text-slate-400 dark:text-muted-foreground">
                       {formatDateValue(selectedAnnotation.text)}
                     </span>
                   </label>
@@ -6273,8 +6277,8 @@ export function PdfEditor(props: { initialTemplateId?: string }) {
                   selectedAnnotation.type === "date" ||
                   selectedAnnotation.type === "initials" ||
                   selectedAnnotation.type === "cambodia-address") && (
-                  <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3">
-                    <p className="mb-3 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                  <div className="rounded-xl border border-slate-200 dark:border-border bg-slate-50/70 dark:bg-muted p-3">
+                    <p className="mb-3 text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-muted-foreground">
                       Font size
                     </p>
                     <FontSizeControl
@@ -6287,7 +6291,7 @@ export function PdfEditor(props: { initialTemplateId?: string }) {
                 )}
                 {(selectedAnnotation.type === "checkbox" ||
                   selectedAnnotation.type === "radio") && (
-                  <label className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50/70 p-3 text-xs font-semibold text-slate-600">
+                  <label className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 dark:border-border bg-slate-50/70 dark:bg-muted p-3 text-xs font-semibold text-slate-600 dark:text-muted-foreground">
                     Selected
                     <Checkbox
                       aria-label={`Toggle ${selectedAnnotation.type}`}
@@ -6301,8 +6305,8 @@ export function PdfEditor(props: { initialTemplateId?: string }) {
                 {(selectedAnnotation.type === "checkbox-group" ||
                   selectedAnnotation.type === "radio-group" ||
                   selectedAnnotation.type === "dropdown") && (
-                  <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3">
-                    <p className="mb-3 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                  <div className="rounded-xl border border-slate-200 dark:border-border bg-slate-50/70 dark:bg-muted p-3">
+                    <p className="mb-3 text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-muted-foreground">
                       {selectedAnnotation.type === "dropdown"
                         ? "Placeholder and options"
                         : "Group label and options"}
@@ -6314,8 +6318,8 @@ export function PdfEditor(props: { initialTemplateId?: string }) {
                   </div>
                 )}
                 {selectedAnnotation.type === "cambodia-address" && (
-                  <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3">
-                    <p className="mb-3 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                  <div className="rounded-xl border border-slate-200 dark:border-border bg-slate-50/70 dark:bg-muted p-3">
+                    <p className="mb-3 text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-muted-foreground">
                       Cambodia address
                     </p>
                     <GazetteerFieldEditor
@@ -6328,8 +6332,8 @@ export function PdfEditor(props: { initialTemplateId?: string }) {
                   selectedAnnotation.type === "checkbox-group" ||
                   selectedAnnotation.type === "radio-group" ||
                   selectedAnnotation.type === "image-placeholder") && (
-                  <div className="space-y-3 rounded-xl border border-slate-200 bg-slate-50/70 p-3">
-                    <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Field settings</p>
+                  <div className="space-y-3 rounded-xl border border-slate-200 dark:border-border bg-slate-50/70 dark:bg-muted p-3">
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-muted-foreground">Field settings</p>
                     {isStandardFieldType(selectedAnnotation.type) && (
                       <Button
                         type="button"
@@ -6341,7 +6345,7 @@ export function PdfEditor(props: { initialTemplateId?: string }) {
                         <Maximize2 className="size-3.5" /> Reset to standard size
                       </Button>
                     )}
-                    <label className="block text-xs font-semibold text-slate-600">
+                    <label className="block text-xs font-semibold text-slate-600 dark:text-muted-foreground">
                       Recipient
                       <Select
                         value={selectedAnnotation.recipientRoleId ?? recipientRoles[0]?.id ?? ""}
@@ -6361,40 +6365,40 @@ export function PdfEditor(props: { initialTemplateId?: string }) {
                         </SelectContent>
                       </Select>
                     </label>
-                    <label className="block text-xs font-semibold text-slate-600">
+                    <label className="block text-xs font-semibold text-slate-600 dark:text-muted-foreground">
                       Field name
                       <Input
                         value={selectedAnnotation.fieldName ?? ""}
                         onChange={(event) => updateSelected({ fieldName: event.target.value })}
                         placeholder="Customer name"
-                        className="mt-1.5 h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm font-normal text-slate-800 shadow-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                        className="mt-1.5 h-9 w-full rounded-lg border border-slate-200 dark:border-border bg-white dark:bg-card px-3 text-sm font-normal text-slate-800 dark:text-foreground shadow-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                       />
                     </label>
-                    <label className="block text-xs font-semibold text-slate-600">
+                    <label className="block text-xs font-semibold text-slate-600 dark:text-muted-foreground">
                       Field key
                       <Input
                         value={selectedAnnotation.fieldKey ?? createFieldKey(selectedAnnotation.fieldName || selectedAnnotation.label || selectedAnnotation.type)}
                         onChange={(event) => updateSelected({ fieldKey: createFieldKey(event.target.value) })}
                         placeholder="customer_name"
-                        className="mt-1.5 h-9 w-full rounded-lg border border-slate-200 bg-white px-3 font-mono text-xs font-normal text-slate-800 shadow-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                        className="mt-1.5 h-9 w-full rounded-lg border border-slate-200 dark:border-border bg-white dark:bg-card px-3 font-mono text-xs font-normal text-slate-800 dark:text-foreground shadow-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                       />
                     </label>
-                    <label className="block text-xs font-semibold text-slate-600">
+                    <label className="block text-xs font-semibold text-slate-600 dark:text-muted-foreground">
                       Candidate auto-fill
                       <CandidatePrefillCombobox
                         value={selectedAnnotation.prefillKey}
                         onValueChange={(prefillKey) => updateSelected({ prefillKey })}
                         className="mt-1.5 text-xs"
                       />
-                      <span className="mt-1 block text-[10px] font-normal leading-4 text-slate-400">
+                      <span className="mt-1 block text-[10px] font-normal leading-4 text-slate-400 dark:text-muted-foreground">
                         Search extracted resume fields. The selected value is copied as an immutable snapshot when the form is assigned.
                       </span>
                     </label>
-                    <div className="rounded-lg border border-slate-200 bg-white p-3 shadow-sm">
+                    <div className="rounded-lg border border-slate-200 dark:border-border bg-white dark:bg-card p-3 shadow-sm">
                       <div className="flex items-start justify-between gap-2">
                         <div className="min-w-0">
-                          <p className="text-xs font-semibold text-slate-600">PDF label</p>
-                          <p className="mt-0.5 truncate text-[11px] text-slate-400">
+                          <p className="text-xs font-semibold text-slate-600 dark:text-muted-foreground">PDF label</p>
+                          <p className="mt-0.5 truncate text-[11px] text-slate-400 dark:text-muted-foreground">
                             {selectedAnnotation.labelBinding?.text || "No label bound"}
                           </p>
                         </div>
@@ -6412,28 +6416,28 @@ export function PdfEditor(props: { initialTemplateId?: string }) {
                     {(selectedAnnotation.type === "input" ||
                       selectedAnnotation.type === "textarea" ||
                       selectedAnnotation.type === "initials") && (
-                      <label className="block text-xs font-semibold text-slate-600">
+                      <label className="block text-xs font-semibold text-slate-600 dark:text-muted-foreground">
                         Placeholder
                         <Input
                           value={selectedAnnotation.placeholder ?? ""}
                           onChange={(event) => updateSelected({ placeholder: event.target.value })}
-                          className="mt-1.5 h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm font-normal text-slate-800 shadow-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                          className="mt-1.5 h-9 w-full rounded-lg border border-slate-200 dark:border-border bg-white dark:bg-card px-3 text-sm font-normal text-slate-800 dark:text-foreground shadow-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                         />
                       </label>
                     )}
                     <div className="grid grid-cols-2 items-end gap-3">
-                      <label className="flex h-9 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-xs font-medium text-slate-600 shadow-sm">
+                      <label className="flex h-9 items-center gap-2 rounded-lg border border-slate-200 dark:border-border bg-white dark:bg-card px-3 text-xs font-medium text-slate-600 dark:text-muted-foreground shadow-sm">
                         <Checkbox checked={selectedAnnotation.required ?? false} onCheckedChange={(checked) => updateSelected({ required: checked === true })} />
                         Required
                       </label>
-                      <label className="text-xs font-semibold text-slate-600">
+                      <label className="text-xs font-semibold text-slate-600 dark:text-muted-foreground">
                         Tab order
-                        <Input type="number" min="1" value={selectedAnnotation.tabIndex ?? 1} onChange={(event) => updateSelected({ tabIndex: Math.max(1, Number(event.target.value)) })} className="mt-1.5 h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm font-normal text-slate-800 shadow-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100" />
+                        <Input type="number" min="1" value={selectedAnnotation.tabIndex ?? 1} onChange={(event) => updateSelected({ tabIndex: Math.max(1, Number(event.target.value)) })} className="mt-1.5 h-9 w-full rounded-lg border border-slate-200 dark:border-border bg-white dark:bg-card px-3 text-sm font-normal text-slate-800 dark:text-foreground shadow-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100" />
                       </label>
                     </div>
                     {selectedAnnotation.type === "input" && (
                       <>
-                        <label className="block text-xs font-semibold text-slate-600">
+                        <label className="block text-xs font-semibold text-slate-600 dark:text-muted-foreground">
                           Validation
                           <Select
                             value={selectedAnnotation.validation ?? "none"}
@@ -6454,7 +6458,7 @@ export function PdfEditor(props: { initialTemplateId?: string }) {
                             </SelectContent>
                           </Select>
                         </label>
-                        <label className="flex items-center gap-2 text-xs font-medium text-slate-600">
+                        <label className="flex items-center gap-2 text-xs font-medium text-slate-600 dark:text-muted-foreground">
                           <Checkbox checked={selectedAnnotation.multiline ?? false} onCheckedChange={(checked) => updateSelected({ multiline: checked === true })} />
                           Multiple lines
                         </label>
@@ -6466,15 +6470,15 @@ export function PdfEditor(props: { initialTemplateId?: string }) {
                   </div>
                 )}
                 {selectedAnnotation.type === "image-placeholder" && (
-                  <div className="space-y-3 rounded-xl border border-slate-200 bg-slate-50/70 p-3">
-                    <label className="block text-xs font-semibold text-slate-600">
+                  <div className="space-y-3 rounded-xl border border-slate-200 dark:border-border bg-slate-50/70 dark:bg-muted p-3">
+                    <label className="block text-xs font-semibold text-slate-600 dark:text-muted-foreground">
                       Placeholder label
                       <Input
                         value={selectedAnnotation.label ?? ""}
                         onChange={(event) =>
                           updateSelected({ label: event.target.value })
                         }
-                        className="mt-1.5 h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm font-normal text-slate-800 shadow-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                        className="mt-1.5 h-9 w-full rounded-lg border border-slate-200 dark:border-border bg-white dark:bg-card px-3 text-sm font-normal text-slate-800 dark:text-foreground shadow-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                       />
                     </label>
                     <Button
@@ -6491,8 +6495,8 @@ export function PdfEditor(props: { initialTemplateId?: string }) {
                   </div>
                 )}
                 {selectedAnnotation.type !== "image" && (
-                  <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3">
-                    <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                  <div className="rounded-xl border border-slate-200 dark:border-border bg-slate-50/70 dark:bg-muted p-3">
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-muted-foreground">
                       {selectedAnnotation.type === "input" ||
                       selectedAnnotation.type === "textarea"
                         ? "Text color"
@@ -6514,8 +6518,8 @@ export function PdfEditor(props: { initialTemplateId?: string }) {
                   selectedAnnotation.type === "date" ||
                   selectedAnnotation.type === "image-placeholder" ||
                   selectedAnnotation.type === "cambodia-address") && (
-                  <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3">
-                    <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                  <div className="rounded-xl border border-slate-200 dark:border-border bg-slate-50/70 dark:bg-muted p-3">
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-muted-foreground">
                       Border color
                     </p>
                     <div className="mt-3">
@@ -6544,13 +6548,13 @@ export function PdfEditor(props: { initialTemplateId?: string }) {
               </div>
             ) : (
               <div className="flex h-[calc(100%-3rem)] flex-col items-center justify-center px-7 text-center">
-                <div className="flex size-11 items-center justify-center rounded-xl bg-slate-100 text-slate-400">
+                <div className="flex size-11 items-center justify-center rounded-xl bg-slate-100 dark:bg-muted text-slate-400 dark:text-muted-foreground">
                   <MousePointer2 className="size-5" />
                 </div>
-                <p className="mt-4 text-sm font-semibold text-slate-700">
+                <p className="mt-4 text-sm font-semibold text-slate-700 dark:text-foreground">
                   Nothing selected
                 </p>
-                <p className="mt-1 text-xs leading-5 text-slate-400">
+                <p className="mt-1 text-xs leading-5 text-slate-400 dark:text-muted-foreground">
                   Select an annotation on the page to change its style or
                   content.
                 </p>
@@ -6619,13 +6623,13 @@ export function PdfEditor(props: { initialTemplateId?: string }) {
                 {createdShareLinks.map((link) => {
                   const copied = copiedShareLinkRoleId === link.roleId;
                   return (
-                  <div key={link.roleId} className={`min-w-0 rounded-xl border p-3 transition-[border-color,background-color,box-shadow] duration-300 ${copied ? "border-emerald-300 bg-emerald-50/60 shadow-sm shadow-emerald-100" : "border-slate-200"}`}>
+                  <div key={link.roleId} className={`min-w-0 rounded-xl border p-3 transition-[border-color,background-color,box-shadow] duration-300 ${copied ? "border-emerald-300 bg-emerald-50/60 shadow-sm shadow-emerald-100" : "border-slate-200 dark:border-border"}`}>
                     <div className="flex min-w-0 items-center gap-2">
                       <span className="size-3 shrink-0 rounded-full" style={{ backgroundColor: link.roleColor }} />
-                      <p className="min-w-0 truncate text-sm font-semibold text-slate-800">{link.roleName}</p>
+                      <p className="min-w-0 truncate text-sm font-semibold text-slate-800 dark:text-foreground">{link.roleName}</p>
                     </div>
                     <div className="mt-2 flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center">
-                      <p title={link.url} className={`min-w-0 flex-1 select-all truncate rounded-lg px-3 py-2 font-mono text-xs transition-colors duration-300 ${copied ? "bg-white text-emerald-700" : "bg-slate-50 text-slate-500"}`}>
+                      <p title={link.url} className={`min-w-0 flex-1 select-all truncate rounded-lg px-3 py-2 font-mono text-xs transition-colors duration-300 ${copied ? "bg-white dark:bg-card text-emerald-700" : "bg-slate-50 dark:bg-muted text-slate-500 dark:text-muted-foreground"}`}>
                         {link.url}
                       </p>
                       <Button type="button" variant="outline" size="sm" className={`w-full shrink-0 transition-all duration-200 sm:w-auto ${copied ? "copy-link-success border-emerald-300 bg-emerald-100 text-emerald-700 hover:bg-emerald-100 hover:text-emerald-700" : ""}`} aria-label={copied ? `Copied private link for ${link.roleName}` : `Copy private link for ${link.roleName}`} onClick={() => void copyShareLink(link.roleId, link.url)}>
@@ -6643,20 +6647,20 @@ export function PdfEditor(props: { initialTemplateId?: string }) {
           ) : (
             <div className="space-y-5">
               <div className="grid gap-3 sm:grid-cols-2">
-                <label className="text-xs font-semibold text-slate-600">
+                <label className="text-xs font-semibold text-slate-600 dark:text-muted-foreground">
                   Template name
-                  <Input value={templateName} maxLength={120} onChange={(event) => setTemplateName(event.target.value)} className="mt-1.5 h-10 w-full rounded-lg border border-slate-200 px-3 text-sm font-normal outline-none focus:border-blue-500" />
+                  <Input value={templateName} maxLength={120} onChange={(event) => setTemplateName(event.target.value)} className="mt-1.5 h-10 w-full rounded-lg border border-slate-200 dark:border-border px-3 text-sm font-normal outline-none focus:border-blue-500" />
                 </label>
-                <label className="text-xs font-semibold text-slate-600">
+                <label className="text-xs font-semibold text-slate-600 dark:text-muted-foreground">
                   Description
-                  <Input value={templateDescription} maxLength={500} onChange={(event) => setTemplateDescription(event.target.value)} placeholder="Optional instructions" className="mt-1.5 h-10 w-full rounded-lg border border-slate-200 px-3 text-sm font-normal outline-none focus:border-blue-500" />
+                  <Input value={templateDescription} maxLength={500} onChange={(event) => setTemplateDescription(event.target.value)} placeholder="Optional instructions" className="mt-1.5 h-10 w-full rounded-lg border border-slate-200 dark:border-border px-3 text-sm font-normal outline-none focus:border-blue-500" />
                 </label>
               </div>
               <div>
                 <div className="mb-2 flex items-center justify-between">
                   <div>
-                    <p className="flex items-center gap-2 text-sm font-semibold text-slate-800"><Users className="size-4" /> Recipient roles</p>
-                    <p className="mt-0.5 text-xs text-slate-400">Fields without an assignment use the first recipient.</p>
+                    <p className="flex items-center gap-2 text-sm font-semibold text-slate-800 dark:text-foreground"><Users className="size-4" /> Recipient roles</p>
+                    <p className="mt-0.5 text-xs text-slate-400 dark:text-muted-foreground">Fields without an assignment use the first recipient.</p>
                   </div>
                   <Button type="button" variant="outline" size="sm" onClick={addRecipientRole} disabled={recipientRoles.length >= 10}>
                     <Plus className="size-3.5" /> Add recipient
@@ -6664,9 +6668,9 @@ export function PdfEditor(props: { initialTemplateId?: string }) {
                 </div>
                 <div className="space-y-2">
                   {recipientRoles.map((role) => (
-                    <div key={role.id} className="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 p-2">
+                    <div key={role.id} className="flex items-center gap-2 rounded-xl border border-slate-200 dark:border-border bg-slate-50 dark:bg-muted p-2">
                       <input type="color" aria-label={`${role.name} color`} value={role.color} onChange={(event) => updateRecipientRole(role.id, { color: event.target.value })} className="size-8 shrink-0 cursor-pointer rounded border-0 bg-transparent p-0" />
-                      <Input value={role.name} maxLength={80} onChange={(event) => updateRecipientRole(role.id, { name: event.target.value })} className="h-9 min-w-0 flex-1 rounded-lg border border-slate-200 bg-white px-3 text-sm outline-none focus:border-blue-500" />
+                      <Input value={role.name} maxLength={80} onChange={(event) => updateRecipientRole(role.id, { name: event.target.value })} className="h-9 min-w-0 flex-1 rounded-lg border border-slate-200 dark:border-border bg-white dark:bg-card px-3 text-sm outline-none focus:border-blue-500" />
                       <Button type="button" variant="ghost" size="icon-sm" disabled={recipientRoles.length <= 1} onClick={() => removeRecipientRole(role.id)} className="text-rose-600 hover:bg-rose-50"><Trash2 /></Button>
                     </div>
                   ))}
@@ -6731,7 +6735,7 @@ function Brand(props: { compact?: boolean }) {
         <FileText className="size-5" />
       </div>
       <span
-        className={`font-semibold tracking-[-0.02em] text-slate-900 ${
+        className={`font-semibold tracking-[-0.02em] text-slate-900 dark:text-foreground ${
           props.compact ? "hidden text-base lg:block" : "text-lg"
         }`}
       >

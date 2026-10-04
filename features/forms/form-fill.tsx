@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
+import { ThemeToggle } from "@/components/patterns/theme-toggle";
 import { FormRenderer } from "./form-renderer";
 import type { FormMedia } from "./form-renderer";
 import type { TemplateFillPayload } from "@/features/templates/template.types";
@@ -110,7 +111,10 @@ function FormFill(props: { token: string; payload: TemplateFillPayload }) {
   return (
     <div className="min-h-svh bg-muted/20 px-4 py-8 sm:py-12">
       <main className="mx-auto max-w-3xl rounded-2xl border bg-card p-5 shadow-sm sm:p-8">
-        <p className="mb-5 text-sm font-semibold text-primary">HR Workspace</p>
+        <div className="mb-5 flex items-center justify-between gap-3">
+          <p className="text-sm font-semibold text-primary">HR Workspace</p>
+          <ThemeToggle />
+        </div>
         <h1 className="text-2xl font-semibold">
           {props.payload.template.name}
         </h1>

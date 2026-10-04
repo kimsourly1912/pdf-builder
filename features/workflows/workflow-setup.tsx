@@ -508,7 +508,7 @@ export function WorkflowSetup({ displayName }: { displayName: string }) {
                         Refresh forms
                       </Button>
                       {formIssues.map((issue, i) => (
-                        <p key={i} className="text-sm text-amber-700">
+                        <p key={i} className="text-sm text-amber-700 dark:text-amber-300">
                           {issue}
                         </p>
                       ))}

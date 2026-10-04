@@ -13,6 +13,7 @@ import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
 
 import { SignOutButton } from "@/components/auth/sign-out-button";
+import { ThemeToggle } from "@/components/patterns/theme-toggle";
 import { Separator } from "@/components/ui/separator";
 import {
   Sidebar,
@@ -200,6 +201,7 @@ function AppShell(props: AppShellProps) {
           <div className="min-w-0 flex-1">
             <p className="truncate text-sm font-medium">{currentLabel}</p>
           </div>
+          <ThemeToggle />
           <SignOutButton />
         </header>
         <div className="flex flex-1 flex-col">
