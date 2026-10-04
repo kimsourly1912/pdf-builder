@@ -99,3 +99,11 @@ Waiting clocks use CV receipt, update receipt, assignment and submission timesta
 - Candidate My forms and receipts explain completion, corrections and HR review in task language.
 
 A first-time HR usability trial remains necessary to establish comprehension without coaching. Automated checks demonstrate behavior and responsive layout, not that every user understands the application.
+
+### Browser QA follow-up (2026-10-04)
+
+- Candidate Needs attention filters and counts use the shared HR task projection, including unfinished CV reviews and submitted forms; waiting on candidates remains separate.
+- CV draft saves and approval copy are distinct. Missing name/email requirements are visible beside approval with a direct field-focus action.
+- Required and minimum-length text validation provide separate reasons in preview and live forms.
+- Mobile sign-out and CV editor controls retain accessible names. Empty candidate results offer intake/upload actions and filter recovery.
+- Telegram intake through activation, submission, correction and acceptance still needs the browser tester’s confirmed test contact; these fixes do not establish completion of that manual trial.

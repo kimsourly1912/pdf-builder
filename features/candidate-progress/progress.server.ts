@@ -1,3 +1,5 @@
+import { attentionForCandidates } from "@/features/hr/attention-records.server";
+import { attentionResponsibility } from "@/features/hr/attention";
 import { getCvUpdate } from "./cv-updates.server";
 import "server-only";
 import { stageSince } from "./stage-since";
@@ -568,6 +570,13 @@ export async function listProgress(owner: string, query: URLSearchParams) {
             : b.lastActivity.localeCompare(a.lastActivity)) ||
         a.id.localeCompare(b.id),
     );
+  const visibleCandidateIds = new Set(all.map((item) => item.id));
+  const hrAttention = new Set(
+    (await attentionForCandidates(owner, all))
+      .filter((task) => attentionResponsibility(task) === "hr")
+      .map((task) => task.candidateId)
+      .filter((id): id is string => !!id && visibleCandidateIds.has(id)),
+  );
   const search = query.get("search")?.trim().toLowerCase() ?? "",
     stage = query.get("stage"),
     attention = query.get("attention") === "true";
@@ -578,7 +587,7 @@ export async function listProgress(owner: string, query: URLSearchParams) {
           .toLowerCase()
           .includes(search)) &&
       (!stage || stage === "all" || i.stage === stage) &&
-      (!attention || i.attention.length),
+      (!attention || hrAttention.has(i.id)),
   );
   const page = Math.min(
       Math.max(1, Math.ceil(items.length / 50)),
@@ -593,7 +602,7 @@ export async function listProgress(owner: string, query: URLSearchParams) {
     stats: Object.fromEntries(
       STAGES.map((s) => [s, items.filter((i) => i.stage === s).length]),
     ),
-    needsAttention: all.filter((i) => i.attention.length).length,
+    needsAttention: hrAttention.size,
   };
 }
 export async function detailProgress(owner: string, id: string) {

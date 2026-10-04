@@ -145,6 +145,24 @@ function answers(values, rev = "", photo = false) {
   return body;
 }
 
+test("text validation distinguishes missing and too-short answers in the shared preview/live schema", () => {
+  const text = { ...field("name", "short_text", "name", true), minLength: 2, maxLength: 40 };
+  const definition = { format: 1, fields: [text], mappings: [], pageCount: 0 };
+  const schema = model.answerSchema(definition);
+  for (const value of ["", " ", "A", "Test Candidate", "A"]) {
+    const result = schema.safeParse({ name: value });
+    if (value === "Test Candidate") assert.equal(result.success, true);
+    else {
+      assert.equal(result.success, false);
+      assert.equal(result.error.issues[0].message, value.trim() ? "Enter at least 2 characters." : "This field is required.");
+    }
+  }
+  const optional = model.answerSchema({ ...definition, fields: [{ ...text, required: false }] });
+  assert.equal(optional.safeParse({ name: "" }).success, true);
+  assert.equal(optional.safeParse({ name: "A" }).error.issues[0].message, "Enter at least 2 characters.");
+  assert.equal(model.answerSchema(definition, true).safeParse({ name: "A" }).success, true);
+});
+
 test("form definitions reject duplicate keys, invalid choices/placements, blank required numbers, forged types and unknown answers", () => {
   const a = field("age", "number", "age", true);
   const def = { format: 1, fields: [a], mappings: [], pageCount: 0 };

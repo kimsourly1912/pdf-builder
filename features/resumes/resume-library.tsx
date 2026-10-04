@@ -138,12 +138,12 @@ const SOURCE_LABELS: Record<ResumeSource, string> = {
   other: "Other",
 };
 
-function ResumeLibrary(props: { displayName: string }) {
+function ResumeLibrary(props: { displayName: string; initialUpload?: boolean }) {
   const [items, setItems] = useState<ResumeSummary[]>([]);
   const [stats, setStats] = useState<ResumeStats>(EMPTY_STATS);
   const [pageMeta, setPageMeta] = useState<PageMeta>(EMPTY_PAGE_META);
   const [loading, setLoading] = useState(true);
-  const [uploadOpen, setUploadOpen] = useState(false);
+  const [uploadOpen, setUploadOpen] = useState(props.initialUpload ?? false);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [deleteOpen, setArchiveOpen] = useState(false);
   const [search, setSearch] = useState("");

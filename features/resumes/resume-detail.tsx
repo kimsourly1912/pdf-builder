@@ -19,7 +19,7 @@ import {
 import { useUnsavedChanges, DISCARD_EDITS } from "./use-unsaved-changes";
 import { Checkbox } from "@/components/ui/checkbox";
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useId, useState } from "react";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
@@ -64,6 +64,7 @@ import type {
 type CandidateDraft = Omit<ResumeCandidateSummary, "id" | "verificationStatus">;
 
 export function ResumeDetailView(props: { resumeId: string; embedded?: boolean; hidePdfPreview?: boolean; onChanged?: () => void; onDirtyChange?: (dirty: boolean) => void }) {
+  const editorId = useId();
   const [resume, setResume] = useState<ResumeDetail | null>(null);
   const [draft, setDraft] = useState<CandidateDraft | null>(null);
   const [loading, setLoading] = useState(true);
@@ -442,7 +443,7 @@ export function ResumeDetailView(props: { resumeId: string; embedded?: boolean; 
                   <div>
                     <CardTitle>Candidate information</CardTitle>
                     <CardDescription>
-                      Correct extracted values, then save to mark them verified.
+                      Save changes to keep your review draft. Approve CV separately after checking the information.
                     </CardDescription>
                   </div>
                   {resume.verificationStatus === "verified" ? (
@@ -472,6 +473,8 @@ export function ResumeDetailView(props: { resumeId: string; embedded?: boolean; 
                       <div className="grid gap-4 sm:grid-cols-2">
                         <TextField
                           label="Full name"
+                          approvalRequired
+                          inputId={`${editorId}-name`}
                           value={draft.fullName}
                           onChange={(value) =>
                             setDraft({ ...draft, fullName: value })
@@ -488,6 +491,8 @@ export function ResumeDetailView(props: { resumeId: string; embedded?: boolean; 
                         />
                         <TextField
                           label="Email"
+                          approvalRequired
+                          inputId={`${editorId}-email`}
                           type="email"
                           value={draft.email}
                           onChange={(value) =>
@@ -603,8 +608,21 @@ export function ResumeDetailView(props: { resumeId: string; embedded?: boolean; 
                         Save changes
                       </Button>
                       <p className="mt-3 text-sm text-muted-foreground">{resume.cvUpdate ? "This update has a separate information draft. Approving makes it the current CV while preserving the existing preparation snapshot, account, forms and answers. No workflow starts automatically." : <>Saving changes requires approval again. Approving saves the current details and confirms this CV. <strong>This may start your published workflow.</strong></>}</p>
+                      {(!draft.fullName.trim() || !draft.email.trim()) && (
+                        <p id={`${editorId}-approval-requirements`} className="mt-3 text-sm text-warning-foreground" role="status">
+                          To approve this CV, add {[
+                            !draft.fullName.trim() && "the candidate’s full name",
+                            !draft.email.trim() && "their email address",
+                          ].filter(Boolean).join(" and ")}. You can save unfinished changes first.
+                          <Button type="button" variant="link" size="sm" className="h-auto px-1" onClick={() => document.getElementById(`${editorId}-${!draft.fullName.trim() ? "name" : "email"}`)?.focus()}>
+                            {!draft.fullName.trim() ? "Add full name" : "Add email"}
+                          </Button>
+                        </p>
+                      )}
+                      {resume.archived && <p className="mt-3 text-sm text-muted-foreground">Restore this CV from Archive before approving.</p>}
                       <Button
                         type="button"
+                        aria-describedby={!draft.fullName.trim() || !draft.email.trim() ? `${editorId}-approval-requirements` : undefined}
                         className="mt-3 w-full"
                         variant="outline"
                         disabled={
@@ -833,14 +851,19 @@ function TextField(props: {
   value: string;
   type?: "email";
   date?: boolean;
+  approvalRequired?: boolean;
+  inputId?: string;
   onChange: (value: string) => void;
   meta?: ResumeExtractionFields[keyof ResumeExtractionFields];
 }) {
+  const generatedId = useId();
+  const id = props.inputId ?? generatedId;
   return (
     <div className="space-y-1.5">
-      <Label>{props.label}</Label>
+      <Label htmlFor={id}>{props.label}{props.approvalRequired && <span className="text-xs font-normal text-muted-foreground"> · Required to approve</span>}</Label>
       {props.date ? (
         <DatePicker
+          id={id}
           value={props.value}
           onValueChange={props.onChange}
           placeholder="Pick a date"
@@ -848,6 +871,7 @@ function TextField(props: {
         />
       ) : (
         <Input
+          id={id}
           aria-label={props.label}
           type={props.type ?? "text"}
           value={props.value}
@@ -865,10 +889,12 @@ function TextAreaField(props: {
   onChange: (value: string) => void;
   meta?: ResumeExtractionFields[keyof ResumeExtractionFields];
 }) {
+  const id = useId();
   return (
     <div className="space-y-1.5">
-      <Label>{props.label}</Label>
+      <Label htmlFor={id}>{props.label}</Label>
       <Textarea
+        id={id}
         value={props.value}
         onChange={(event) => props.onChange(event.target.value)}
         rows={4}

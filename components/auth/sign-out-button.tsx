@@ -14,6 +14,8 @@ export function SignOutButton() {
   return (
     <Button
       type="button"
+      aria-label="Sign out"
+      title="Sign out"
       variant="ghost"
       size="sm"
       disabled={pending}

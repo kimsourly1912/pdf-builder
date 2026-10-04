@@ -3,8 +3,9 @@ import { ResumeLibrary } from "@/features/resumes/resume-library";
 
 export const dynamic = "force-dynamic";
 
-export default async function ResumesPage() {
+export default async function ResumesPage({ searchParams }: { searchParams: Promise<{ upload?: string }> }) {
   const user = await requireChatGPTUser("/resumes");
-  return <ResumeLibrary displayName={user.displayName} />;
+  const query = await searchParams;
+  return <ResumeLibrary displayName={user.displayName} initialUpload={query.upload === "true"} />;
 }
 

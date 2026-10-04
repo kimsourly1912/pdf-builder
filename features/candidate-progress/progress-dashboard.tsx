@@ -318,6 +318,17 @@ export function ProgressDashboard({
       >
         {notice}
       </p>
+      {!loading && !error && data?.total === 0 && (
+        <div className="rounded-xl border bg-card p-6 text-card-foreground">
+          <h2 className="font-semibold">{search || stage !== "all" || attention ? "No candidates match these filters" : "Add your first candidate"}</h2>
+          <p className="mt-2 text-sm text-muted-foreground">{search || stage !== "all" || attention ? "Clear the filters to see all candidates, or receive a new CV." : "Ask candidates to submit through Telegram, or upload a CV received by your team."}</p>
+          <div className="mt-4 flex flex-wrap gap-2">
+            {(search || stage !== "all" || attention) && <Button variant="outline" onClick={() => setFilters({ ...FILTERS })}>Clear filters</Button>}
+            <Button asChild><Link href="/intake">Receive candidates via Telegram</Link></Button>
+            <Button asChild variant="outline"><Link href="/resumes?upload=true">Upload CV manually</Link></Button>
+          </div>
+        </div>
+      )}
       <div className="flex flex-wrap items-center gap-3">
         <Input
           className="w-full sm:w-72"
@@ -368,6 +379,7 @@ export function ProgressDashboard({
         <Button
           variant={attention ? "secondary" : "outline"}
           disabled={!filtersReady}
+          title="Candidates with outstanding HR tasks: CV reviews, blockers, or submitted forms to review."
           aria-pressed={attention}
           onClick={() => {
             setFilters({ attention: String(!attention), page: "1" });

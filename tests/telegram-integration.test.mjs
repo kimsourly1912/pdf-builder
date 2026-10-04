@@ -1971,6 +1971,16 @@ test("starting review during an upload converts confirmation into an update requ
     assert.equal(reviewing.automaticStage,"reviewing");
     assert.equal(reviewing.reviewStartedBy,runtime.MANAGEMENT_EMAIL);
     assert(reviewing.reviewStartedAt);
+    const attentionService = await vite.ssrLoadModule("/features/hr/attention.server.ts");
+    const tasks = await attentionService.attentionTasks(runtime.MANAGEMENT_EMAIL);
+    assert(tasks.some(t => t.candidateId === before.id && t.type === "cv_review"));
+    const filtered = await progressService.listProgress(runtime.MANAGEMENT_EMAIL, new URLSearchParams({attention:"true",search:"reviewrace@example.com"}));
+    assert.equal(filtered.total, 1);
+    assert.equal(filtered.items[0].id, before.id);
+    const allAttention = await progressService.listProgress(runtime.MANAGEMENT_EMAIL, new URLSearchParams({attention:"true"}));
+    assert.equal(allAttention.needsAttention, new Set(tasks.filter(t => t.type !== "pending_forms" && t.candidateId).map(t => t.candidateId)).size);
+    assert.equal((await progressService.listProgress("other@example.com",new URLSearchParams({attention:"true",search:"reviewrace@example.com"}))).total,0);
+
     await chat(92001,"Confirm replacement");
     assert.equal(await archiveService.isArchived("resume",original.resume_id),false);
     const update = (await progressGet(before.id)).cvUpdates[0];

@@ -231,13 +231,11 @@ export function answerSchema(definition: FormDefinition, draft = false) {
         .string()
         .max(field.maxLength ?? 10000, "This answer is too long.");
       if (field.required && !draft)
-        text = text
-          .trim()
-          .min(Math.max(1, field.minLength ?? 1), "This field is required.");
-      else if (field.minLength && !draft)
+        text = text.trim().min(1, "This field is required.");
+      if (field.minLength && !draft)
         text = text.refine(
           (s) => !s || s.length >= field.minLength!,
-          "This answer is too short.",
+          `Enter at least ${field.minLength} characters.`,
         );
       if (field.type === "email" && !draft)
         text = text.refine(
