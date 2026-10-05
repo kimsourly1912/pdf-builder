@@ -131,3 +131,14 @@ A first-time HR usability trial remains necessary to establish comprehension wit
 - Stored sample inputs survive reopening; draft changes invalidate overlays.
 - Setup fixes focus exact form, message, condition and connection controls; missing incoming links use free validated outputs.
 - Existing execution and publication safeguards are unchanged. Execution-result and publication-summary proposals remain separate follow-up work.
+
+
+### Form review and focused workflow canvas (2026-10-05)
+
+- PDF preview/output uses a bundled Khmer-capable font; failed previews preserve sample answers and the previous rendered document.
+- Form assignment searches existing accounts by name/email, identifies Candidate/Employee and shows current-version duplicate assignments.
+- Response search and separate account/review filters, readable answer details, and an Assigned people view with pinned versions and actual link availability.
+- A dedicated workflow editor with on-demand step catalog, contextual desktop inspector/mobile bottom sheet, and supporting views in More actions.
+- Measured first-entry fit, saved viewport, Shift/marquee selection, grouped dragging, alignment/distribution, smart guides with Alt bypass, select/hand tools and global graph undo/redo.
+
+A first-time HR usability trial remains necessary to confirm comprehension. Local browser and integration checks do not establish Telegram delivery or read receipts.

@@ -2,7 +2,7 @@ import "server-only";
 import "regenerator-runtime/runtime";
 
 import fontkit from "@pdf-lib/fontkit";
-import khmerFontUrl from "@expo-google-fonts/noto-sans-khmer/400Regular/NotoSansKhmer_400Regular.ttf?url";
+import khmerFontUrl from "@expo-google-fonts/noto-sans-khmer/400Regular/NotoSansKhmer_400Regular.ttf?inline";
 import { degrees, PDFDocument, rgb } from "pdf-lib";
 import type { PDFFont, PDFPage, RGB } from "pdf-lib";
 
@@ -36,7 +36,7 @@ type BuildCompletedPdfOptions = {
   origin: string;
 };
 
-let fontBytesPromise: Promise<ArrayBuffer> | null = null;
+let fontBytes: Uint8Array<ArrayBuffer> | null = null;
 
 export async function buildAuthoritativeCompletedPdf(
   options: BuildCompletedPdfOptions,
@@ -44,7 +44,7 @@ export async function buildAuthoritativeCompletedPdf(
   const source = await PDFDocument.load(options.sourcePdfBytes.slice());
   const output = await PDFDocument.create();
   output.registerFontkit(fontkit);
-  const font = await output.embedFont(await loadFontBytes(options.origin), {
+  const font = await output.embedFont(loadFontBytes(), {
     subset: false,
   });
   const copiedPages = await output.copyPages(
@@ -292,20 +292,16 @@ export async function buildAuthoritativeCompletedPdf(
   return (await output.save()) as Uint8Array<ArrayBuffer>;
 }
 
-async function loadFontBytes(origin: string): Promise<ArrayBuffer> {
-  if (!fontBytesPromise) {
-    const fontUrl = new URL(khmerFontUrl, origin);
-    fontBytesPromise = fetch(fontUrl).then((response) => {
-      if (!response.ok) {
-        throw new Error("The PDF font asset could not be loaded.");
-      }
-      return response.arrayBuffer();
-    });
-    fontBytesPromise.catch(() => {
-      fontBytesPromise = null;
-    });
+// Inline the font in the worker bundle. Fetching our own public URL can fail
+// in local emulation or consume a worker subrequest during preview/rendering.
+function loadFontBytes(): Uint8Array<ArrayBuffer> {
+  if (!fontBytes) {
+    const encoded = khmerFontUrl.split(",")[1];
+    if (!khmerFontUrl.startsWith("data:") || !encoded)
+      throw new Error("The bundled PDF font is unavailable.");
+    fontBytes = Uint8Array.from(atob(encoded), (character) => character.charCodeAt(0));
   }
-  return fontBytesPromise;
+  return fontBytes;
 }
 
 function drawText(options: {

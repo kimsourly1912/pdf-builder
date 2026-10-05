@@ -77,3 +77,12 @@ Provide loading, empty, success, error, and permission states. Prevent duplicate
 For UI changes, verify desktop and mobile layouts, keyboard access, long names/filenames, empty results, and the affected progress states. Check actual interactions, not only screenshots. Use mocked/local candidate data and external services; production smoke checks should not create applications or send invitations.
 
 When renaming a management page, update the authenticated deployment smoke contract in `scripts/deployment-pages.mjs`. The check must match the real page heading, not a sidebar label or serialized component text. New management entry pages belong in the deployment verification list.
+
+
+## Workflow canvas workspace
+
+The workflow editor is a dedicated full-viewport workspace, without the management sidebar or permanent execution/settings tabs. Keep a compact header for Back to Automation, workflow name, saved/live status, Test with sample, Save draft and Review & publish. Executions, settings, publication history and comparison remain available through More actions. Testing sample data must never run real account creation, assignments or sends.
+
+Show the searchable step picker only when requested, beside the insertion point where possible. Show a contextual inspector for one selected node; use a bottom sheet on phones. Multi-selection exposes Align and Distribute rather than an inspector for an arbitrary selected node. Keep one drag or alignment operation one undoable edit. Preserve text editing shortcuts in inputs and dialogs. Fit changes only the viewport; Auto-arrange changes positions. Fit measured nodes on first entry and restore the owner/workflow-scoped viewport on return. Pink edge/center guides provide gentle snapping; Alt/Option bypasses it. Hand/Space pans; Select/marquee and Shift-click select.
+
+Form response lists separate person identity, recorded account category and HR review status. Do not describe Candidate/Employee categorization as recipient permissions. Use an account picker with name/email suggestions, show already assigned for the current published version, and retain server authorization/uniqueness checks. Assignment does not send an invitation. Show human-readable answers and Not answered for empty values; PDF generation state is separate from saved answers and HR decisions. Keep technical JSON in export actions.

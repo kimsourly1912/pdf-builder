@@ -1,18 +1,46 @@
 "use client";
-import { SelectField, SelectFieldOption } from "@/components/patterns/select-field";
-import { stepSetupIssues, incomingChoices, type SetupIssue } from "./setup-issues";
-import { sampleNodeState, sampleEdgeStyle, type SampleResult } from "./sample-canvas";
+import {
+  SelectField,
+  SelectFieldOption,
+} from "@/components/patterns/select-field";
+import {
+  stepSetupIssues,
+  incomingChoices,
+  type SetupIssue,
+} from "./setup-issues";
+import {
+  sampleNodeState,
+  sampleEdgeStyle,
+  type SampleResult,
+} from "./sample-canvas";
 import type { SampleInput } from "./workspace-tools";
 import { WorkflowOutline } from "./workflow-outline";
-import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+} from "@/components/ui/dropdown-menu";
 import { BusinessSummaryCard } from "./business-summary-card";
-import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+} from "react";
 import Link from "next/link";
 import {
   ReactFlowProvider,
   useEdgesState,
   useNodesState,
   useReactFlow,
+  useNodesInitialized,
+  useViewport,
+  applyNodeChanges,
+  SelectionMode,
+  type NodeChange,
   type Connection,
 } from "@xyflow/react";
 import {
@@ -27,14 +55,25 @@ import {
   Trash2,
   X,
   LayoutGrid,
-  Maximize2,
-  Minimize2,
+  MousePointer2,
+  Hand,
+  Minus,
+  AlignHorizontalJustifyCenter,
   ListOrdered,
   MoreHorizontal,
   Info,
   CheckCircle2,
 } from "lucide-react";
-import { AppShell } from "@/components/patterns/app-shell";
+import { ThemeToggle } from "@/components/patterns/theme-toggle";
+import {
+  alignSelection,
+  distributeSelection,
+  snapSelection,
+  parseViewport,
+  type CanvasBox,
+  type Guide,
+  type Alignment,
+} from "./canvas-geometry";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -154,7 +193,7 @@ export function WorkflowEditor(props: {
     return () => controller.abort();
   }, [props.workflowId]);
   return (
-    <AppShell displayName={props.displayName} fullWidth>
+    <div className="h-svh min-w-0 bg-background">
       {error && (
         <Alert variant="destructive">
           <AlertDescription>{error}</AlertDescription>
@@ -163,6 +202,7 @@ export function WorkflowEditor(props: {
       {workflow ? (
         <ReactFlowProvider>
           <EditorBody
+            key={workflow.id}
             initial={workflow}
             options={options}
             preferenceKey={props.preferenceKey}
@@ -173,7 +213,7 @@ export function WorkflowEditor(props: {
           {error ? "Workflow unavailable." : "Loading workflow…"}
         </p>
       )}
-    </AppShell>
+    </div>
   );
 }
 function EditorBody({
@@ -193,17 +233,24 @@ function EditorBody({
   const [edges, setEdges, onEdgesChange] = useEdgesState<FlowEdge>(
     flowEdges(initial.draft),
   );
-  const [focusMode, setFocusMode] = useState(false),
+  const [tool, setTool] = useState<"select" | "hand">("select"),
     [sampleOpen, setSampleOpen] = useState(false),
     [outlineOpen, setOutlineOpen] = useState(false),
     [overviewOpen, setOverviewOpen] = useState(false),
     [inspectorTab, setInspectorTab] = useState("parameters");
-  const [preview, setPreview] = useState<{signature: string; result: SampleResult; sample: SampleInput} | null>(null);
-  const [settingTarget, setSettingTarget] = useState<{nodeId: string | null; control: string} | null>(null);
+  const [preview, setPreview] = useState<{
+    signature: string;
+    result: SampleResult;
+    sample: SampleInput;
+  } | null>(null);
+  const [settingTarget, setSettingTarget] = useState<{
+    nodeId: string | null;
+    control: string;
+  } | null>(null);
   const [recovery, setRecovery] = useState<WorkflowDetail | null>(null);
   const [compact, setCompact] = useState(false);
   useEffect(() => {
-    const media = window.matchMedia("(max-width: 1279px)");
+    const media = window.matchMedia("(max-width: 767px)");
     const update = () => setCompact(media.matches);
     queueMicrotask(update);
     media.addEventListener("change", update);
@@ -221,6 +268,7 @@ function EditorBody({
     source?: string;
     outcome?: WorkflowEdge["outcome"];
     position?: { x: number; y: number };
+    anchor?: { x: number; y: number };
   }>({});
   const [publishOpen, setPublishOpen] = useState(false),
     [validateOpen, setValidateOpen] = useState(false),
@@ -254,6 +302,83 @@ function EditorBody({
   const [past, setPast] = useState<WorkflowGraph[]>([]),
     [future, setFuture] = useState<WorkflowGraph[]>([]);
   const flow = useReactFlow<FlowNode, FlowEdge>();
+  const nodesInitialized = useNodesInitialized();
+  const viewport = useViewport();
+  const viewportReady = useRef(false);
+  const canvasElement = useRef<HTMLDivElement>(null);
+  const viewportKey = `workflow-viewport:${preferenceKey}:${initial.id}`;
+  const [guides, setGuides] = useState<Guide[]>([]);
+  const dragStart = useRef<WorkflowGraph | null>(null);
+  const altPressed = useRef(false);
+  const selection = nodes.filter((node) => node.selected);
+  const boxes = (list: FlowNode[]): CanvasBox[] =>
+    list.map((node) => ({
+      id: node.id,
+      x: node.position.x,
+      y: node.position.y,
+      width: node.measured?.width ?? 224,
+      height: node.measured?.height ?? 110,
+    }));
+  useEffect(() => {
+    if (!nodesInitialized || viewportReady.current || tab !== "editor") return;
+    let cancelled = false;
+    const frame = requestAnimationFrame(() => {
+      let stored: ReturnType<typeof parseViewport> = null;
+      try {
+        stored = parseViewport(localStorage.getItem(viewportKey));
+      } catch {
+        /* Device storage may be unavailable. */
+      }
+      void (
+        stored
+          ? flow.setViewport(stored)
+          : flow.fitView({ padding: 0.18, maxZoom: 1 })
+      ).then(() => {
+        if (!cancelled) viewportReady.current = true;
+      });
+    });
+    return () => {
+      cancelled = true;
+      cancelAnimationFrame(frame);
+    };
+  }, [nodesInitialized, tab, flow, viewportKey]);
+  const changeNodes = (changes: NodeChange<FlowNode>[]) => {
+    const moving = changes.flatMap((change) =>
+      change.type === "position" && change.dragging && change.position
+        ? [change.id]
+        : [],
+    );
+    if (!moving.length || !editable || altPressed.current) {
+      if (moving.length) setGuides([]);
+      onNodesChange(changes);
+      return;
+    }
+    const proposed = applyNodeChanges(changes, nodes);
+    const snapped = snapSelection(
+      boxes(proposed.filter((node) => moving.includes(node.id))),
+      boxes(proposed.filter((node) => !moving.includes(node.id))),
+      6 / flow.getZoom(),
+    );
+    setGuides(snapped.guides);
+    setNodes(
+      applyNodeChanges(
+        changes.map((change) =>
+          change.type === "position" &&
+          change.position &&
+          moving.includes(change.id)
+            ? {
+                ...change,
+                position: {
+                  x: change.position.x + snapped.dx,
+                  y: change.position.y + snapped.dy,
+                },
+              }
+            : change,
+        ),
+        nodes,
+      ),
+    );
+  };
   const graph: WorkflowGraph = {
     nodes: nodes.map((n) => ({
       id: n.id,
@@ -270,15 +395,24 @@ function EditorBody({
       outcome: (e.sourceHandle ?? "next") as WorkflowEdge["outcome"],
     })),
   };
-  const activePreview = preview?.signature === graphIdentity(graph) ? preview.result : null;
+  const activePreview =
+    preview?.signature === graphIdentity(graph) ? preview.result : null;
   useEffect(() => {
-    if (!settingTarget || (settingTarget.nodeId && (selected !== settingTarget.nodeId || inspectorTab !== "parameters"))) return;
+    if (
+      !settingTarget ||
+      (settingTarget.nodeId &&
+        (selected !== settingTarget.nodeId || inspectorTab !== "parameters"))
+    )
+      return;
     const timer = setTimeout(() => {
       const control = document.getElementById(settingTarget.control);
       if (control) {
         let parent = control.parentElement;
-        while (parent) { if (parent instanceof HTMLDetailsElement) parent.open = true; parent = parent.parentElement; }
-        control.scrollIntoView({block: "nearest"});
+        while (parent) {
+          if (parent instanceof HTMLDetailsElement) parent.open = true;
+          parent = parent.parentElement;
+        }
+        control.scrollIntoView({ block: "nearest" });
         control.focus();
       }
       setSettingTarget(null);
@@ -357,7 +491,7 @@ function EditorBody({
         if (action !== "save") setBusy(false);
       }
     },
-    [initial.id],
+    [initial.id, setSavedFingerprint],
   );
   const canSaveDraft = Boolean(parseDraftGraph(graph));
   useEffect(() => {
@@ -373,10 +507,17 @@ function EditorBody({
     return () => clearTimeout(timer);
   }, [fingerprint, dirty, editable, canSaveDraft, name, save]);
   const commit = (next: WorkflowGraph) => {
-    if (!editable) return;
+    if (!editable || JSON.stringify(next) === JSON.stringify(graph)) return;
     setPast((p) => [...p, graph].slice(-50));
     setFuture([]);
-    setNodes(flowNodes(next));
+    setNodes(
+      flowNodes(next).map((node) => ({
+        ...node,
+        selected: nodes.some(
+          (previous) => previous.id === node.id && previous.selected,
+        ),
+      })),
+    );
     setEdges(flowEdges(next));
     setNotice("");
     setError("");
@@ -401,7 +542,32 @@ function EditorBody({
   const openPalette = (source?: string, outcome?: string) => {
     setSelected(null);
     if (!editable) return;
-    setAddContext({ source, outcome: outcome as WorkflowEdge["outcome"] });
+    const parent = graph.nodes.find((node) => node.id === source);
+    const rect = canvasElement.current?.getBoundingClientRect();
+    const point = parent
+      ? flow.flowToScreenPosition({
+          x: parent.position.x + 250,
+          y: parent.position.y + 50,
+        })
+      : null;
+    const anchor =
+      rect && point
+        ? {
+            x: Math.max(12, Math.min(point.x - rect.x, rect.width - 300)),
+            y: Math.max(
+              12,
+              Math.min(point.y - rect.y, Math.max(12, rect.height - 380)),
+            ),
+          }
+        : undefined;
+    setAddContext({
+      source,
+      outcome: outcome as WorkflowEdge["outcome"],
+      anchor,
+    });
+    setNodes((previous) =>
+      previous.map((node) => ({ ...node, selected: false })),
+    );
     setPaletteOpen(true);
   };
   const add = (kind: StepKind, position?: { x: number; y: number }) => {
@@ -422,6 +588,9 @@ function EditorBody({
       if (!position && addContext.source) next = arrangeGraph(next);
       commit(next);
       setSelected(node.id);
+      setNodes((previous) =>
+        previous.map((item) => ({ ...item, selected: item.id === node.id })),
+      );
       setPaletteOpen(false);
     } catch (e) {
       setError(errorText(e));
@@ -510,7 +679,100 @@ function EditorBody({
     );
     setSelected(null);
   };
-  const selectedNode = graph.nodes.find((n) => n.id === selected);
+  useEffect(() => {
+    const keydown = (event: KeyboardEvent) => {
+      altPressed.current = event.altKey;
+      if (
+        tab === "editor" &&
+        event.key === "Escape" &&
+        paletteOpen &&
+        !(
+          event.target instanceof Element &&
+          event.target.closest("[role=dialog],[role=alertdialog]")
+        )
+      ) {
+        event.preventDefault();
+        setPaletteOpen(false);
+        canvasElement.current?.focus();
+        return;
+      }
+      if (
+        tab !== "editor" ||
+        !editable ||
+        event.defaultPrevented ||
+        (event.target instanceof Element &&
+          event.target.closest(
+            "input,textarea,select,[contenteditable=true],[role=combobox],[role=dialog],[role=alertdialog]",
+          ))
+      )
+        return;
+      const key = event.key.toLowerCase();
+      if ((event.ctrlKey || event.metaKey) && key === "z") {
+        event.preventDefault();
+        if (event.shiftKey) redo();
+        else undo();
+      } else if (event.ctrlKey && !event.metaKey && key === "y") {
+        event.preventDefault();
+        redo();
+      } else if ((event.ctrlKey || event.metaKey) && key === "d") {
+        event.preventDefault();
+        duplicate();
+      } else if (key === "delete" || key === "backspace") {
+        event.preventDefault();
+        remove();
+      } else if (key === "escape") {
+        setPaletteOpen(false);
+        setSelected(null);
+        setNodes((previous) =>
+          previous.map((node) => ({ ...node, selected: false })),
+        );
+      } else if (
+        !event.ctrlKey &&
+        !event.metaKey &&
+        !event.altKey &&
+        key === "v"
+      )
+        setTool("select");
+      else if (!event.ctrlKey && !event.metaKey && !event.altKey && key === "h")
+        setTool("hand");
+    };
+    const keyup = (event: KeyboardEvent) => {
+      altPressed.current = event.altKey;
+    };
+    const blur = () => {
+      altPressed.current = false;
+      setGuides([]);
+    };
+    window.addEventListener("keydown", keydown);
+    window.addEventListener("keyup", keyup);
+    window.addEventListener("blur", blur);
+    return () => {
+      window.removeEventListener("keydown", keydown);
+      window.removeEventListener("keyup", keyup);
+      window.removeEventListener("blur", blur);
+    };
+  });
+  const align = (alignment: Alignment) =>
+    commit(alignSelection(graph, boxes(selection), alignment));
+  const distribute = (axis: "x" | "y") =>
+    commit(distributeSelection(graph, boxes(selection), axis));
+  const finishDrag = () => {
+    setGuides([]);
+    const before = dragStart.current;
+    if (
+      before &&
+      JSON.stringify(before.nodes.map((node) => node.position)) !==
+        JSON.stringify(graph.nodes.map((node) => node.position))
+    ) {
+      setPast((previous) => [...previous, before].slice(-50));
+      setFuture([]);
+    }
+    dragStart.current = null;
+  };
+  const selectedNode =
+    selection.length > 1
+      ? undefined
+      : graph.nodes.find((n) => n.id === selected);
   const select = (id: string) => {
     setPaletteOpen(false);
     setSelected(id);
@@ -531,10 +793,22 @@ function EditorBody({
   const fixIssue = (nodeId: string, issue: SetupIssue) => {
     setPublishOpen(false);
     focus(nodeId);
-    setSettingTarget({nodeId, control: issue.control});
+    setSettingTarget({ nodeId, control: issue.control });
   };
-  const actionableIssues = graph.nodes.flatMap((node) => stepSetupIssues(graph, node).map((issue) => ({node, issue})));
-  const freeInputs = selectedNode ? incomingChoices(graph, selectedNode.id).filter((choice) => !connectionIssue(graph, choice.source, selectedNode.id, choice.outcome)) : [];
+  const actionableIssues = graph.nodes.flatMap((node) =>
+    stepSetupIssues(graph, node).map((issue) => ({ node, issue })),
+  );
+  const freeInputs = selectedNode
+    ? incomingChoices(graph, selectedNode.id).filter(
+        (choice) =>
+          !connectionIssue(
+            graph,
+            choice.source,
+            selectedNode.id,
+            choice.outcome,
+          ),
+      )
+    : [];
   const inspector = selectedNode ? (
     <>
       <div className="mb-4 flex items-center justify-between">
@@ -545,7 +819,12 @@ function EditorBody({
           size="icon-sm"
           variant="ghost"
           aria-label="Close step settings"
-          onClick={() => setSelected(null)}
+          onClick={() => {
+            setSelected(null);
+            setNodes((previous) =>
+              previous.map((node) => ({ ...node, selected: false })),
+            );
+          }}
         >
           <X />
         </Button>
@@ -556,10 +835,31 @@ function EditorBody({
           <TabsTrigger value="input">Data &amp; behavior</TabsTrigger>
         </TabsList>
         <TabsContent value="input" className="space-y-4 text-sm">
-          <div><h3 className="font-medium">Receives</h3><p className="mt-2 text-muted-foreground">{DATA_HELP[selectedNode.kind].input}</p></div>
-          <div><h3 className="font-medium">Produces</h3><p className="mt-2 text-muted-foreground">{DATA_HELP[selectedNode.kind].output}</p></div>
-          <p className="text-xs text-muted-foreground">This describes the draft. Recorded results are available in Executions.</p>
-          <Button variant="outline" onClick={() => { if (compact) setSelected(null); setSampleOpen(true); }}>Preview with sample data</Button>
+          <div>
+            <h3 className="font-medium">Receives</h3>
+            <p className="mt-2 text-muted-foreground">
+              {DATA_HELP[selectedNode.kind].input}
+            </p>
+          </div>
+          <div>
+            <h3 className="font-medium">Produces</h3>
+            <p className="mt-2 text-muted-foreground">
+              {DATA_HELP[selectedNode.kind].output}
+            </p>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            This describes the draft. Recorded results are available in
+            Executions.
+          </p>
+          <Button
+            variant="outline"
+            onClick={() => {
+              if (compact) setSelected(null);
+              setSampleOpen(true);
+            }}
+          >
+            Preview with sample data
+          </Button>
         </TabsContent>
         <TabsContent value="parameters">
           <StepSettings
@@ -585,103 +885,197 @@ function EditorBody({
           />
           {stepSetupIssues(graph, selectedNode).length > 0 && (
             <ul className="my-4 space-y-3 rounded-lg border border-warning/40 p-3 text-sm">
-              {stepSetupIssues(graph, selectedNode).map((issue) => <li key={issue.control}>
-                <p>{issue.message}</p>
-                <Button variant="link" size="sm" className="mt-1 h-auto px-0" onClick={() => fixIssue(selectedNode.id, issue)}>{issue.action} →</Button>
-              </li>)}
+              {stepSetupIssues(graph, selectedNode).map((issue) => (
+                <li key={issue.control}>
+                  <p>{issue.message}</p>
+                  <Button
+                    variant="link"
+                    size="sm"
+                    className="mt-1 h-auto px-0"
+                    onClick={() => fixIssue(selectedNode.id, issue)}
+                  >
+                    {issue.action} →
+                  </Button>
+                </li>
+              ))}
             </ul>
           )}
-          {selectedNode.kind !== "resume_uploaded" && !graph.edges.some((e) => e.target === selectedNode.id) && <section className="my-4 space-y-2 rounded-lg border p-3">
-            <label htmlFor="connection-incoming" className="text-sm font-medium">Connect after</label>
-            <SelectField id="connection-incoming" value="" disabled={!editable} className="h-10 w-full rounded border bg-background px-2 text-sm" onValueChange={(value) => {
-              if (!value) return;
-              const choice = freeInputs[Number(value)];
-              if (choice) connect({source: choice.source, target: selectedNode.id, sourceHandle: choice.outcome, targetHandle: "in"});
-            }} placeholder="Choose a previous step">
-              <SelectFieldOption value="">Choose a previous step</SelectFieldOption>
-              {freeInputs.map((choice, i) => <SelectFieldOption key={choice.source + choice.outcome} value={i}>{displayNode(graph.nodes.find((n) => n.id === choice.source)!)} · {choice.outcome}</SelectFieldOption>)}
-            </SelectField>
-            {!freeInputs.length && <><p className="text-xs text-muted-foreground">No free outputs. Open a previous step and change its next connection.</p><Button variant="outline" size="sm" onClick={() => {if (compact) setSelected(null); setOutlineOpen(true);}}>Choose previous step</Button></>}
-          </section>}
-          {outcomes(selectedNode.kind).length > 0 ? <section className="my-4 rounded-lg border p-3" aria-label="Next steps">
-            <h3 className="text-sm font-medium">What happens next</h3>
-            <div className="mt-3 space-y-3">
-              {outcomes(selectedNode.kind).map((outcome) => {
-                const edge = graph.edges.find(
-                  (e) => e.source === selectedNode.id && e.outcome === outcome,
-                );
-                return (
-                  <div key={outcome}>
-                    <label
-                      className="text-xs font-medium capitalize"
-                      htmlFor={`connection-${outcome}`}
+          {selectedNode.kind !== "resume_uploaded" &&
+            !graph.edges.some((e) => e.target === selectedNode.id) && (
+              <section className="my-4 space-y-2 rounded-lg border p-3">
+                <label
+                  htmlFor="connection-incoming"
+                  className="text-sm font-medium"
+                >
+                  Connect after
+                </label>
+                <SelectField
+                  id="connection-incoming"
+                  value=""
+                  disabled={!editable}
+                  className="h-10 w-full rounded border bg-background px-2 text-sm"
+                  onValueChange={(value) => {
+                    if (!value) return;
+                    const choice = freeInputs[Number(value)];
+                    if (choice)
+                      connect({
+                        source: choice.source,
+                        target: selectedNode.id,
+                        sourceHandle: choice.outcome,
+                        targetHandle: "in",
+                      });
+                  }}
+                  placeholder="Choose a previous step"
+                >
+                  <SelectFieldOption value="">
+                    Choose a previous step
+                  </SelectFieldOption>
+                  {freeInputs.map((choice, i) => (
+                    <SelectFieldOption
+                      key={choice.source + choice.outcome}
+                      value={i}
                     >
-                      {outcome === "next" ? "Next step" : outcome}
-                    </label>
-                    {edge && <Button type="button" variant="link" size="sm" className="mb-1 h-auto w-full justify-start whitespace-normal px-0 text-left" onClick={() => focus(edge.target)}>
-                      Open {(() => { const target = graph.nodes.find((n) => n.id === edge.target); return target ? displayNode(target) : "missing step"; })()} →
-                    </Button>}
-                    <details className="mt-1">
-                    <summary className="cursor-pointer text-xs text-muted-foreground">{edge ? "Change connection" : "Connect an existing step"}</summary>
-                    <SelectField
-                      id={`connection-${outcome}`}
-                      disabled={!editable}
-                      className="h-10 w-full rounded border bg-background px-2 text-xs"
-                      value={edge?.target ?? ""}
-                      onValueChange={(value) => {
-                        if (!value) {
-                          commit({
-                            ...graph,
-                            edges: graph.edges.filter((e) => e.id !== edge?.id),
-                          });
-                          return;
-                        }
-                        connect(
-                          {
-                            source: selectedNode.id,
-                            target: value,
-                            sourceHandle: outcome,
-                            targetHandle: "in",
-                          },
-                          edge
-                            ? flowEdges({ nodes: [], edges: [edge] })[0]
-                            : undefined,
-                        );
-                      }}
-                      placeholder="Not connected"
-                    >
-                      <SelectFieldOption value="">Not connected</SelectFieldOption>
-                      {graph.nodes
-                        .filter(
-                          (n) =>
-                            n.kind !== "resume_uploaded" &&
-                            n.id !== selectedNode.id &&
-                            (outcome !== "rejected" ||
-                              selectedNode.kind !== "review_resume" ||
-                              n.kind === "stop"),
-                        )
-                        .map((n) => (
-                          <SelectFieldOption key={n.id} value={n.id}>
-                            {displayNode(n)}
-                          </SelectFieldOption>
-                        ))}
-                    </SelectField>
-                    </details>
+                      {displayNode(
+                        graph.nodes.find((n) => n.id === choice.source)!,
+                      )}{" "}
+                      · {choice.outcome}
+                    </SelectFieldOption>
+                  ))}
+                </SelectField>
+                {!freeInputs.length && (
+                  <>
+                    <p className="text-xs text-muted-foreground">
+                      No free outputs. Open a previous step and change its next
+                      connection.
+                    </p>
                     <Button
-                      id={`step-add-${outcome}`}
+                      variant="outline"
                       size="sm"
-                      className="mt-1"
-                      variant="ghost"
-                      disabled={!editable}
-                      onClick={() => openPalette(selectedNode.id, outcome)}
+                      onClick={() => {
+                        if (compact) setSelected(null);
+                        setOutlineOpen(true);
+                      }}
                     >
-                      + {edge ? "Insert a step" : "Add next step"}
+                      Choose previous step
                     </Button>
-                  </div>
-                );
-              })}
-            </div>
-          </section> : <p className="my-4 rounded-lg border p-3 text-sm text-muted-foreground">This step ends its path.</p>}
+                  </>
+                )}
+              </section>
+            )}
+          {outcomes(selectedNode.kind).length > 0 ? (
+            <section
+              className="my-4 rounded-lg border p-3"
+              aria-label="Next steps"
+            >
+              <h3 className="text-sm font-medium">What happens next</h3>
+              <div className="mt-3 space-y-3">
+                {outcomes(selectedNode.kind).map((outcome) => {
+                  const edge = graph.edges.find(
+                    (e) =>
+                      e.source === selectedNode.id && e.outcome === outcome,
+                  );
+                  return (
+                    <div key={outcome}>
+                      <label
+                        className="text-xs font-medium capitalize"
+                        htmlFor={`connection-${outcome}`}
+                      >
+                        {outcome === "next" ? "Next step" : outcome}
+                      </label>
+                      {edge && (
+                        <Button
+                          type="button"
+                          variant="link"
+                          size="sm"
+                          className="mb-1 h-auto w-full justify-start whitespace-normal px-0 text-left"
+                          onClick={() => focus(edge.target)}
+                        >
+                          Open{" "}
+                          {(() => {
+                            const target = graph.nodes.find(
+                              (n) => n.id === edge.target,
+                            );
+                            return target
+                              ? displayNode(target)
+                              : "missing step";
+                          })()}{" "}
+                          →
+                        </Button>
+                      )}
+                      <details className="mt-1">
+                        <summary className="cursor-pointer text-xs text-muted-foreground">
+                          {edge
+                            ? "Change connection"
+                            : "Connect an existing step"}
+                        </summary>
+                        <SelectField
+                          id={`connection-${outcome}`}
+                          disabled={!editable}
+                          className="h-10 w-full rounded border bg-background px-2 text-xs"
+                          value={edge?.target ?? ""}
+                          onValueChange={(value) => {
+                            if (!value) {
+                              commit({
+                                ...graph,
+                                edges: graph.edges.filter(
+                                  (e) => e.id !== edge?.id,
+                                ),
+                              });
+                              return;
+                            }
+                            connect(
+                              {
+                                source: selectedNode.id,
+                                target: value,
+                                sourceHandle: outcome,
+                                targetHandle: "in",
+                              },
+                              edge
+                                ? flowEdges({ nodes: [], edges: [edge] })[0]
+                                : undefined,
+                            );
+                          }}
+                          placeholder="Not connected"
+                        >
+                          <SelectFieldOption value="">
+                            Not connected
+                          </SelectFieldOption>
+                          {graph.nodes
+                            .filter(
+                              (n) =>
+                                n.kind !== "resume_uploaded" &&
+                                n.id !== selectedNode.id &&
+                                (outcome !== "rejected" ||
+                                  selectedNode.kind !== "review_resume" ||
+                                  n.kind === "stop"),
+                            )
+                            .map((n) => (
+                              <SelectFieldOption key={n.id} value={n.id}>
+                                {displayNode(n)}
+                              </SelectFieldOption>
+                            ))}
+                        </SelectField>
+                      </details>
+                      <Button
+                        id={`step-add-${outcome}`}
+                        size="sm"
+                        className="mt-1"
+                        variant="ghost"
+                        disabled={!editable}
+                        onClick={() => openPalette(selectedNode.id, outcome)}
+                      >
+                        + {edge ? "Insert a step" : "Add next step"}
+                      </Button>
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
+          ) : (
+            <p className="my-4 rounded-lg border p-3 text-sm text-muted-foreground">
+              This step ends its path.
+            </p>
+          )}
           {selectedNode.kind !== "resume_uploaded" && (
             <div className="flex flex-wrap gap-2">
               <Button
@@ -723,27 +1117,26 @@ function EditorBody({
       w.trigger !== "manual",
   );
   return (
-    <div
-      className={
-        focusMode
-          ? "fixed inset-0 z-40 space-y-6 overflow-y-auto bg-background p-3 sm:p-6"
-          : "min-w-0 space-y-6"
-      }
+    <main
+      className="flex h-svh min-w-0 flex-col overflow-hidden bg-background"
+      aria-label="Workflow editor"
     >
-      <div className="flex flex-wrap items-start justify-between gap-3">
+      <h1 className="sr-only">{name}</h1>
+      <header className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b bg-card px-4 py-3">
         <div className="min-w-0 space-y-2">
           <Link href="/workflows" className="text-sm text-muted-foreground">
-            ← Workflows
+            ← Automation
           </Link>
           <div className="flex flex-wrap items-center gap-2">
             <Input
               id="workflow-name"
               aria-label="Workflow name"
+              title={name}
               maxLength={120}
               value={name}
               disabled={!editable}
               onChange={(e) => setName(e.target.value)}
-              className="w-80 max-w-full text-lg font-semibold"
+              className="h-9 w-64 max-w-full border-transparent bg-transparent text-base font-semibold hover:border-input focus:border-input"
             />
             <Badge variant="secondary">
               {workflow.active
@@ -767,33 +1160,98 @@ function EditorBody({
               : dirty && saveState !== "Saving…"
                 ? "Unsaved changes"
                 : saveState}{" "}
-            · Draft edits autosave.
-            {workflow.published && workflowTrigger(workflow.published) !== workflowTrigger(graph) && (
-              <span className="block">
-                Published starts when:{" "}
-                {TRIGGER_LABELS[workflowTrigger(workflow.published)]}
-                {!workflow.active ? " · Automatic runs paused" : ""}
-              </span>
+            · Draft autosaves.{" "}
+            {tab !== "editor" && (
+              <Button
+                variant="link"
+                size="sm"
+                className="h-auto p-0"
+                onClick={() => setTab("editor")}
+              >
+                Return to editor
+              </Button>
             )}
+            {workflow.published &&
+              workflowTrigger(workflow.published) !==
+                workflowTrigger(graph) && (
+                <span className="block">
+                  Published starts when:{" "}
+                  {TRIGGER_LABELS[workflowTrigger(workflow.published)]}
+                  {!workflow.active ? " · Automatic runs paused" : ""}
+                </span>
+              )}
           </p>
         </div>
-        <div aria-label="Workflow actions" className="flex max-w-full flex-wrap items-center gap-2">
-          <Button data-sample-preview-trigger variant="outline" onClick={() => { if (compact) setSelected(null); setSampleOpen(true); }}><Play />Preview draft</Button>
-          <Button disabled={!editable} onClick={() => { setOverlapCheck("checking"); setPublishOpen(true); }}>
-            {busy && <LoaderCircle className="animate-spin" />}Review &amp; publish
+        <div
+          aria-label="Workflow actions"
+          className="flex max-w-full flex-wrap items-center gap-2"
+        >
+          <Button
+            data-sample-preview-trigger
+            variant="outline"
+            onClick={() => {
+              if (compact) setSelected(null);
+              setSampleOpen(true);
+            }}
+          >
+            <Play />
+            Test with sample
+          </Button>
+          <Button
+            variant="outline"
+            disabled={!editable || !canSaveDraft || !name.trim()}
+            onClick={() => void save("save").catch(() => {})}
+          >
+            <Save />
+            Save draft
+          </Button>
+          <Button
+            disabled={!editable}
+            onClick={() => {
+              setOverlapCheck("checking");
+              setPublishOpen(true);
+            }}
+          >
+            {busy && <LoaderCircle className="animate-spin" />}Review &amp;
+            publish
           </Button>
           <DropdownMenu>
-            <DropdownMenuTrigger asChild><Button variant="outline" size="icon" aria-label="More workflow actions"><MoreHorizontal /></Button></DropdownMenuTrigger>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="outline"
+                size="icon"
+                aria-label="More workflow actions"
+              >
+                <MoreHorizontal />
+              </Button>
+            </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuItem disabled={!editable || !canSaveDraft || !name.trim()} onSelect={() => void save("save").catch(() => {})}><Save />Save draft now</DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => setOverviewOpen(true)}><Info />Compare draft &amp; live</DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => setTab("runs")}>
+                Executions
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => setTab("settings")}>
+                Settings &amp; publish history
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => setOverviewOpen(true)}>
+                <Info />
+                Compare draft &amp; live
+              </DropdownMenuItem>
               <DropdownMenuSeparator />
-              <DropdownMenuItem disabled={!workflow.version || busy || workflow.archived} onSelect={() => setStartOpen(true)}><Play />Run published workflow…</DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => setHelpOpen(true)}>Shortcuts &amp; help</DropdownMenuItem>
+              <DropdownMenuItem
+                disabled={!workflow.version || busy || workflow.archived}
+                onSelect={() => setStartOpen(true)}
+              >
+                <Play />
+                Run published workflow…
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => setHelpOpen(true)}>
+                Shortcuts &amp; help
+              </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
+          <ThemeToggle />
         </div>
-      </div>
+      </header>
       {workflow.archived && (
         <Alert>
           <AlertDescription>
@@ -850,30 +1308,59 @@ function EditorBody({
           <AlertDescription>{notice}</AlertDescription>
         </Alert>
       )}
-      <Tabs value={tab} onValueChange={setTab}>
-        <TabsList className="max-w-full gap-1">
-          <TabsTrigger value="editor">Editor</TabsTrigger>
-          <TabsTrigger value="runs">Executions</TabsTrigger>
-          <TabsTrigger value="settings">Settings</TabsTrigger>
-        </TabsList>
+      <Tabs
+        value={tab}
+        onValueChange={setTab}
+        className="flex min-h-0 flex-1 flex-col gap-0"
+      >
         <TabsContent
           value="editor"
           forceMount
-          className={tab !== "editor" ? "hidden" : "mt-4"}
+          className={
+            tab !== "editor" ? "hidden" : "flex min-h-0 flex-1 flex-col"
+          }
         >
-          {preview && <section aria-label="Sample preview status" className="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-primary/30 bg-primary/5 p-3">
-            <div className="min-w-0"><p className="text-sm font-medium">{activePreview ? "Sample preview · no real actions performed" : "Sample preview is outdated"}</p><p role="status" className="mt-1 text-xs text-muted-foreground">{activePreview ? activePreview.halt : "The draft changed. Preview again to see its new path."}</p></div>
-            <div className="flex gap-2"><Button data-sample-preview-trigger variant="outline" size="sm" onClick={() => {if (compact) setSelected(null); setSampleOpen(true);}}>Edit sample</Button><Button variant="ghost" size="sm" onClick={() => setPreview(null)}>Clear preview</Button></div>
-          </section>}
-          <div className="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-card p-3">
-            <div className="min-w-0">
-              <p className="text-xs text-muted-foreground">{workflow.published ? "Editing draft · new runs use the published version" : "Editing draft · publish when you’re ready to make it live"}</p>
-              <Button variant="link" className="mt-1 h-auto max-w-full justify-start whitespace-normal p-0 text-left" onClick={() => { const start = graph.nodes.find((n) => n.kind === "resume_uploaded"); if (start) focus(start.id); }}>Starts when: {TRIGGER_LABELS[workflowTrigger(graph)]} →</Button>
-            </div>
-            <Button variant="outline" size="sm" onClick={() => { if (compact) setSelected(null); setOutlineOpen(true); }}><ListOrdered />Steps · {nodes.length}</Button>
-          </div>
-          <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-card p-2">
-            <div className="flex flex-wrap gap-2">
+          {preview && (
+            <section
+              aria-label="Sample preview status"
+              className="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-primary/30 bg-primary/5 p-3"
+            >
+              <div className="min-w-0">
+                <p className="text-sm font-medium">
+                  {activePreview
+                    ? "Sample preview · no real actions performed"
+                    : "Sample preview is outdated"}
+                </p>
+                <p role="status" className="mt-1 text-xs text-muted-foreground">
+                  {activePreview
+                    ? activePreview.halt
+                    : "The draft changed. Preview again to see its new path."}
+                </p>
+              </div>
+              <div className="flex gap-2">
+                <Button
+                  data-sample-preview-trigger
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    if (compact) setSelected(null);
+                    setSampleOpen(true);
+                  }}
+                >
+                  Edit sample
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setPreview(null)}
+                >
+                  Clear preview
+                </Button>
+              </div>
+            </section>
+          )}
+          <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b bg-card px-3 py-2">
+            <div className="flex flex-wrap items-center gap-2">
               <Button
                 size="sm"
                 disabled={!editable || nodes.length >= 32}
@@ -883,22 +1370,15 @@ function EditorBody({
                 Add step
               </Button>
               <Button
-                size="icon-sm"
                 variant="ghost"
-                aria-label="Undo workflow change"
-                disabled={!editable || !past.length}
-                onClick={undo}
+                size="sm"
+                onClick={() => {
+                  if (compact) setSelected(null);
+                  setOutlineOpen(true);
+                }}
               >
-                <Undo2 />
-              </Button>
-              <Button
-                size="icon-sm"
-                variant="ghost"
-                aria-label="Redo workflow change"
-                disabled={!editable || !future.length}
-                onClick={redo}
-              >
-                <Redo2 />
+                <ListOrdered />
+                Steps · {nodes.length}
               </Button>
               <Button
                 size="sm"
@@ -907,79 +1387,107 @@ function EditorBody({
                 onClick={() => {
                   commit(arrangeGraph(graph));
                   requestAnimationFrame(
-                    () => void flow.fitView({ padding: 0.25, duration: 300 }),
+                    () =>
+                      void flow.fitView({
+                        padding: 0.18,
+                        maxZoom: 1,
+                        duration: 300,
+                      }),
                   );
                 }}
               >
                 <LayoutGrid />
                 Auto-arrange
               </Button>
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={() =>
-                  void flow.fitView({ padding: 0.25, duration: 300 })
-                }
-              >
-                Fit workflow
-              </Button>
+              {selection.length > 1 && (
+                <div
+                  aria-label="Selection tools"
+                  className="flex flex-wrap items-center gap-2 border-l pl-3"
+                >
+                  <span className="text-xs text-muted-foreground">
+                    {selection.length} selected
+                  </span>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button size="sm" variant="outline" disabled={!editable}>
+                        <AlignHorizontalJustifyCenter />
+                        Align
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent>
+                      {(
+                        [
+                          "left",
+                          "center",
+                          "right",
+                          "top",
+                          "middle",
+                          "bottom",
+                        ] as const
+                      ).map((alignment) => (
+                        <DropdownMenuItem
+                          key={alignment}
+                          onSelect={() => align(alignment)}
+                        >
+                          Align{" "}
+                          {alignment === "center"
+                            ? "horizontal centers"
+                            : alignment === "middle"
+                              ? "vertical centers"
+                              : alignment}
+                        </DropdownMenuItem>
+                      ))}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={!editable || selection.length < 3}
+                      >
+                        Distribute
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent>
+                      <DropdownMenuItem onSelect={() => distribute("x")}>
+                        Horizontal spacing
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onSelect={() => distribute("y")}>
+                        Vertical spacing
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
+              )}
             </div>
-            <div className="flex flex-wrap gap-2">
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => setValidateOpen(true)}
-              >
-                {issues.length ? (
-                  `${issues.length} setup ${issues.length === 1 ? "issue" : "issues"}`
-                ) : (
-                  <>
-                    <CheckCircle2 />
-                    Graph complete
-                  </>
-                )}
-              </Button>
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={() => setFocusMode(!focusMode)}
-              >
-                {focusMode ? <Minimize2 /> : <Maximize2 />}
-                {focusMode ? "Exit focus mode" : "Focus mode"}
-              </Button>
-
-            </div>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => setValidateOpen(true)}
+            >
+              {issues.length ? (
+                `${issues.length} setup ${issues.length === 1 ? "issue" : "issues"}`
+              ) : (
+                <>
+                  <CheckCircle2 />
+                  Graph complete
+                </>
+              )}
+            </Button>
           </div>
           <div
-            className={`grid min-w-0 items-start gap-3 ${paletteOpen ? (selectedNode ? "xl:grid-cols-[240px_minmax(0,1fr)_340px]" : "xl:grid-cols-[240px_minmax(0,1fr)]") : selectedNode ? "xl:grid-cols-[minmax(0,1fr)_340px]" : "grid-cols-1"}`}
-            onKeyDown={(e) => {
-              if (
-                !editable ||
-                (e.target as Element).closest(
-                  "input,textarea,select,[contenteditable=true]",
-                )
-              )
-                return;
-              if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") {
-                e.preventDefault();
-                if (e.shiftKey) redo();
-                else undo();
-              }
-              if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "d") {
-                e.preventDefault();
-                duplicate();
-              }
-              if (e.key === "Delete" || e.key === "Backspace") {
-                e.preventDefault();
-                remove();
-              }
-              if (e.key === "Escape") setSelected(null);
-            }}
+            className={`relative grid min-h-0 min-w-0 flex-1 ${selectedNode && !compact ? "md:grid-cols-[minmax(0,1fr)_340px]" : "grid-cols-1"}`}
           >
             {paletteOpen && (
               <aside
                 aria-label="Step catalog"
-                className="max-h-[70svh] min-w-0 overflow-auto rounded-xl border bg-card p-3"
+                style={
+                  addContext.anchor
+                    ? { left: addContext.anchor.x, top: addContext.anchor.y }
+                    : undefined
+                }
+                className="absolute left-3 top-3 z-20 max-h-[min(70svh,calc(100%-24px))] w-72 max-w-[calc(100%-24px)] overflow-auto rounded-xl border bg-card p-3 shadow-lg"
               >
                 <div className="mb-3 flex items-start justify-between gap-2">
                   <div>
@@ -1018,7 +1526,9 @@ function EditorBody({
               </aside>
             )}
             <div
-              className={`relative ${focusMode ? "h-[calc(100svh-240px)]" : "h-[calc(100svh-360px)]"} min-h-[420px] min-w-0 overflow-hidden rounded-xl border bg-muted/20`}
+              className="relative min-h-0 min-w-0 overflow-hidden bg-muted/20"
+              tabIndex={0}
+              ref={canvasElement}
               aria-label="Workflow canvas"
               onDragOver={(e) => {
                 if (!editable) return;
@@ -1042,13 +1552,17 @@ function EditorBody({
                   ...n,
                   data: {
                     ...n.data,
-                    preview: activePreview ? sampleNodeState(activePreview, n.id) : undefined,
+                    preview: activePreview
+                      ? sampleNodeState(activePreview, n.id)
+                      : undefined,
                     issues: nodeIssues(
                       graph,
                       graph.nodes.find((g) => g.id === n.id)!,
                     ),
                     onAdd: editable ? openPalette : undefined,
-                    connectedOutcomes: graph.edges.filter((e) => e.source === n.id).map((e) => e.outcome),
+                    connectedOutcomes: graph.edges
+                      .filter((e) => e.source === n.id)
+                      .map((e) => e.outcome),
                     onAction: editable
                       ? (action, id) => {
                           if (action === "duplicate") duplicate(id);
@@ -1073,7 +1587,9 @@ function EditorBody({
                 }))}
                 edges={edges.map((e) => ({
                   ...e,
-                  ...(activePreview ? {style: sampleEdgeStyle(activePreview, e.id)} : {}),
+                  ...(activePreview
+                    ? { style: sampleEdgeStyle(activePreview, e.id) }
+                    : {}),
                   data: {
                     onInsert: editable
                       ? (id) => {
@@ -1083,7 +1599,35 @@ function EditorBody({
                       : undefined,
                   },
                 }))}
-                onNodesChange={onNodesChange}
+                showControls={false}
+                showMiniMap={false}
+                fitView={false}
+                guides={guides}
+                selectionOnDrag={tool === "select"}
+                selectionMode={SelectionMode.Partial}
+                multiSelectionKeyCode="Shift"
+                selectionKeyCode="Shift"
+                panOnDrag={tool === "hand" ? [0, 1, 2] : [1, 2]}
+                panActivationKeyCode="Space"
+                onMoveEnd={(_, nextViewport) => {
+                  if (viewportReady.current) {
+                    try {
+                      localStorage.setItem(
+                        viewportKey,
+                        JSON.stringify(nextViewport),
+                      );
+                    } catch {
+                      /* Device storage may be unavailable. */
+                    }
+                  }
+                }}
+                onSelectionChange={({ nodes: selectedNodes }) => {
+                  setSelected(
+                    selectedNodes.length === 1 ? selectedNodes[0].id : null,
+                  );
+                }}
+                onSelectionStart={() => setPaletteOpen(false)}
+                onNodesChange={changeNodes}
                 onEdgesChange={onEdgesChange}
                 onConnect={connect}
                 onReconnect={(old, connection) => connect(connection, old)}
@@ -1115,19 +1659,112 @@ function EditorBody({
                       ) ?? "Choose a valid input handle.",
                     );
                 }}
-                onNodeClick={(_, n) => {
-                  select(n.id);
+                onNodeClick={(event, node) => {
+                  setPaletteOpen(false);
+                  setInspectorTab("parameters");
+                  if (!event.shiftKey) setSelected(node.id);
                 }}
                 onNodeDoubleClick={(_, n) => focus(n.id)}
-                onPaneClick={() => setSelected(null)}
-                onNodeDragStart={() => {
+                onPaneClick={() => {
+                  setSelected(null);
+                  setPaletteOpen(false);
+                }}
+                onNodeDragStart={(event) => {
                   if (editable) {
-                    setPast((p) => [...p, graph].slice(-50));
-                    setFuture([]);
+                    dragStart.current = graph;
+                    altPressed.current = event.altKey;
                   }
                 }}
+                onSelectionDragStart={(event) => {
+                  if (editable) {
+                    dragStart.current = graph;
+                    altPressed.current = event.altKey;
+                  }
+                }}
+                onNodeDragStop={() => finishDrag()}
+                onSelectionDragStop={() => finishDrag()}
                 deleteKeyCode={null}
               />
+              <div
+                aria-label="Canvas controls"
+                className="absolute bottom-4 left-1/2 z-10 flex max-w-[calc(100%-24px)] -translate-x-1/2 flex-wrap items-center justify-center gap-1 rounded-xl border bg-card p-1.5 shadow-lg"
+              >
+                <Button
+                  variant={tool === "select" ? "secondary" : "ghost"}
+                  size="icon-sm"
+                  aria-label="Select tool (V)"
+                  aria-pressed={tool === "select"}
+                  onClick={() => setTool("select")}
+                >
+                  <MousePointer2 />
+                </Button>
+                <Button
+                  variant={tool === "hand" ? "secondary" : "ghost"}
+                  size="icon-sm"
+                  aria-label="Hand tool (H)"
+                  aria-pressed={tool === "hand"}
+                  onClick={() => setTool("hand")}
+                >
+                  <Hand />
+                </Button>
+                <Button
+                  size="icon-sm"
+                  variant="ghost"
+                  aria-label="Undo workflow change"
+                  title="Undo · Ctrl/Cmd+Z"
+                  disabled={!editable || !past.length}
+                  onClick={undo}
+                >
+                  <Undo2 />
+                </Button>
+                <Button
+                  size="icon-sm"
+                  variant="ghost"
+                  aria-label="Redo workflow change"
+                  title="Redo · Ctrl/Cmd+Shift+Z"
+                  disabled={!editable || !future.length}
+                  onClick={redo}
+                >
+                  <Redo2 />
+                </Button>
+                <Button
+                  size="icon-sm"
+                  variant="ghost"
+                  aria-label="Zoom out"
+                  onClick={() => void flow.zoomOut()}
+                >
+                  <Minus />
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  aria-label="Reset zoom to 100%"
+                  onClick={() => void flow.zoomTo(1)}
+                >
+                  {Math.round(viewport.zoom * 100)}%
+                </Button>
+                <Button
+                  size="icon-sm"
+                  variant="ghost"
+                  aria-label="Zoom in"
+                  onClick={() => void flow.zoomIn()}
+                >
+                  <Plus />
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() =>
+                    void flow.fitView({
+                      padding: 0.18,
+                      maxZoom: 1,
+                      duration: 300,
+                    })
+                  }
+                >
+                  Fit
+                </Button>
+              </div>
               {error && (
                 <p
                   role="alert"
@@ -1138,35 +1775,51 @@ function EditorBody({
               )}
             </div>
             {selectedNode && !compact && (
-              <aside className="max-h-[calc(100svh-360px)] min-h-[420px] min-w-0 overflow-y-auto rounded-xl border bg-card p-4">
+              <aside className="min-h-0 min-w-0 overflow-y-auto border-l bg-card p-4">
                 {inspector}
               </aside>
             )}
             <Sheet
               open={compact && !!selectedNode}
               onOpenChange={(open) => {
-                if (!open) setSelected(null);
+                if (!open) {
+                  setSelected(null);
+                  setNodes((previous) =>
+                    previous.map((node) => ({ ...node, selected: false })),
+                  );
+                }
               }}
             >
-              <SheetContent showCloseButton={false} className="w-full overflow-y-auto p-4 sm:max-w-md">
+              <SheetContent
+                side="bottom"
+                onCloseAutoFocus={(event) => { event.preventDefault(); canvasElement.current?.focus(); }}
+                showCloseButton={false}
+                className="max-h-[80svh] w-full overflow-y-auto p-4"
+              >
                 <SheetHeader className="sr-only">
                   <SheetTitle>Step settings</SheetTitle>
+                  <SheetDescription>
+                    Configure the selected workflow step.
+                  </SheetDescription>
                 </SheetHeader>
                 {inspector}
               </SheetContent>
             </Sheet>
           </div>
-          <p className="mt-2 text-xs text-muted-foreground">
-            Click a step to configure it. Use + to insert a connected step. Drag to arrange; scroll to zoom.
-          </p>
         </TabsContent>
-        <TabsContent value="runs" className="mt-4">
+        <TabsContent
+          value="runs"
+          className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-6"
+        >
           <WorkflowRunsView
             workflowId={workflow.id}
             preferenceKey={preferenceKey}
           />
         </TabsContent>
-        <TabsContent value="settings" className="mt-4">
+        <TabsContent
+          value="settings"
+          className="min-h-0 flex-1 space-y-6 overflow-y-auto p-4 sm:p-6"
+        >
           <WorkflowReadiness
             id={workflow.id}
             graph={graph}
@@ -1244,16 +1897,49 @@ function EditorBody({
       </Tabs>
       <Dialog open={outlineOpen} onOpenChange={setOutlineOpen}>
         <DialogContent className="max-h-[85svh] overflow-y-auto sm:max-w-lg">
-          <DialogHeader><DialogTitle>Workflow steps</DialogTitle><DialogDescription>Follow each path from the starting event. Choose a step to configure it.</DialogDescription></DialogHeader>
-          <WorkflowOutline graph={graph} onSelect={(id) => { setOutlineOpen(false); focus(id); }} />
+          <DialogHeader>
+            <DialogTitle>Workflow steps</DialogTitle>
+            <DialogDescription>
+              Follow each path from the starting event. Choose a step to
+              configure it.
+            </DialogDescription>
+          </DialogHeader>
+          <WorkflowOutline
+            graph={graph}
+            onSelect={(id) => {
+              setOutlineOpen(false);
+              focus(id);
+            }}
+          />
         </DialogContent>
       </Dialog>
       <Dialog open={overviewOpen} onOpenChange={setOverviewOpen}>
         <DialogContent className="max-h-[85svh] overflow-y-auto sm:max-w-4xl">
-          <DialogHeader><DialogTitle>Draft &amp; published behavior</DialogTitle><DialogDescription>Draft edits affect future runs only after publishing. Existing executions keep their saved version.</DialogDescription></DialogHeader>
-          <div className={`grid min-w-0 gap-4 ${workflow.published ? "md:grid-cols-2" : ""}`}>
+          <DialogHeader>
+            <DialogTitle>Draft &amp; published behavior</DialogTitle>
+            <DialogDescription>
+              Draft edits affect future runs only after publishing. Existing
+              executions keep their saved version.
+            </DialogDescription>
+          </DialogHeader>
+          <div
+            className={`grid min-w-0 gap-4 ${workflow.published ? "md:grid-cols-2" : ""}`}
+          >
             <BusinessSummaryCard graph={graph} title="Draft behavior" />
-            {workflow.published ? <BusinessSummaryCard graph={workflow.published} title={workflow.active ? "Published behavior" : "Published behavior (paused)"} /> : <p className="text-sm text-muted-foreground">This workflow has not been published.</p>}
+            {workflow.published ? (
+              <BusinessSummaryCard
+                graph={workflow.published}
+                title={
+                  workflow.active
+                    ? "Published behavior"
+                    : "Published behavior (paused)"
+                }
+              />
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                This workflow has not been published.
+              </p>
+            )}
           </div>
         </DialogContent>
       </Dialog>
@@ -1266,21 +1952,62 @@ function EditorBody({
               connections and approval paths.
             </SheetDescription>
           </SheetHeader>
-          {(!name.trim() || name.length > 120) && <section className="space-y-2 rounded-lg border p-3 text-sm">
-            <p>Enter a workflow name within 120 characters.</p>
-            <Button variant="outline" size="sm" onClick={() => {setValidateOpen(false); setSelected(null); setSettingTarget({nodeId: null, control: "workflow-name"});}}>Enter workflow name →</Button>
-          </section>}
-          {actionableIssues.map(({node, issue}) => <section key={node.id + issue.control} className="space-y-2 rounded-lg border p-3 text-sm">
-            <h3 className="font-medium">{displayNode(node)}</h3>
-            <p className="text-muted-foreground">{issue.message}</p>
-            <Button size="sm" variant="outline" onClick={() => fixIssue(node.id, issue)}>{issue.action} →</Button>
-          </section>)}
-          {issues.length ? <details open={!actionableIssues.length} className="rounded-lg border p-3">
-            <summary className="cursor-pointer text-sm font-medium">Full graph checks · {issues.length}</summary>
-            <ul className="mt-3 list-disc space-y-2 pl-5 text-sm text-muted-foreground">{issues.map((issue) => <li key={issue}>{issue}</li>)}</ul>
-            <p className="mt-3 text-xs text-muted-foreground">For ordering or loops, change the next connection in step settings. Select a connection and press Delete to remove it.</p>
-          </details> : <p className="text-sm text-emerald-700 dark:text-emerald-400">Graph checks pass. Review integrations and changes before publishing.</p>}
-
+          {(!name.trim() || name.length > 120) && (
+            <section className="space-y-2 rounded-lg border p-3 text-sm">
+              <p>Enter a workflow name within 120 characters.</p>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setValidateOpen(false);
+                  setSelected(null);
+                  setSettingTarget({ nodeId: null, control: "workflow-name" });
+                }}
+              >
+                Enter workflow name →
+              </Button>
+            </section>
+          )}
+          {actionableIssues.map(({ node, issue }) => (
+            <section
+              key={node.id + issue.control}
+              className="space-y-2 rounded-lg border p-3 text-sm"
+            >
+              <h3 className="font-medium">{displayNode(node)}</h3>
+              <p className="text-muted-foreground">{issue.message}</p>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => fixIssue(node.id, issue)}
+              >
+                {issue.action} →
+              </Button>
+            </section>
+          ))}
+          {issues.length ? (
+            <details
+              open={!actionableIssues.length}
+              className="rounded-lg border p-3"
+            >
+              <summary className="cursor-pointer text-sm font-medium">
+                Full graph checks · {issues.length}
+              </summary>
+              <ul className="mt-3 list-disc space-y-2 pl-5 text-sm text-muted-foreground">
+                {issues.map((issue) => (
+                  <li key={issue}>{issue}</li>
+                ))}
+              </ul>
+              <p className="mt-3 text-xs text-muted-foreground">
+                For ordering or loops, change the next connection in step
+                settings. Select a connection and press Delete to remove it.
+              </p>
+            </details>
+          ) : (
+            <p className="text-sm text-emerald-700 dark:text-emerald-400">
+              Graph checks pass. Review integrations and changes before
+              publishing.
+            </p>
+          )}
         </SheetContent>
       </Sheet>
       <Dialog open={publishOpen} onOpenChange={setPublishOpen}>
@@ -1369,7 +2096,11 @@ function EditorBody({
             Approved paths can create accounts, assign forms and send Telegram
             invitations. Editing or saving a draft never executes them.
           </p>
-          {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
+          {error && (
+            <p role="alert" className="text-sm text-destructive">
+              {error}
+            </p>
+          )}
           <Button
             disabled={
               busy || issues.length > 0 || !editable || overlapCheck !== "ready"
@@ -1406,22 +2137,43 @@ function EditorBody({
         </DialogContent>
       </Dialog>
       <Dialog open={sampleOpen} onOpenChange={setSampleOpen}>
-        <DialogContent className="max-h-[90svh] overflow-y-auto sm:max-w-4xl" style={{"--tw-enter-scale": 1, "--tw-exit-scale": 1} as CSSProperties} onPointerDownOutside={(event) => {
-          // An exiting dialog must not dismiss a preview that its trigger just reopened.
-          const target = event.detail.originalEvent.target;
-          if (target instanceof Element && target.closest("[data-sample-preview-trigger]")) event.preventDefault();
-        }}>
+        <DialogContent
+          className="max-h-[90svh] overflow-y-auto sm:max-w-4xl"
+          style={
+            { "--tw-enter-scale": 1, "--tw-exit-scale": 1 } as CSSProperties
+          }
+          onPointerDownOutside={(event) => {
+            // An exiting dialog must not dismiss a preview that its trigger just reopened.
+            const target = event.detail.originalEvent.target;
+            if (
+              target instanceof Element &&
+              target.closest("[data-sample-preview-trigger]")
+            )
+              event.preventDefault();
+          }}
+        >
           <DialogHeader>
             <DialogTitle>Test with sample data</DialogTitle>
             <DialogDescription>
               Preview the current draft without running a live workflow.
             </DialogDescription>
           </DialogHeader>
-          <SampleTest graph={graph} options={options} onFocus={focus} initialSample={preview?.sample} onShowPath={(result, sample) => {
-            setPreview({signature: graphIdentity(graph), result, sample});
-            setSampleOpen(false); setSelected(null); setPaletteOpen(false); setTab("editor");
-            requestAnimationFrame(() => void flow.fitView({padding: 0.25, duration: 300}));
-          }} />
+          <SampleTest
+            graph={graph}
+            options={options}
+            onFocus={focus}
+            initialSample={preview?.sample}
+            onShowPath={(result, sample) => {
+              setPreview({ signature: graphIdentity(graph), result, sample });
+              setSampleOpen(false);
+              setSelected(null);
+              setPaletteOpen(false);
+              setTab("editor");
+              requestAnimationFrame(
+                () => void flow.fitView({ padding: 0.25, duration: 300 }),
+              );
+            }}
+          />
         </DialogContent>
       </Dialog>
       <Dialog
@@ -1485,7 +2237,21 @@ function EditorBody({
           </DialogHeader>
           <ul className="space-y-2 text-sm">
             <li>
-              Drag nodes to move; drag the canvas to pan; scroll/pinch to zoom.
+              Drag nodes to move. Drag empty canvas to select a group;
+              Shift-click adds to the selection.
+            </li>
+            <li>
+              Use Hand (H) or hold Space to pan; Select (V) returns to
+              selection. Scroll/pinch to zoom.
+            </li>
+            <li>
+              Pink guides snap edges and centers. Hold Alt/Option to move
+              freely.
+            </li>
+            <li>
+              Select two steps to align them, or three to distribute their
+              spacing. Fit changes the view; Auto-arrange changes node
+              positions.
             </li>
             <li>Use + on a node output or connection to insert a step.</li>
             <li>
@@ -1497,8 +2263,8 @@ function EditorBody({
               selected steps.
             </li>
             <li>
-              Ctrl/Cmd+Z undoes; Ctrl/Cmd+Shift+Z redoes; Delete removes
-              selected steps.
+              Ctrl/Cmd+Z undoes; Ctrl/Cmd+Shift+Z or Ctrl+Y redoes; Delete
+              removes selected steps.
             </li>
             <li>
               The starting event is protected. Cycles and invalid rejection
@@ -1507,7 +2273,7 @@ function EditorBody({
           </ul>
         </DialogContent>
       </Dialog>
-    </div>
+    </main>
   );
 }
 function StartExisting({

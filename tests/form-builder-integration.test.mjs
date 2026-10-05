@@ -1,6 +1,5 @@
 import assert from "node:assert/strict";
 import test, { after } from "node:test";
-import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { createServer } from "vite";
 import { PDFDocument, degrees } from "pdf-lib";
@@ -46,18 +45,9 @@ const vite = await createServer({
   server: { middlewareMode: true },
 });
 const originalFetch = globalThis.fetch;
-globalThis.fetch = async (url) => {
-  if (String(url).includes("NotoSansKhmer"))
-    return new Response(
-      readFileSync(
-        new URL(
-          "../node_modules/@expo-google-fonts/noto-sans-khmer/400Regular/NotoSansKhmer_400Regular.ttf",
-          import.meta.url,
-        ),
-      ),
-    );
-  throw Error("Unexpected external request in form tests");
-};
+// A real bundled font must render even when all HTTP subrequests are blocked.
+globalThis.fetch = async () => { throw Error("Unexpected external request in form tests"); };
+
 after(async () => {
   globalThis.fetch = originalFetch;
   await vite.close();
@@ -1257,6 +1247,40 @@ test("candidate progress connects manual assignments, HR acceptance and correcti
  assert.equal((await attention.attentionTasks('unrelated@example.com')).length,0);
  assert.equal((await progress.progressOverview('another-owner@example.com')).length,0);
 });
+test("form response filters classify the assigned account and paginate owner-scoped review evidence", async () => {
+  const rows = await ok(await call(() => forms.formResponses(request(`/api/forms/${id}/responses?accountType=candidate&pageSize=1`), id)));
+  assert.ok(rows.totalItems > 0);
+  assert.equal(rows.items.length, Math.min(1, rows.totalItems));
+  assert.ok(rows.items.every(row => row.accountType === "candidate"));
+  const employees = await ok(await call(() => forms.formResponses(request(`/api/forms/${id}/responses?accountType=employee`), id)));
+  assert.equal(employees.totalItems, 0);
+  const literal = await ok(await call(() => forms.formResponses(request(`/api/forms/${id}/responses?search=%25`), id)));
+  assert.equal(literal.totalItems, 0);
+  const pending = await ok(await call(() => forms.formResponses(request(`/api/forms/${id}/responses?reviewStatus=pending`), id)));
+  assert.ok(pending.items.every(row => row.reviewStatus === "pending"));
+  const invalidOwner = await call(() => forms.formAssignedPeople(request(`/api/forms/${id}/assignments`, "GET", undefined, candidateCookie), id));
+  assert.equal(invalidOwner.status,401);
+  const people = await ok(await call(() => forms.formAssignedPeople(request(`/api/forms/${id}/assignments?search=candidate%40example.com&pageSize=1`), id)));
+  assert.ok(people.totalItems > 0);
+  assert.equal(people.items.length,1);
+  assert.equal(people.items[0].email,"candidate@example.com");
+  assert.equal(people.items[0].accountType,"candidate");
+  assert.equal(people.items[0].version > 0,true);
+  assert.equal(JSON.stringify(people).includes("password"),false);
+});
+
+
+test("assigned people reflects expired links without losing pinned assignment history", async () => {
+  const assignment = db.sqlite.prepare("SELECT f.id, f.recipient_link_id FROM form_assignments f JOIN recipient_links l ON l.id=f.recipient_link_id WHERE f.template_id=? AND l.status != 'revoked' LIMIT 1").get(id);
+  const before = db.sqlite.prepare("SELECT expires_at FROM recipient_links WHERE id=?").get(assignment.recipient_link_id);
+  db.sqlite.prepare("UPDATE recipient_links SET expires_at='2000-01-01T00:00:00.000Z' WHERE id=?").run(assignment.recipient_link_id);
+  try {
+    const result = await ok(await call(() => forms.formAssignedPeople(request(`/api/forms/${id}/assignments`), id)));
+    assert.equal(result.items.find(item => item.id === assignment.id).linkStatus,"expired");
+    assert.ok(result.items.find(item => item.id === assignment.id).version > 0);
+  } finally { db.sqlite.prepare("UPDATE recipient_links SET expires_at=? WHERE id=?").run(before.expires_at, assignment.recipient_link_id); }
+});
+
 test("archived form responses disappear from active lists while protected submission and assignment evidence remains",async()=>{
   const archive=await vite.ssrLoadModule("/features/archive/archive.server.ts");
   await archive.archiveEntity(runtime.MANAGEMENT_EMAIL,"submission",submittedId);

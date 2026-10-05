@@ -13,6 +13,7 @@ const attention=await vite.ssrLoadModule("/features/hr/attention.ts");
 const { candidateWork, candidateJourney } = await vite.ssrLoadModule('/features/hr/candidate-journey.ts');
 const { workflowBusinessSummary } = await vite.ssrLoadModule('/features/workflows/business-summary.ts');
 const setupDiagnostics = await vite.ssrLoadModule('/features/workflows/setup-issues.ts');
+const geometry = await vite.ssrLoadModule('/features/workflows/canvas-geometry.ts');
 function graph(){const g=defaultGraph();g.nodes.find(n=>n.kind==='assign_forms').config.forms=[{templateId:'form-1',roleId:'form_user'}];return g;}
 test('contextual insertion preserves approved branch and does not mutate the saved graph',()=>{
  const original=graph(),before=structuredClone(original),node=tools.newStep('condition',{x:500,y:100},'extra');
@@ -163,4 +164,37 @@ test('setup diagnostics address exact controls and incoming choices never replac
  const withoutStop={...g,nodes:g.nodes.filter(n=>n.kind!=='stop'),edges:g.edges.filter(e=>e.outcome!=='rejected')};assert(setupDiagnostics.stepSetupIssues(withoutStop,withoutStop.nodes.find(n=>n.id==='review')).some(i=>i.control==='step-add-rejected'&&i.action==='Add Stop'));
  g.nodes.find(n=>n.id==='assign').config.forms=[{templateId:'form-1',roleId:''}];assert(setupDiagnostics.stepSetupIssues(g,g.nodes.find(n=>n.id==='assign')).some(i=>i.control==='step-role-1'));
  const before=structuredClone(g);for(const choice of setupDiagnostics.incomingChoices(g,'isolated'))assert(!g.edges.some(e=>e.source===choice.source&&e.outcome===choice.outcome));assert.deepEqual(g,before);
+});
+
+test('alignment uses measured edges and centers without changing graph connections or unselected nodes', () => {
+ const g = graph(), before = structuredClone(g);
+ const boxes = [{id:'review',x:100,y:50,width:224,height:100},{id:'account',x:450,y:200,width:224,height:140}];
+ g.nodes.find(n=>n.id==='review').position={x:100,y:50};g.nodes.find(n=>n.id==='account').position={x:450,y:200};
+ const aligned=geometry.alignSelection(g,boxes,'middle');
+ assert.equal(aligned.nodes.find(n=>n.id==='review').position.y+50,195);
+ assert.equal(aligned.nodes.find(n=>n.id==='account').position.y+70,195);
+ assert.deepEqual(aligned.edges,g.edges);assert.deepEqual(aligned.nodes[0],before.nodes[0]);
+ assert.equal(g.nodes.find(n=>n.id==='review').position.y,50);
+});
+test('distribution preserves endpoints and equalizes gaps for differently sized nodes', () => {
+ const g=graph(), boxes=[{id:'review',x:0,y:0,width:100,height:100},{id:'account',x:150,y:50,width:200,height:100},{id:'link',x:700,y:100,width:150,height:100}];
+ for(const box of boxes)g.nodes.find(n=>n.id===box.id).position={x:box.x,y:box.y};
+ const result=geometry.distributeSelection(g,boxes,'x');
+ const a=result.nodes.find(n=>n.id==='review'),b=result.nodes.find(n=>n.id==='account'),c=result.nodes.find(n=>n.id==='link');
+ assert.equal(a.position.x,0);assert.equal(c.position.x,700);assert.equal(b.position.x-a.position.x-100,c.position.x-b.position.x-200);
+ assert.equal(b.position.y,50);assert.deepEqual(result.edges,g.edges);
+ assert.equal(geometry.distributeSelection(g,boxes.slice(0,2),'x'),g);
+});
+test('smart guides snap one rigid group near the nearest edge and respect the zoom-adjusted threshold', () => {
+ const moving=[{id:'a',x:102,y:103,width:100,height:100},{id:'b',x:252,y:103,width:100,height:100}];
+ const target=[{id:'c',x:100,y:300,width:100,height:100}];
+ const result=geometry.snapSelection(moving,target,6);
+ assert.equal(result.dx,-2);assert.equal(result.dy,0);assert.equal(result.guides[0].axis,'x');
+ assert.equal(geometry.snapSelection(moving,target,1).guides.length,0);
+ assert.deepEqual(geometry.snapSelection([],target,6),{dx:0,dy:0,guides:[]});
+ assert.deepEqual(moving[0],{id:'a',x:102,y:103,width:100,height:100});
+});
+test('saved viewport rejects malformed, nonfinite and out-of-range storage',()=>{
+ assert.deepEqual(geometry.parseViewport('{"x":20,"y":-30,"zoom":0.5}'),{x:20,y:-30,zoom:0.5});
+ for(const value of [null,'bad','{}','{"x":0,"y":0,"zoom":10}','{"x":"0","y":0,"zoom":1}'])assert.equal(geometry.parseViewport(value),null);
 });

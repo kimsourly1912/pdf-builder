@@ -4,7 +4,7 @@ import {
   parsePageQuery,
   createPageMeta,
 } from "@/features/pagination/pagination";
-import { and, desc, eq, isNull, count, like } from "drizzle-orm";
+import { and, desc, eq, isNull, count, like, or, sql } from "drizzle-orm";
 import { getDatabaseBinding, getDb } from "@/db";
 import {
   templates,
@@ -14,6 +14,8 @@ import {
   submissions,
   user,
   recipientProfiles,
+  recipientLinks,
+  formAssignments,
 } from "@/db/schema";
 import {
   compensateStorageWrites,
@@ -37,6 +39,7 @@ import {
   outputPlacements,
 } from "./form";
 import type { FormDefinition } from "./form";
+import { recipientLinkAvailability } from "@/features/templates/recipient-link-lifecycle";
 import { buildAuthoritativeCompletedPdf } from "@/features/templates/completed-pdf.server";
 
 export async function formResponse(action: () => Promise<Response>) {
@@ -469,10 +472,39 @@ export async function formResponses(request: Request, id: string) {
     eq(submissions.templateId, id),
     notArchived("submission", submissions.id),
     selected ? eq(submissions.id, selected) : undefined,
+    params.get("search")?.trim()
+      ? or(
+          sql`instr(lower(${submissions.recipientName}), ${params.get("search")!.trim().slice(0, 120).toLowerCase()}) > 0`,
+          sql`instr(lower(${submissions.recipientEmail}), ${params.get("search")!.trim().slice(0, 120).toLowerCase()}) > 0`,
+        )
+      : undefined,
+    ["candidate", "employee"].includes(params.get("accountType") ?? "")
+      ? eq(recipientProfiles.accountType, params.get("accountType")!)
+      : undefined,
+    ["pending", "accepted", "corrections_requested"].includes(
+      params.get("reviewStatus") ?? "",
+    )
+      ? sql`coalesce(${submissionReviews.status}, 'pending') = ${params.get("reviewStatus")}`
+      : undefined,
   );
   const [totals] = await getDb()
     .select({ total: count() })
     .from(submissions)
+    .leftJoin(
+      recipientLinks,
+      eq(submissions.recipientLinkId, recipientLinks.id),
+    )
+    .leftJoin(
+      recipientProfiles,
+      and(
+        eq(recipientProfiles.userId, recipientLinks.assignedUserId),
+        eq(recipientProfiles.createdByEmail, owner),
+      ),
+    )
+    .leftJoin(
+      submissionReviews,
+      eq(submissionReviews.submissionId, submissions.id),
+    )
     .where(where);
   const rows = await getDb()
     .select({
@@ -486,13 +518,28 @@ export async function formResponses(request: Request, id: string) {
       versionId: submissions.templateVersionId,
       reviewStatus: submissionReviews.status,
       fileKey: formSubmissionArtifacts.fileKey,
+      accountType: recipientProfiles.accountType,
     })
     .from(submissions)
+    .leftJoin(
+      recipientLinks,
+      eq(submissions.recipientLinkId, recipientLinks.id),
+    )
+    .leftJoin(
+      recipientProfiles,
+      and(
+        eq(recipientProfiles.userId, recipientLinks.assignedUserId),
+        eq(recipientProfiles.createdByEmail, owner),
+      ),
+    )
     .leftJoin(
       formSubmissionArtifacts,
       eq(formSubmissionArtifacts.submissionId, submissions.id),
     )
-    .leftJoin(submissionReviews, eq(submissionReviews.submissionId, submissions.id))
+    .leftJoin(
+      submissionReviews,
+      eq(submissionReviews.submissionId, submissions.id),
+    )
     .where(where)
     .orderBy(desc(submissions.submittedAt))
     .limit(query.pageSize)
@@ -548,6 +595,7 @@ export async function findAssignmentAccount(owner: string, email: string) {
       and(
         eq(user.email, email.trim().toLowerCase()),
         eq(recipientProfiles.createdByEmail, owner),
+        notArchived("account", user.id),
       ),
     )
     .limit(1);
@@ -557,4 +605,84 @@ export async function findAssignmentAccount(owner: string, email: string) {
       422,
     );
   return row;
+}
+
+export async function formAssignedPeople(request: Request, id: string) {
+  const owner = await requireRequestOwner(request);
+  await ownedForm(owner, id);
+  const params = new URL(request.url).searchParams;
+  const query = parsePageQuery(params, {
+    sorts: ["assigned"],
+    defaultSort: "assigned",
+  });
+  const search = params.get("search")?.trim().slice(0, 120).toLowerCase();
+  const where = and(
+    eq(formAssignments.templateId, id),
+    eq(recipientProfiles.createdByEmail, owner),
+    notArchived("account", user.id),
+    search
+      ? or(
+          sql`instr(lower(${user.name}), ${search}) > 0`,
+          sql`instr(lower(${user.email}), ${search}) > 0`,
+        )
+      : undefined,
+    ["candidate", "employee"].includes(params.get("accountType") ?? "")
+      ? eq(recipientProfiles.accountType, params.get("accountType")!)
+      : undefined,
+  );
+  const base = () =>
+    getDb()
+      .select({
+        id: formAssignments.id,
+        name: user.name,
+        email: user.email,
+        accountType: recipientProfiles.accountType,
+        assignedAt: formAssignments.assignedAt,
+        completedAt: formAssignments.completedAt,
+        status: formAssignments.status,
+        linkStatus: recipientLinks.status,
+        expiresAt: recipientLinks.expiresAt,
+        maxSubmissions: recipientLinks.maxSubmissions,
+        submissionCount: recipientLinks.submissionCount,
+        version: templateVersions.versionNumber,
+      })
+      .from(formAssignments)
+      .innerJoin(user, eq(formAssignments.userId, user.id))
+      .innerJoin(recipientProfiles, eq(recipientProfiles.userId, user.id))
+      .innerJoin(
+        recipientLinks,
+        eq(formAssignments.recipientLinkId, recipientLinks.id),
+      )
+      .innerJoin(
+        templateVersions,
+        eq(formAssignments.templateVersionId, templateVersions.id),
+      );
+  const [total] = await getDb()
+    .select({ total: count() })
+    .from(formAssignments)
+    .innerJoin(user, eq(formAssignments.userId, user.id))
+    .innerJoin(recipientProfiles, eq(recipientProfiles.userId, user.id))
+    .where(where);
+  const items = await base()
+    .where(where)
+    .orderBy(desc(formAssignments.assignedAt), desc(formAssignments.id))
+    .limit(query.pageSize)
+    .offset(query.offset);
+  return Response.json(
+    {
+      ...createPageMeta(total.total, query),
+      items: items.map(
+        ({ expiresAt, maxSubmissions, submissionCount, ...item }) => ({
+          ...item,
+          linkStatus: recipientLinkAvailability({
+            status: item.linkStatus,
+            expiresAt,
+            maxSubmissions,
+            submissionCount,
+          }).state,
+        }),
+      ),
+    },
+    { headers: { "Cache-Control": "private, no-store" } },
+  );
 }

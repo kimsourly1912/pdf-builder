@@ -349,7 +349,6 @@ export function FormBuilder(props: { id: string; displayName: string }) {
     try {
       const body = new FormData();
       setError("");
-      setPdfUrl(null);
       body.set(
         "payload",
         JSON.stringify({
@@ -375,7 +374,7 @@ export function FormBuilder(props: { id: string; displayName: string }) {
       setPdfFingerprint(valueFingerprint);
       setPdfMedia(sampleMedia);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "PDF preview unavailable.");
+      setError(e instanceof Error && e.message !== "This form operation could not be completed." ? e.message : "PDF preview could not be generated. Your sample answers are kept. Try again or check the PDF mappings.");
     } finally {
       setBusy(false);
     }
@@ -947,7 +946,7 @@ export function FormBuilder(props: { id: string; displayName: string }) {
                 {pdfUrl ? (
                   <Suspense fallback={<p>Loading PDF…</p>}>
                     <div>
-                      <div className="mb-3 flex items-center gap-3">
+                      <div className="mb-3 flex flex-wrap items-center gap-3">
                         <Button
                           variant="outline"
                           disabled={pdfPage <= 1}
@@ -981,7 +980,7 @@ export function FormBuilder(props: { id: string; displayName: string }) {
                   </Suspense>
                 ) : (
                   <p className="p-6 text-sm text-muted-foreground">
-                    Fill in sample answers, then preview the completed PDF.
+                    {busy ? "Generating PDF preview…" : "Fill in sample answers, then preview the completed PDF."}
                   </p>
                 )}
               </div>

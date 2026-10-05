@@ -55,3 +55,12 @@ The template list is **Form templates**; published forms are labeled **Ready to 
 The mapper explains Choose a question → Place its answer → Check the result and gives contextual placement instructions. Existing drag/resize, keyboard alternatives, snapping, formatting and output validation remain intact. Publishing explicitly makes a version available for assignment; it does not assign or notify users. Candidate Forms shows a recipient/CV check and a separate Share access section. Standalone Assignments & answers supplies a copyable account-protected link after assignment and explains first-time activation separately.
 
 Lists retain safe errors and allow retry/clear search. Request identity guards prevent an older form-list search response from replacing newer results.
+
+
+## Form assignment and response review (2026-10-05)
+
+The form responses page uses a name/email account picker over existing owner-managed accounts. Suggestions identify Candidate or Employee and disable accounts already assigned the current published version. Assigning the entire form does not send an invitation. The account-protected link remains available after assignment; candidate activation and invitations stay in the candidate journey.
+
+Responses show the submitted name/email, linked account category, HR review decision and submission time separately. Search, account/review filters, view and page persist per owner/form in URL/session storage. Selecting a response shows readable answers, one review action, optional PDF output and secondary JSON export/archive actions. Empty answers say Not answered; the schema type is not an answer. Assigned people lists the pinned form version and actual assignment/link state, separately from submitted responses. These reads are owner-authorized and paginated; archived accounts are excluded from the active assigned list and archived submissions from response results.
+
+The authoritative PDF renderer bundles its Khmer-capable font rather than requesting the application’s own public asset URL. Preview and saved-response PDF generation can render without external HTTP requests. Preview keeps the previous PDF and sample answers on failure, so users can correct a mapping and retry. Existing output overflow checks, private image handling, rotated page geometry and immutable published versions remain enforced.

@@ -3,6 +3,7 @@ import {
   ReactFlow,
   Background,
   Controls,
+  ViewportPortal,
   MiniMap,
   Handle,
   Position,
@@ -16,6 +17,7 @@ import {
   type ReactFlowProps,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
+import type { Guide } from "./canvas-geometry";
 import { useTheme } from "next-themes";
 import {
   Send,
@@ -76,7 +78,11 @@ export type FlowNode = Node<
     ) => void;
     issues?: string[];
     status?: string;
-    preview?: {state: "followed" | "waiting" | "blocked" | "skipped"; label: string; reason: string};
+    preview?: {
+      state: "followed" | "waiting" | "blocked" | "skipped";
+      label: string;
+      reason: string;
+    };
     onAdd?: (id: string, outcome: string) => void;
     connectedOutcomes?: string[];
     readOnly?: boolean;
@@ -92,14 +98,14 @@ function StepCard({ id, data, selected }: NodeProps<FlowNode>) {
       : data.preview?.state === "waiting" || data.preview?.state === "blocked"
         ? "border-amber-500"
         : data.status === "completed"
-      ? "border-emerald-500 bg-emerald-50/30 dark:bg-emerald-950/20"
-      : data.status === "failed"
-        ? "border-red-500"
-        : data.status === "waiting" || data.status === "running"
-          ? "border-amber-500"
-          : data.issues?.length
-            ? "border-amber-400"
-            : "border-border";
+          ? "border-emerald-500 bg-emerald-50/30 dark:bg-emerald-950/20"
+          : data.status === "failed"
+            ? "border-red-500"
+            : data.status === "waiting" || data.status === "running"
+              ? "border-amber-500"
+              : data.issues?.length
+                ? "border-amber-400"
+                : "border-border";
   const actions = (
     <>
       <ContextMenuItem onSelect={() => data.onAction?.("configure", id)}>
@@ -196,7 +202,11 @@ function StepCard({ id, data, selected }: NodeProps<FlowNode>) {
               </DropdownMenuContent>
             </DropdownMenu>
           )}
-          {data.preview && <p title={data.preview.reason} className="mt-2 text-xs font-medium">{data.preview.label}</p>}
+          {data.preview && (
+            <p title={data.preview.reason} className="mt-2 text-xs font-medium">
+              {data.preview.label}
+            </p>
+          )}
           {data.status && (
             <p className="mt-2 text-xs font-medium">
               {data.status === "not_reached"
@@ -229,19 +239,21 @@ function StepCard({ id, data, selected }: NodeProps<FlowNode>) {
                   {outcome}
                 </span>
               )}
-              {data.onAdd && !data.readOnly && !data.connectedOutcomes?.includes(outcome) && (
-                <button
-                  type="button"
-                  className="nodrag nopan absolute -top-2 left-4 flex size-6 items-center justify-center rounded-full border bg-card text-primary shadow-sm hover:bg-primary/10"
-                  aria-label={`Add step after ${STEP_LABELS[data.kind]} ${outcome}`}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    data.onAdd?.(id, outcome);
-                  }}
-                >
-                  <Plus className="size-3" />
-                </button>
-              )}
+              {data.onAdd &&
+                !data.readOnly &&
+                !data.connectedOutcomes?.includes(outcome) && (
+                  <button
+                    type="button"
+                    className="nodrag nopan absolute -top-2 left-4 flex size-6 items-center justify-center rounded-full border bg-card text-primary shadow-sm hover:bg-primary/10"
+                    aria-label={`Add step after ${STEP_LABELS[data.kind]} ${outcome}`}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      data.onAdd?.(id, outcome);
+                    }}
+                  >
+                    <Plus className="size-3" />
+                  </button>
+                )}
             </Handle>
           ))}
         </div>
@@ -289,11 +301,19 @@ function WorkflowEdgeView(props: EdgeProps<FlowEdge>) {
 }
 const nodeTypes = { step: StepCard },
   edgeTypes = { workflow: WorkflowEdgeView };
-export function WorkflowCanvas({showMiniMap = true, ...props}: ReactFlowProps<FlowNode, FlowEdge> & {showMiniMap?: boolean}) {
+export function WorkflowCanvas({
+  showMiniMap = true,
+  showControls = true,
+  guides = [],
+  ...props
+}: ReactFlowProps<FlowNode, FlowEdge> & {
+  showMiniMap?: boolean;
+  showControls?: boolean;
+  guides?: Guide[];
+}) {
   const { resolvedTheme } = useTheme();
   return (
     <ReactFlow
-      {...props}
       colorMode={resolvedTheme === "dark" ? "dark" : "light"}
       nodeTypes={nodeTypes}
       edgeTypes={edgeTypes}
@@ -301,23 +321,48 @@ export function WorkflowCanvas({showMiniMap = true, ...props}: ReactFlowProps<Fl
       fitViewOptions={{ padding: 0.25 }}
       minZoom={0.15}
       maxZoom={2}
-      snapToGrid
-      snapGrid={[20, 20]}
+      {...props}
     >
       <Background gap={20} size={1} />
-      <Controls showInteractive={false} />
-      {showMiniMap && <MiniMap
-        pannable
-        zoomable
-        nodeColor={(n) =>
-          n.data.status === "failed"
-            ? "#ef4444"
-            : n.data.status === "completed"
-              ? "#10b981"
-              : "#64748b"
-        }
-        className="!hidden sm:!block"
-      />}
+      {showControls && <Controls showInteractive={false} />}
+      <ViewportPortal>
+        {guides.map((guide) => (
+          <div
+            key={guide.axis}
+            aria-hidden="true"
+            className="pointer-events-none absolute z-30 bg-pink-500"
+            style={
+              guide.axis === "x"
+                ? {
+                    left: guide.coordinate,
+                    top: guide.start,
+                    width: 1,
+                    height: guide.end - guide.start,
+                  }
+                : {
+                    left: guide.start,
+                    top: guide.coordinate,
+                    height: 1,
+                    width: guide.end - guide.start,
+                  }
+            }
+          />
+        ))}
+      </ViewportPortal>
+      {showMiniMap && (
+        <MiniMap
+          pannable
+          zoomable
+          nodeColor={(n) =>
+            n.data.status === "failed"
+              ? "#ef4444"
+              : n.data.status === "completed"
+                ? "#10b981"
+                : "#64748b"
+          }
+          className="!hidden sm:!block"
+        />
+      )}
     </ReactFlow>
   );
 }

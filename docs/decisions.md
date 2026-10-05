@@ -71,3 +71,10 @@ The user identifies the current deployed workspace as staging despite its produc
 ### Candidate approval and preparation share one review (2026-10-04)
 
 Contact confirmation belongs to the owned candidate/Telegram connection association, rather than to each UI screen. Reuse it for the same recipient; retain explicit changed-recipient and repeat-send decisions. Approval presents the current automatic/pending workflow configuration and form targets and verifies that snapshot atomically before committing. Preparation progress and recovery live in the candidate workspace. Saving unfinished CV edits never approves, starts paid AI or creates preparation.
+
+
+## 2026-10-05: Focused authoring and self-contained PDF rendering
+
+Workflow authoring uses a dedicated canvas workspace; management navigation and supporting execution/settings screens remain available through explicit navigation. Viewport preferences and selection are local UI state, while node positions remain saved draft data. Alignment, distribution and snapping cannot change graph edges or bypass runner/publication safeguards.
+
+Bundle the Khmer-capable PDF font in the worker so authoritative preview/output does not depend on self-fetching a public application URL. Form assignment continues to require an existing managed authentication account and assigns the whole form. Candidate/Employee labels describe account categorization, independently from HR review status and form permissions. Current-version duplicate indications mirror the server's per-user/version/role uniqueness constraint.

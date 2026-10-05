@@ -4,3 +4,8 @@ declare module "*?url" {
 }
 
 declare module "regenerator-runtime/runtime";
+
+declare module "*?inline" {
+  const value: string;
+  export default value;
+}

@@ -142,3 +142,12 @@ Preview draft now includes a read-only canvas: numbered sample steps and solid l
 Show path on editor canvas copies only the local sample visualization. Edit sample preserves its inputs; Clear preview removes it. Any draft change makes the stored visualization outdated and removes its path highlights until previewed again. No preview state is saved to the workflow or sent to execution APIs.
 
 Setup check now offers actions that open and focus the relevant form, invitation, condition or branch control. Missing rejection paths explicitly connect to Stop, or focus Add Stop when no Stop exists. Missing incoming links offer only valid free outputs and cannot silently replace an existing connection. Full graph validation and server publication checks remain authoritative, including ordering, cycles, leases and review gates.
+
+
+## Focused canvas interactions (2026-10-05)
+
+The editor opens as a dedicated workspace. More workflow actions opens Executions, Settings & publish history, draft/live comparison and guarded manual execution; Return to editor brings back the canvas. Sample testing, saving and publishing remain separate actions.
+
+The first visit fits measured nodes without rearranging the graph. Viewport pan/zoom is stored locally per owner and workflow. Add step opens a searchable floating catalog from the toolbar, node output or connection. One selected step shows its contextual inspector (a bottom sheet on phones); Shift-click or dragging a selection rectangle selects multiple nodes. Selected nodes move together. Align uses measured edges/centers; Distribute equalizes horizontal/vertical gaps for three or more nodes. Pink guides gently snap a dragged node or group to nearby edges/centers; hold Alt/Option to bypass snapping.
+
+Undo/redo works throughout the editor with Ctrl/Cmd+Z and Ctrl/Cmd+Shift+Z (also Ctrl+Y). Text inputs and dialogs retain their own editing keys. A drag, alignment or distribution is a single history item. Select (V), Hand (H), Space-pan, zoom reset and Fit are available in the floating toolbar. Fit never changes node positions; Auto-arrange is an undoable graph edit. Execution ordering, review gates, publication snapshots, leases, and idempotency continue to use the existing server engine.
