@@ -82,6 +82,7 @@ export type InterviewProcess = {
   version: number;
   createdBy: string;
   createdAt: string;
+  stageSince?: string;
   updatedAt: string;
   snapshot: PreparationSnapshot;
   rounds: InterviewRound[];
@@ -147,7 +148,7 @@ export const INTERVIEW_ACTION_LABELS: Record<string, string> = {
   finish_rounds: "Rounds marked complete",
   decide: "Final decision recorded",
   withdraw: "Candidate withdrawn",
-  hold: "Process put on hold",
+  hold: "Interviews paused",
   resume: "Process resumed",
   reopen: "Process reopened",
   correct_decision: "Decision corrected",

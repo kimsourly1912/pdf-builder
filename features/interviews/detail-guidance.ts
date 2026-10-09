@@ -15,7 +15,7 @@ export function interviewDetailGuidance(
     };
   if (process.hold)
     return {
-      title: "Interviews are on hold",
+      title: "Interviews are paused",
       description:
         "Resume when you are ready to continue from the previous step.",
       label: "Resume interviews",
@@ -33,9 +33,12 @@ export function interviewDetailGuidance(
       round: awaiting,
       interviewer: missingFeedback(awaiting)[0],
     };
-  const scheduled = process.rounds.find(
-    (round) => round.status === "scheduled",
-  );
+  const scheduled = process.rounds
+    .filter((round) => round.status === "scheduled")
+    .sort(
+      (a, b) =>
+        Date.parse(a.appointment.startsAt) - Date.parse(b.appointment.startsAt),
+    )[0];
   if (scheduled)
     return now >= Date.parse(scheduled.appointment.startsAt)
       ? {
@@ -49,7 +52,7 @@ export function interviewDetailGuidance(
       : {
           title: "Your next interview is scheduled",
           description:
-            "Review the appointment below and notify the candidate separately. Record attendance after the start time.",
+            "Review the appointment and use Prepare candidate message to copy its details. Send it through your usual channel, then record attendance after the start time.",
           label: "View appointment",
           action: "view_rounds",
         };

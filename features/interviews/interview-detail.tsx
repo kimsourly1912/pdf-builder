@@ -18,6 +18,8 @@ import { InterviewDocuments } from "./interview-documents";
 import { InterviewHistory } from "./interview-history";
 import { InterviewGuide } from "./interview-guide";
 import { InterviewStatusActions } from "./interview-actions";
+import { AppointmentMessage } from "./appointment-message";
+import { interviewWork, FOLLOW_UP_TIMEZONE } from "./flow-presentation";
 import { FinalDecision } from "./final-decision";
 import { Badge } from "@/components/ui/badge";
 import { RoundAppointment, RoundFeedback } from "./round-presentation";
@@ -55,7 +57,8 @@ export function InterviewDetail({
     receipt = useRef<{ key: string; body: Record<string, unknown> } | null>(
       null,
     ),
-    trigger = useRef<HTMLElement | null>(null);
+    trigger = useRef<HTMLElement | null>(null),
+    nextOpened = useRef(false);
   const load = useCallback(async () => {
     setLoading(true);
     try {
@@ -63,6 +66,31 @@ export function InterviewDetail({
         `/api/interviews/${processId}`,
       );
       setProcess(result.process);
+      if (
+        !nextOpened.current &&
+        new URLSearchParams(location.search).get("task") === "next"
+      ) {
+        nextOpened.current = true;
+        const next = interviewDetailGuidance(result.process);
+        setTimeout(() => {
+          trigger.current = document.getElementById("interview-next-action");
+          if (next.action === "view_rounds" || next.action === "view_decision")
+            document
+              .getElementById(
+                next.action === "view_rounds"
+                  ? "interview-rounds"
+                  : "final-decision",
+              )
+              ?.scrollIntoView({ behavior: "smooth" });
+          else
+            setOperation({
+              action: next.action,
+              title: next.label,
+              round: next.round,
+              interviewer: next.interviewer,
+            });
+        }, 0);
+      }
       setError("");
       setPermission(false);
     } catch (e) {
@@ -75,6 +103,7 @@ export function InterviewDetail({
     }
   }, [processId]);
   useEffect(() => {
+    nextOpened.current = false;
     const timer = setTimeout(() => void load(), 0);
     return () => clearTimeout(timer);
   }, [load]);
@@ -326,13 +355,21 @@ export function InterviewDetail({
             {process.hold && (
               <FeedbackAlert
                 tone="warning"
-                title="Interviews paused"
-                description={`${process.hold.reason}${process.hold.followUp ? ` · Follow up ${process.hold.followUp}` : ""}. Resume returns to ${INTERVIEW_LABELS[process.hold.previousStage]}.`}
+                title={
+                  interviewWork(process, now).followUpDue
+                    ? "Follow-up due — interviews paused"
+                    : "Interviews paused"
+                }
+                description={`${process.hold.reason}${process.hold.followUp ? ` · Follow up ${process.hold.followUp} (${FOLLOW_UP_TIMEZONE.replaceAll("_", " ")})` : ""}. Resume returns to ${INTERVIEW_LABELS[process.hold.previousStage]}.`}
               />
             )}
             <div className="flex flex-wrap items-center gap-2">
               {guidance && (
-                <Button onClick={primary} disabled={busy || loading}>
+                <Button
+                  id="interview-next-action"
+                  onClick={primary}
+                  disabled={busy || loading}
+                >
                   {guidance.label}
                   <ArrowRight className="size-4" aria-hidden="true" />
                 </Button>
@@ -435,6 +472,9 @@ export function InterviewDetail({
                       />
                     </div>
                     <RoundAppointment round={r} />
+                    {r.status === "scheduled" && editable && (
+                      <AppointmentMessage process={process} round={r} />
+                    )}
                     {r.status === "scheduled" && (
                       <p className="text-xs text-muted-foreground">
                         Notify the candidate separately. After the start time,

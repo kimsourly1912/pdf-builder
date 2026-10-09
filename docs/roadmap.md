@@ -149,4 +149,5 @@ A first-time HR usability trial remains necessary to confirm comprehension. Loca
 - Active stages Ready to schedule, Scheduled, Awaiting feedback and Decision pending; Closed outcomes Interview passed, Not selected and Withdrawn. Search, filters, counts, pagination and keyboard-accessible responsive boards.
 - Multiple named-interviewer rounds, timezone-aware UTC appointments, retained rescheduling/cancellation history, explicit completion/no-show and per-interviewer draft/submitted scorecards.
 - Explicit rounds completion and owner decisions, meaningful reasons, holds/follow-up/resumption, decision correction/reopening and atomic candidate history. Archive and staging reset preserve or explicitly handle interview dependencies.
-- Internal tracking only: no invitations, calendar sync, AI evaluation, vacancy module, hiring/offer or onboarding flows.
+- Action list and optional stage board with owner-scoped attention/upcoming/feedback/final-review/follow-up queues, lifecycle-based status age, next-task navigation, guided scheduling, rating guidance and submitted-assessment comparison. Accepted/current preparation comparison and editable copyable appointment messages keep original evidence and communication explicit.
+- Internal tracking only: no automatic invitations/reminders, calendar sync, AI evaluation, vacancy module, hiring/offer or onboarding flows.

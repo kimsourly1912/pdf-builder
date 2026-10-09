@@ -1015,3 +1015,125 @@ test("interview account preview API rejects forged owner headers without a sessi
   );
   assert.equal(response.status, 401);
 });
+
+test("work queue filtering counts full owner results before pagination and preserves status age", async (t) => {
+  const f = fixture(t);
+  let p = await scheduled(f, await start(f));
+  const startedAt = p.stageSince;
+  assert.equal(startedAt, "2030-01-02T00:00:00.000Z");
+  assert.equal(
+    (
+      await service.listInterviews(
+        f.owner,
+        new URLSearchParams("filter=upcoming"),
+      )
+    ).total,
+    1,
+  );
+  p = await completed(t, f, p);
+  const feedbackSince = p.stageSince;
+  t.mock.timers.setTime(Date.UTC(2030, 0, 3, 5));
+  p = await mutate(f, p, {
+    action: "feedback",
+    roundId: p.rounds[0].id,
+    interviewer: "Sokha",
+    status: "draft",
+    scorecard,
+  });
+  assert.equal(p.stageSince, feedbackSince);
+  assert.equal(
+    (
+      await service.listInterviews(
+        f.owner,
+        new URLSearchParams("filter=missing_feedback"),
+      )
+    ).total,
+    1,
+  );
+  p = await assessed(f, p);
+  assert.equal(
+    (
+      await service.listInterviews(
+        f.owner,
+        new URLSearchParams("filter=final_review"),
+      )
+    ).total,
+    1,
+  );
+  p = await mutate(f, p, {
+    action: "hold",
+    reason: "Waiting for candidate availability",
+    followUp: "2030-01-03",
+  });
+  assert.equal(
+    (
+      await service.listInterviews(
+        f.owner,
+        new URLSearchParams("filter=follow_up"),
+      )
+    ).total,
+    1,
+  );
+  assert.equal(
+    (
+      await service.listInterviews(
+        f.owner,
+        new URLSearchParams("filter=final_review"),
+      )
+    ).total,
+    0,
+  );
+  for (let i = 0; i < 26; i++) {
+    const next = seedAcceptedPreparation(f.db, `queue${i}`, f.owner);
+    await start({ ...next, db: f.db });
+  }
+  const other = seedAcceptedPreparation(f.db, "other");
+  await start({ ...other, db: f.db });
+  const page = await service.listInterviews(
+    f.owner,
+    new URLSearchParams("filter=attention&page=2"),
+  );
+  assert.equal(page.total, 27);
+  assert.equal(page.counts.attention, 27);
+  assert.equal(page.items.length, 2);
+  assert.equal(page.page, 2);
+  assert.equal(page.active, 27);
+  assert(!page.items.some((item) => item.createdBy === other.owner));
+  const search = await service.listInterviews(
+    f.owner,
+    new URLSearchParams("filter=attention&search=queue25@candidate.test"),
+  );
+  assert.equal(search.total, 1);
+  assert.equal(search.counts.attention, 1);
+  assert.equal(search.items[0].snapshot.email, "queue25@candidate.test");
+});
+
+test("follow-up dates validate and become due on the Cambodia calendar day", async (t) => {
+  const f = fixture(t);
+  const p = await start(f);
+  t.mock.timers.setTime(Date.UTC(2030, 0, 2, 18));
+  await rejectStatus(
+    mutate(f, p, {
+      action: "hold",
+      reason: "Waiting for candidate availability",
+      followUp: "2030-01-02",
+    }),
+    422,
+  );
+  const paused = await mutate(f, p, {
+    action: "hold",
+    reason: "Waiting for candidate availability",
+    followUp: "2030-01-03",
+  });
+  const queue = await service.listInterviews(
+    f.owner,
+    new URLSearchParams("filter=follow_up"),
+  );
+  assert.equal(queue.total, 1);
+  assert.equal(queue.items[0].id, paused.id);
+  assert.equal(
+    (await service.detailInterview(f.owner, p.id)).version,
+    paused.version,
+    "queue reads do not advance or resume the process",
+  );
+});

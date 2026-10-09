@@ -15,6 +15,7 @@ import { FeedbackAlert } from "@/components/patterns/feedback-alert";
 import { ResumePdfPreview } from "@/features/resumes/resume-pdf-preview";
 import { AnswerSummary, type Review } from "@/features/hr/submission-review";
 import { interviewApi } from "./client";
+import { PreparationContextPanel } from "./preparation-context-panel";
 import type { InterviewProcess } from "./interviews";
 
 type Preview = {
@@ -57,6 +58,7 @@ export function InterviewDocuments({ process }: { process: InterviewProcess }) {
           . These are the original documents used to start interviews.
         </p>
       </div>
+      <PreparationContextPanel process={process} />
       <div className="grid gap-3 sm:grid-cols-2">
         <DocumentRow
           title={process.snapshot.cv.fileName}
