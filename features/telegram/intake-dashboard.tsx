@@ -214,7 +214,7 @@ export function IntakeDashboard({
                     "Candidate",
                     "Telegram",
                     "CV",
-                    "Candidate progress",
+                    "Candidate Preparation",
                     "Login account",
                     "Action",
                   ].map((h) => (

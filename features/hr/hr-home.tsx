@@ -24,7 +24,7 @@ export function HrHome({
         description="Review candidates, collect documents, and see what needs your attention."
         actions={
           <Button asChild>
-            <Link href="/candidates">Open candidates</Link>
+            <Link href="/candidates">Open Candidate Preparation</Link>
           </Button>
         }
       />

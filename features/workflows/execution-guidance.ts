@@ -19,7 +19,7 @@ export function executionGuidance(run: WorkflowRun, now = Date.now()) {
     return {
       title: "Preparation completed",
       action:
-        "Check candidate progress for invitation and form submission status.",
+        "Check Candidate Preparation for invitation and form submission status.",
     };
   if (run.status === "rejected")
     return {

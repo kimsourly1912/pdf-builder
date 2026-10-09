@@ -1,4 +1,5 @@
 "use client";
+import { HandoffButton } from "@/features/interviews/handoff-button";
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import {
@@ -245,6 +246,7 @@ export function ProgressDashboard({
           {item.attention[0]}
         </p>
       )}
+      <HandoffButton item={item} onChanged={() => void load()} />
       <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
         <span className="text-xs text-muted-foreground">
           {stageAge(item.stage, item.stageSince)}
@@ -266,7 +268,7 @@ export function ProgressDashboard({
   return (
     <AppShell displayName={displayName} fullWidth={view === "kanban"}>
       <PageHeader
-        title="Candidates"
+        title="Candidate Preparation"
         description="Follow CV review, candidate preparation and form completion. Drag a card or use Move to… to update the HR stage."
         actions={
           <div className="flex flex-wrap gap-2">
@@ -298,7 +300,7 @@ export function ProgressDashboard({
             </div>
             <Button
               variant="outline"
-              aria-label="Refresh candidate progress"
+              aria-label="Refresh Candidate Preparation"
               onClick={() => void load()}
             >
               <RefreshCw />
@@ -332,7 +334,7 @@ export function ProgressDashboard({
       <div className="flex flex-wrap items-center gap-3">
         <Input
           className="w-full sm:w-72"
-          aria-label="Search candidate progress"
+          aria-label="Search Candidate Preparation"
           placeholder="Search name, email, Telegram or CV"
           disabled={!filtersReady}
           value={search}
@@ -367,7 +369,7 @@ export function ProgressDashboard({
           value={sort}
           onValueChange={(v) => setFilters({ sort: v, page: "1" })}
         >
-          <SelectTrigger aria-label="Sort candidate progress" className="w-48">
+          <SelectTrigger aria-label="Sort Candidate Preparation" className="w-48">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -400,7 +402,7 @@ export function ProgressDashboard({
         </span>
       </div>
       {loading ? (
-        <p className="py-16 text-center">Loading candidate progress…</p>
+        <p className="py-16 text-center">Loading Candidate Preparation…</p>
       ) : view === "kanban" ? (
         <div className="max-w-full overflow-x-auto pb-4">
           <div className="grid min-w-[1740px] grid-cols-6 gap-4">
@@ -533,6 +535,7 @@ export function ProgressDashboard({
                     </Button>
                   </TableCell>
                   <TableCell>
+                    <HandoffButton item={i} onChanged={() => void load()} />
                     <MoveMenu
                       item={i}
                       onMove={(item, s) => void requestMove(item, s)}
@@ -583,7 +586,7 @@ export function ProgressDashboard({
         move={move}
         onClose={() => setMove(null)}
         onChanged={() => {
-          setNotice("Candidate progress updated.");
+          setNotice("Candidate Preparation updated.");
           void load();
         }}
       />

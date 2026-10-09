@@ -120,6 +120,7 @@ export type ProgressForm = {
 };
 export type CandidateProgress = {
   id: string;
+  interview?: { id: string; position: string; outcome: string | null };
   name: string;
   email: string;
   telegram: string;

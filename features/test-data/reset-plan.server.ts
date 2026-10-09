@@ -14,7 +14,7 @@ export function resetTables(choice: ResetChoice): ResetTable[] {
   const all = choice.scope === "all";
   const history = choice.scope === "history";
   const users = `SELECT p.user_id FROM recipient_profiles p JOIN user u ON u.id=p.user_id WHERE p.created_by_email=${own} AND u.email<>${own} AND u.role<>'admin' ${all ? "" : "AND p.account_type='candidate'"}`;
-  const runs = `SELECT id FROM workflow_runs WHERE owner_email=${own} ${history ? "AND status IN ('completed','failed','rejected','stopped') AND json_extract(context_json,'$.userId') IS NULL AND NOT EXISTS(SELECT 1 FROM telegram_deliveries d WHERE d.run_id=workflow_runs.id)" : ""}`;
+  const runs = `SELECT id FROM workflow_runs WHERE owner_email=${own} ${history ? "AND status IN ('completed','failed','rejected','stopped') AND json_extract(context_json,'$.userId') IS NULL AND NOT EXISTS(SELECT 1 FROM telegram_deliveries d WHERE d.run_id=workflow_runs.id) AND NOT EXISTS(SELECT 1 FROM interview_processes p WHERE p.run_id=workflow_runs.id)" : ""}`;
   const links = `SELECT l.id FROM recipient_links l JOIN templates t ON t.id=l.template_id WHERE t.owner_email=${own} ${choice.scope === "candidates" ? `AND l.assigned_user_id IN (${users})` : ""}`;
   const subs = `SELECT id FROM submissions WHERE recipient_link_id IN (${links})`;
   const resumes = `SELECT id FROM resumes WHERE owner_email=${own}`;
@@ -23,6 +23,13 @@ export function resetTables(choice: ResetChoice): ResetTable[] {
   const add = (table: string, where: string, label: string, mode?: "update") =>
     out.push({ table, where, label, mode });
   if (!history) {
+    const processes = `SELECT id FROM interview_processes WHERE owner_email=${own}`;
+    const rounds = `SELECT id FROM interview_rounds WHERE process_id IN (${processes})`;
+    add("interview_documents", `process_id IN (${processes})`, "Interview accepted documents");
+    add("interview_feedback", `round_id IN (${rounds})`, "Interview evaluations");
+    add("interview_events", `process_id IN (${processes})`, "Interview history");
+    add("interview_rounds", `process_id IN (${processes})`, "Interview rounds");
+    add("interview_processes", `owner_email=${own}`, "Interview processes");
     add(
       "form_submission_artifacts",
       `submission_id IN (${subs})`,
@@ -61,7 +68,7 @@ export function resetTables(choice: ResetChoice): ResetTable[] {
   add(
     "candidate_progress",
     `owner_email=${own} ${history ? `AND primary_run_id IN (${runs})` : ""}`,
-    cv ? "Candidate progress" : "Candidate progress refreshed",
+    cv ? "Candidate Preparation" : "Candidate Preparation refreshed",
     cv ? undefined : "update",
   );
   if (cv) {

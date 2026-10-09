@@ -43,7 +43,7 @@ flowchart TD
 
 This diagram shows the preparation path; workflows can also start on Telegram submission or staff upload and wait for review. Review-only workflows can end without creating accounts or assigning forms. Paid AI is optional and initiated only through the Resume Editor, outside automatic intake/workflow execution. See [workflow behavior](candidate-workflows.md) and [Telegram intake](telegram-candidate-intake.md).
 
-Progress combines current CV approval, selected preparation, actual invitation evidence, required submissions, and audited HR stage overrides. Kanban moves do not perform the underlying business actions. See [Candidate Progress](candidate-progress.md).
+Progress combines current CV approval, selected preparation, actual invitation evidence, required submissions, and audited HR stage overrides. Kanban moves do not perform the underlying business actions. See [Candidate Preparation](candidate-progress.md).
 
 ## Durable processing
 
@@ -72,3 +72,7 @@ CV review and CV update tasks open the editor. Contact/setup tasks reuse existin
 Waiting clocks use CV receipt, update receipt, assignment and submission timestamps. Contact waits use recorded approval when available. Failed runs show Last run update rather than inventing a failure start time; missing evidence remains unknown. Waiting forms are not labelled overdue and no reminders, resends, approvals, workflow runs or AI processing occur when opening this page. Task actions navigate to existing guarded operations.
 
 `features/hr/setup.server.ts` projects owner-scoped configuration readiness at `/setup`; `/setup/preview` reads owned immutable published web-form definitions. Its shared candidate renderer validates sample input only in browser memory. Neither path mutates lifecycle records or calls providers. `candidate-journey.ts` and `attentionResponsibility` name the next actor from operational evidence, while existing guarded services remain authoritative. Workflow business summaries derive separately from draft and published graph nodes; conditional branches are identified rather than presented as an unconditional linear run.
+
+## Interview management
+
+`features/interviews` provides validated owner-scoped services, client screens and DTOs behind thin `/api/interviews` adapters. Explicit handoff from accepted preparation creates one candidate-linked process at `/interviews/:id`; `/interviews` is the Active/Closed management page. Separate round, feedback, accepted-document and immutable-event records preserve the original CV/profile/account/preparation context. Process versions and request receipts protect atomic lifecycle/audit batches. Preparation evidence remains authoritative and separate from interview outcomes. See [Interview Progress](interview-progress.md).

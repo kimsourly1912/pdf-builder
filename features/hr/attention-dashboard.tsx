@@ -290,7 +290,7 @@ export function AttentionDashboard({
               </Button>
             ) : (
               <Button asChild variant="outline">
-                <Link href="/candidates">Open candidates</Link>
+                <Link href="/candidates">Open Candidate Preparation</Link>
               </Button>
             )}
           </div>

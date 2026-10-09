@@ -10,7 +10,8 @@ export const MANAGEMENT_PAGE_TITLES = {
   "/intake": "Incoming candidates",
   "/archive": "Archive",
   "/test-data": "Test data reset",
-  "/candidates": "Candidates",
+  "/candidates": "Candidate Preparation",
+  "/interviews": "Interview Progress",
   "/analyses": "AI analysis history",
 };
 

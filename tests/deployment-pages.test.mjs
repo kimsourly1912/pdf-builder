@@ -37,3 +37,25 @@ test("deployment requires the actual management page heading, rather than a side
     true,
   );
 });
+
+test("preparation and interview smoke checks require their separate actual headings", () => {
+  assert.equal(
+    managementPageReady("/candidates", "<h1>Candidate Preparation</h1>"),
+    true,
+  );
+  assert.equal(
+    managementPageReady("/candidates", "<h1>Candidates</h1>"),
+    false,
+  );
+  assert.equal(
+    managementPageReady("/interviews", "<h1>Interview Progress</h1>"),
+    true,
+  );
+  assert.equal(
+    managementPageReady(
+      "/interviews",
+      "<nav>Interview Progress</nav><h1>Sign in</h1>",
+    ),
+    false,
+  );
+});

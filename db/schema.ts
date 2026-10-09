@@ -7,6 +7,7 @@ import {
   uniqueIndex,
 } from "drizzle-orm/sqlite-core";
 import { sql } from "drizzle-orm";
+import { workflowRuns } from "../features/workflows/schema";
 
 export { archiveRecords } from "../features/archive/schema";
 export {
@@ -696,3 +697,145 @@ export const testDataResetTargets = sqliteTable("test_data_reset_targets", {
   tableName: text("table_name").notNull(),
   rowKey: text("row_key").notNull(),
 }, t => [uniqueIndex("test_data_reset_target_unique").on(t.resetId, t.tableName, t.rowKey)]);
+
+// Interviews retain their original accepted application and CV independently of later preparation.
+export const interviewProcesses = sqliteTable(
+  "interview_processes",
+  {
+    id: text("id").primaryKey(),
+    ownerEmail: text("owner_email").notNull(),
+    candidateId: text("candidate_id")
+      .notNull()
+      .references(() => candidates.id, { onDelete: "restrict" }),
+    resumeId: text("resume_id")
+      .notNull()
+      .references(() => resumes.id, { onDelete: "restrict" }),
+    profileId: text("profile_id")
+      .notNull()
+      .references(() => candidateProfileVersions.id, { onDelete: "restrict" }),
+    runId: text("run_id").references(() => workflowRuns.id, {
+      onDelete: "restrict",
+    }),
+    accountId: text("account_id").references(() => user.id, {
+      onDelete: "restrict",
+    }),
+    position: text("position").notNull(),
+    responsible: text("responsible").notNull(),
+    snapshotJson: text("snapshot_json").notNull(),
+    version: integer("version").notNull().default(1),
+    roundsComplete: integer("rounds_complete").notNull().default(0),
+    outcome: text("outcome"),
+    decisionReason: text("decision_reason").notNull().default(""),
+    decidedBy: text("decided_by"),
+    decidedAt: text("decided_at"),
+    holdJson: text("hold_json"),
+    createdBy: text("created_by").notNull(),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (t) => [
+    uniqueIndex("interview_candidate_unique").on(t.candidateId),
+    index("interview_owner_updated_idx").on(t.ownerEmail, t.updatedAt),
+    check(
+      "interview_outcome_check",
+      sql`${t.outcome} IN ('passed','not_selected','withdrawn')`,
+    ),
+  ],
+);
+export const interviewRounds = sqliteTable(
+  "interview_rounds",
+  {
+    id: text("id").primaryKey(),
+    processId: text("process_id")
+      .notNull()
+      .references(() => interviewProcesses.id, { onDelete: "restrict" }),
+    name: text("name").notNull(),
+    interviewersJson: text("interviewers_json").notNull(),
+    status: text("status").notNull(),
+    appointmentJson: text("appointment_json").notNull(),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (t) => [
+    index("interview_round_process_idx").on(t.processId),
+    check(
+      "interview_round_status_check",
+      sql`${t.status} IN ('scheduled','cancelled','completed','no_show')`,
+    ),
+  ],
+);
+export const interviewFeedback = sqliteTable(
+  "interview_feedback",
+  {
+    id: text("id").primaryKey(),
+    roundId: text("round_id")
+      .notNull()
+      .references(() => interviewRounds.id, { onDelete: "restrict" }),
+    interviewer: text("interviewer").notNull(),
+    status: text("status").notNull(),
+    scorecardJson: text("scorecard_json").notNull(),
+    enteredBy: text("entered_by").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (t) => [
+    uniqueIndex("interview_feedback_interviewer_unique").on(
+      t.roundId,
+      t.interviewer,
+    ),
+    check(
+      "interview_feedback_status_check",
+      sql`${t.status} IN ('draft','submitted')`,
+    ),
+  ],
+);
+export const interviewEvents = sqliteTable(
+  "interview_events",
+  {
+    id: text("id").primaryKey(),
+    processId: text("process_id")
+      .notNull()
+      .references(() => interviewProcesses.id, { onDelete: "restrict" }),
+    mutationId: text("mutation_id").notNull(),
+    requestHash: text("request_hash").notNull(),
+    action: text("action").notNull(),
+    actor: text("actor").notNull(),
+    detailsJson: text("details_json").notNull(),
+    createdAt: text("created_at").notNull(),
+  },
+  (t) => [
+    uniqueIndex("interview_event_mutation_unique").on(
+      t.processId,
+      t.mutationId,
+    ),
+  ],
+);
+export const interviewGuards = sqliteTable(
+  "interview_guards",
+  {
+    id: text("id").primaryKey(),
+    checkPassed: integer("check_passed").notNull(),
+  },
+  (t) => [check("interview_checked", sql`${t.checkPassed}=1`)],
+);
+
+export const interviewDocuments = sqliteTable(
+  "interview_documents",
+  {
+    id: text("id").primaryKey(),
+    processId: text("process_id")
+      .notNull()
+      .references(() => interviewProcesses.id, { onDelete: "restrict" }),
+    assignmentId: text("assignment_id")
+      .notNull()
+      .references(() => formAssignments.id, { onDelete: "restrict" }),
+    submissionId: text("submission_id")
+      .notNull()
+      .references(() => submissions.id, { onDelete: "restrict" }),
+  },
+  (t) => [
+    uniqueIndex("interview_document_assignment_unique").on(
+      t.processId,
+      t.assignmentId,
+    ),
+  ],
+);

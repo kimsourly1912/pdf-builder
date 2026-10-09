@@ -1,6 +1,6 @@
-# Candidate progress
+# Candidate Preparation
 
-Open **Candidates → All candidates** to follow CV review, candidate preparation and form completion. Telegram intake is available under **Candidates → New submissions**. Progress groups active CVs by candidate; receiving another CV does not create another card for an existing candidate.
+Open **Candidates → Candidate Preparation** to follow CV review, candidate preparation and form completion. Telegram intake is available under **Candidates → New submissions**. Progress groups active CVs by candidate; receiving another CV does not create another card for an existing candidate.
 
 The Kanban and List views show the same data. The view preference is saved for each HR account in the current browser. Search supports name, email, Telegram username and CV filename. Stage and Needs attention filters apply to both views. Pages contain up to 50 candidates; column totals cover all matching candidates. A partial column shows its visible count and a shortcut to that stage’s candidates. Search, stage, attention, sorting and page filters are stored in the URL and remembered per HR account for the browser session, including after returning from detail. Clear filters resets the saved selection. Data refreshes every 15 seconds and when the window regains focus.
 
@@ -50,3 +50,7 @@ The bot keyboard is stage-aware: update submitted CV before review, request a CV
 Migration `0026_candidate_cv_updates.sql` adds isolated update drafts, persistent review starts, transaction guards and replacement/archive protections. CVs referenced by update history cannot be permanently deleted until eligible linked records are resolved.
 
 Migration `0027_backfill_cv_review_starts.sql` retains review starts previously recorded through Kanban stages. Existing HR overrides keep their previous serialized progress basis; introducing a review-start fact does not silently clear them.
+
+## Explicit interview handoff
+
+After actual Documents accepted evidence, **Move to interviews** records a position and creates an owner-scoped interview process with the original accepted application context. After handoff, **View interview progress** links to its separate detail page. Interview outcomes never replace preparation status. Existing accepted candidates are not automatically enrolled. See [Interview Progress](interview-progress.md) for rounds, feedback and decisions.

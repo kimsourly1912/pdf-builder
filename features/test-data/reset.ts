@@ -3,13 +3,13 @@ export const RESET_OPTIONS = [
     scope: "candidates",
     title: "Clear candidates",
     description:
-      "Remove candidates, all CVs and intake, candidate login accounts, and their linked forms, preparation runs and invitations. Keep form templates, workflows and employee accounts.",
+      "Remove candidates, all CVs and intake, candidate login accounts, and their linked forms, preparation runs, interviews and invitations. Keep form templates, workflows and employee accounts.",
   },
   {
     scope: "responses",
     title: "Clear forms and preparation history",
     description:
-      "Remove assignments, saved answers, submissions, correction attempts and preparation runs. Keep candidates, CV approvals, login accounts, form templates and workflows.",
+      "Remove assignments, saved answers, submissions, correction attempts, interviews and preparation runs. Keep candidates, CV approvals, login accounts, form templates and workflows.",
   },
   {
     scope: "history",
@@ -21,7 +21,7 @@ export const RESET_OPTIONS = [
     scope: "all",
     title: "Reset all test data",
     description:
-      "Remove candidates, CVs, recipient login accounts, forms and answers, preparation history, AI history and archive records. Your administrator account and integration settings stay available.",
+      "Remove candidates, CVs, recipient login accounts, forms and answers, preparation and interview history, AI history and archive records. Your administrator account and integration settings stay available.",
   },
 ] as const;
 export type ResetScope = (typeof RESET_OPTIONS)[number]["scope"];

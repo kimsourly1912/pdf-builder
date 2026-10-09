@@ -11,7 +11,7 @@ As of 2026-10-03. This page focuses on the recent candidate intake, workflow, ar
 | Preparation workflows | Interactive canvas and focus mode, contextual catalog, node names/annotations and search, draft/live change review and recovery, safe sample previews, execution input/output inspection, saved overview filters and inactive duplication; purpose presets and starting events; guarded review/account reuse; CV linking, pinned forms, Telegram activation/sign-in invitations, recovery and history. |
 | Intake guidance | One next-step summary, actual progress, direct missing-requirement actions, selected CV context, state-specific preparation actions. |
 | Archive | Linked intake/CV groups, restore, eligibility and protected-history explanations, limited Undo, guarded permanent deletion and durable file cleanup. |
-| Candidate Progress | Candidates sidebar submenu, Kanban/List toggle, guarded dragging/menu transitions, CV/run selection, forms, and timeline. |
+| Candidate Preparation | Candidates sidebar submenu, Kanban/List toggle, guarded dragging/menu transitions, CV/run selection, forms, and timeline. |
 | Web form builder | Click/drag fields, reorder, shared candidate preview, separate PDF mapping, immutable whole-form assignments, private media, JSON/PDF responses and PDF retry; legacy PDF templates remain available. |
 | HR workspace | Task-based Home/navigation, tabbed candidate profile, centered reading containers, HR form acceptance and new correction attempts preserving original history. |
 | Progress usability | Saved owner-scoped filters/view, useful page/column counts, event-based waiting times, sorting, consistent status presentation, issue-resolution links, responsive layouts. |
@@ -142,3 +142,11 @@ A first-time HR usability trial remains necessary to establish comprehension wit
 - Measured first-entry fit, saved viewport, Shift/marquee selection, grouped dragging, alignment/distribution, smart guides with Alt bypass, select/hand tools and global graph undo/redo.
 
 A first-time HR usability trial remains necessary to confirm comprehension. Local browser and integration checks do not establish Telegram delivery or read receipts.
+
+## Candidate Preparation and Interview Progress (shipped October 2026)
+
+- Separate Candidate Preparation (`/candidates`) and Interview Progress (`/interviews`) with an explicit, idempotent handoff from server-proven Documents accepted. Original approved CV, account, preparation and accepted document context remain pinned.
+- Active stages Ready to schedule, Scheduled, Awaiting feedback and Decision pending; Closed outcomes Interview passed, Not selected and Withdrawn. Search, filters, counts, pagination and keyboard-accessible responsive boards.
+- Multiple named-interviewer rounds, timezone-aware UTC appointments, retained rescheduling/cancellation history, explicit completion/no-show and per-interviewer draft/submitted scorecards.
+- Explicit rounds completion and owner decisions, meaningful reasons, holds/follow-up/resumption, decision correction/reopening and atomic candidate history. Archive and staging reset preserve or explicitly handle interview dependencies.
+- Internal tracking only: no invitations, calendar sync, AI evaluation, vacancy module, hiring/offer or onboarding flows.
