@@ -137,3 +137,30 @@ test("lint rejects native application pickers while retaining the PDF overlay ex
     "PDF exceptions must still reject native dropdowns",
   );
 });
+
+test("AM/PM entry preserves midnight, noon, and afternoon appointment hours", async () => {
+  const { hour12, hour24, appointmentLabels } = await vite.ssrLoadModule(
+    "/features/interviews/appointment-presentation.ts",
+  );
+  for (const [stored, shown, period] of [
+    ["00", "12", "AM"],
+    ["12", "12", "PM"],
+    ["15", "3", "PM"],
+    ["01", "1", "AM"],
+    ["23", "11", "PM"],
+  ]) {
+    assert.equal(hour12(stored), shown);
+    assert.equal(hour24(shown, period), stored);
+  }
+  assert.equal(hour12(""), "");
+  const a = {
+    startsAt: "2026-10-09T08:10:00.000Z",
+    timezone: "Asia/Phnom_Penh",
+  };
+  assert.equal(appointmentLabels(a).time, "3:10 PM");
+  assert.equal(appointmentLabels(a).offset, "GMT+7");
+  assert.equal(
+    appointmentLabels({ ...a, startsAt: "2026-10-08T17:00:00.000Z" }).time,
+    "12:00 AM",
+  );
+});

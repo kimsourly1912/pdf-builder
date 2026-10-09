@@ -133,7 +133,7 @@ export function interviewNextAction(process: InterviewProcess) {
   }[process.stage];
 }
 export function appointmentDisplay(a: Appointment) {
-  return `${new Intl.DateTimeFormat("en-GB", { timeZone: a.timezone, dateStyle: "medium", timeStyle: "short" }).format(new Date(a.startsAt))} · ${a.timezone} · ${a.duration} minutes`;
+  return `${new Intl.DateTimeFormat("en-GB", { timeZone: a.timezone, dateStyle: "medium", timeStyle: "short", hour12: true }).format(new Date(a.startsAt))} · ${a.timezone} · ${a.duration} minutes`;
 }
 
 export const INTERVIEW_ACTION_LABELS: Record<string, string> = {
