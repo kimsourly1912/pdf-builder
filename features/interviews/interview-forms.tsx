@@ -1,6 +1,8 @@
 "use client";
 import { useState, type ReactNode } from "react";
 import { hour12, hour24 } from "./appointment-presentation";
+import { INTERVIEW_OPERATION_COPY } from "./final-review";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { DatePicker } from "@/components/ui/date-picker";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -94,7 +96,7 @@ export function InterviewOperationDialog({
     [name, setName] = useState(""),
     [interviewers, setInterviewers] = useState(""),
     [reason, setReason] = useState(""),
-    [outcome, setOutcome] = useState("passed"),
+    [outcome, setOutcome] = useState(""),
     [followUp, setFollowUp] = useState("");
   const draft = round?.feedback.find(
     (f) => f.interviewer === operation.interviewer,
@@ -193,6 +195,11 @@ export function InterviewOperationDialog({
                 ?.focus();
               return;
             }
+            if (["decide", "correct_decision"].includes(action) && !outcome) {
+              setValidationError("Choose Interview passed or Not selected.");
+              document.getElementById("outcome-passed")?.focus();
+              return;
+            }
             setValidationError("");
             void onSave(values());
           }}
@@ -201,12 +208,9 @@ export function InterviewOperationDialog({
             <DialogTitle>{operation.title}</DialogTitle>
             <DialogDescription>
               {feedback
-                ? `Evaluation attributed to ${operation.interviewer}. The management owner is recorded separately as the person entering it.`
-                : scheduling
-                  ? "Choose when, where, and who will interview. Notify the candidate separately after saving."
-                  : action === "no_show"
-                    ? "Use this if the candidate did not attend. It records attendance, keeps this process open, and does not reject the candidate."
-                    : "This records an explicit action and preserves earlier appointments and decisions in history."}
+                ? `Record ${operation.interviewer}’s assessment. Save a draft while working, then submit when it is complete.`
+                : (INTERVIEW_OPERATION_COPY[action]?.description ??
+                  "Record this interview action.")}
             </DialogDescription>
           </DialogHeader>
           <fieldset disabled={busy} className="min-w-0 space-y-4">
@@ -535,21 +539,48 @@ export function InterviewOperationDialog({
             )}
             {["decide", "correct_decision"].includes(action) && (
               <>
-                <InterviewField id="final-outcome" label="Final outcome">
-                  <SelectField
-                    id="final-outcome"
-                    className="w-full"
+                <div className="space-y-2">
+                  <Label>Choose the final outcome</Label>
+                  <RadioGroup
+                    aria-label="Choose the final outcome"
                     value={outcome}
                     onValueChange={setOutcome}
+                    className="gap-3"
                   >
-                    <SelectFieldOption value="passed">
-                      Interview passed
-                    </SelectFieldOption>
-                    <SelectFieldOption value="not_selected">
-                      Not selected
-                    </SelectFieldOption>
-                  </SelectField>
-                </InterviewField>
+                    {[
+                      {
+                        value: "passed",
+                        label: "Interview passed",
+                        text: "The candidate met the interview requirements. This does not mean hired.",
+                      },
+                      {
+                        value: "not_selected",
+                        label: "Not selected",
+                        text: "The candidate will not proceed based on this interview assessment.",
+                      },
+                    ].map((item) => (
+                      <Label
+                        key={item.value}
+                        htmlFor={`outcome-${item.value}`}
+                        className="flex cursor-pointer items-start gap-3 rounded-lg border p-4 has-[[data-state=checked]]:border-primary has-[[data-state=checked]]:bg-primary/5"
+                      >
+                        <RadioGroupItem
+                          id={`outcome-${item.value}`}
+                          value={item.value}
+                          className="mt-1"
+                        />
+                        <span className="space-y-1">
+                          <span className="block font-semibold">
+                            {item.label}
+                          </span>
+                          <span className="block text-sm font-normal leading-relaxed text-muted-foreground">
+                            {item.text}
+                          </span>
+                        </span>
+                      </Label>
+                    ))}
+                  </RadioGroup>
+                </div>
                 <p className="text-sm text-muted-foreground">
                   Interview passed does not mean Hired. Offers and onboarding
                   are outside interview management.
@@ -557,7 +588,12 @@ export function InterviewOperationDialog({
               </>
             )}
             {needsReason && (
-              <InterviewField id="action-reason" label="Reason">
+              <InterviewField
+                id="action-reason"
+                label={
+                  INTERVIEW_OPERATION_COPY[action]?.reasonLabel ?? "Reason"
+                }
+              >
                 <Textarea
                   id="action-reason"
                   value={reason}
@@ -565,14 +601,17 @@ export function InterviewOperationDialog({
                   required
                   minLength={10}
                   maxLength={2000}
-                  placeholder="Record a meaningful reason (at least 10 characters)"
+                  placeholder={
+                    INTERVIEW_OPERATION_COPY[action]?.placeholder ??
+                    "Explain the reason (at least 10 characters)"
+                  }
                 />
               </InterviewField>
             )}
             {action === "hold" && (
               <InterviewField
                 id="hold-follow-up"
-                label="Optional follow-up date"
+                label="Follow-up date (optional)"
               >
                 <DatePicker
                   id="hold-follow-up"
@@ -584,9 +623,8 @@ export function InterviewOperationDialog({
             )}
             {action === "finish_rounds" && (
               <p className="text-sm">
-                Confirm that you have reviewed the completed rounds and every
-                required submitted evaluation. You can schedule another round
-                later if needed.
+                Next, you will choose Interview passed or Not selected and enter
+                your reason. Earlier rounds and submitted feedback stay saved.
               </p>
             )}
             {action === "complete" && (
@@ -620,7 +658,8 @@ export function InterviewOperationDialog({
                   ? feedbackStatus === "submitted"
                     ? "Submit feedback"
                     : "Save draft"
-                  : operation.title}
+                  : (INTERVIEW_OPERATION_COPY[action]?.submit ??
+                    operation.title)}
             </Button>
           </DialogFooter>
         </form>

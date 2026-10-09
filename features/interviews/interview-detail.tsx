@@ -11,13 +11,14 @@ import {
   DropdownMenuTrigger,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
 import { MoreHorizontal, ArrowRight, Check } from "lucide-react";
 import { interviewDetailGuidance } from "./detail-guidance";
 import { InterviewDocuments } from "./interview-documents";
 import { InterviewHistory } from "./interview-history";
 import { InterviewGuide } from "./interview-guide";
+import { InterviewStatusActions } from "./interview-actions";
+import { FinalDecision } from "./final-decision";
 import { Badge } from "@/components/ui/badge";
 import { RoundAppointment, RoundFeedback } from "./round-presentation";
 import { Button } from "@/components/ui/button";
@@ -119,7 +120,32 @@ export function InterviewDetail({
         { method: "PATCH", body: JSON.stringify(receipt.current.body) },
       );
       setProcess(result.process);
-      setNotice("Interview progress saved.");
+      setNotice(
+        (
+          {
+            hold: "Interviews paused. Resume when you are ready to continue.",
+            resume: "Interviews resumed from the previous step.",
+            withdraw:
+              "Candidate withdrawal recorded. This interview process is now closed.",
+            finish_rounds:
+              "The rounds are complete. Choose the final outcome next.",
+            decide:
+              "Final decision saved. This interview process is now closed.",
+            correct_decision:
+              "Final decision corrected. The earlier outcome is kept in History.",
+            reopen:
+              "Interviews reopened. The earlier decision is kept in History.",
+            schedule: "Appointment saved. Notify the candidate separately.",
+            reschedule:
+              "New appointment saved. The earlier appointment is kept in History.",
+            cancel:
+              "Appointment cancelled. The interview process remains open.",
+            complete:
+              "Interview completed. Collect feedback from each interviewer next.",
+            no_show: "No-show recorded. The interview process remains open.",
+          } as Record<string, string>
+        )[String(values.action)] ?? "Interviewer feedback saved.",
+      );
       receipt.current = null;
       close();
     } catch (e) {
@@ -224,18 +250,23 @@ export function InterviewDetail({
           <section className="space-y-4 rounded-lg border bg-card p-4 sm:p-6">
             <div className="flex flex-wrap items-center gap-2">
               <StatusBadge
-                label={INTERVIEW_LABELS[process.outcome ?? process.stage]}
+                label={
+                  process.hold
+                    ? "Interviews paused"
+                    : guidance?.action === "finish_rounds"
+                      ? "Ready for final review"
+                      : INTERVIEW_LABELS[process.outcome ?? process.stage]
+                }
                 tone={
                   process.outcome === "passed"
                     ? "success"
                     : process.outcome === "not_selected"
                       ? "danger"
-                      : process.stage === "feedback"
+                      : process.hold || process.stage === "feedback"
                         ? "warning"
                         : "info"
                 }
               />
-              {process.hold && <StatusBadge label="On hold" tone="warning" />}
             </div>
             <p className="break-words text-sm text-muted-foreground">
               Interview owner: {process.responsible}
@@ -251,7 +282,9 @@ export function InterviewDetail({
                   "Final decision",
                 ].map((label, i) => {
                   const current =
-                    process.outcome || process.roundsComplete
+                    process.outcome ||
+                    process.roundsComplete ||
+                    guidance?.action === "finish_rounds"
                       ? 2
                       : process.stage === "feedback" ||
                           (process.stage !== "scheduled" &&
@@ -293,7 +326,7 @@ export function InterviewDetail({
             {process.hold && (
               <FeedbackAlert
                 tone="warning"
-                title="On hold"
+                title="Interviews paused"
                 description={`${process.hold.reason}${process.hold.followUp ? ` · Follow up ${process.hold.followUp}` : ""}. Resume returns to ${INTERVIEW_LABELS[process.hold.previousStage]}.`}
               />
             )}
@@ -304,89 +337,27 @@ export function InterviewDetail({
                   <ArrowRight className="size-4" aria-hidden="true" />
                 </Button>
               )}
+              {editable && guidance?.action === "finish_rounds" && (
+                <Button
+                  variant="outline"
+                  disabled={busy || loading}
+                  onClick={() => open("schedule", "Schedule another round")}
+                >
+                  Schedule another round
+                </Button>
+              )}
               <Button asChild variant="outline">
                 <Link href={`/candidates/${process.candidateId}`}>
                   Candidate profile
                 </Link>
               </Button>
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    id="process-actions"
-                    variant="outline"
-                    disabled={busy || loading}
-                  >
-                    <MoreHorizontal className="size-4" aria-hidden="true" />
-                    More actions
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                  {editable && (
-                    <DropdownMenuItem
-                      onSelect={() =>
-                        open(
-                          "hold",
-                          "Put interviews on hold",
-                          undefined,
-                          undefined,
-                          "process-actions",
-                        )
-                      }
-                    >
-                      Put on hold
-                    </DropdownMenuItem>
-                  )}
-                  {!process.outcome && (
-                    <DropdownMenuItem
-                      onSelect={() =>
-                        open(
-                          "withdraw",
-                          "Record candidate withdrawal",
-                          undefined,
-                          undefined,
-                          "process-actions",
-                        )
-                      }
-                    >
-                      Record candidate withdrawal
-                    </DropdownMenuItem>
-                  )}
-                  {process.outcome && (
-                    <DropdownMenuItem
-                      onSelect={() =>
-                        open(
-                          "reopen",
-                          "Reopen interviews",
-                          undefined,
-                          undefined,
-                          "process-actions",
-                        )
-                      }
-                    >
-                      Reopen interviews
-                    </DropdownMenuItem>
-                  )}
-                  {process.outcome && process.stage === "decision" && (
-                    <DropdownMenuItem
-                      onSelect={() =>
-                        open(
-                          "correct_decision",
-                          "Correct final decision",
-                          undefined,
-                          undefined,
-                          "process-actions",
-                        )
-                      }
-                    >
-                      Correct final decision
-                    </DropdownMenuItem>
-                  )}
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem onSelect={() => void load()}>
-                    Refresh details
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
+              <InterviewStatusActions
+                process={process}
+                disabled={busy || loading}
+                onChoose={(action, title) =>
+                  open(action, title, undefined, undefined, "process-actions")
+                }
+              />
             </div>
           </section>
           <Tabs
@@ -406,6 +377,11 @@ export function InterviewDetail({
               <InterviewDocuments process={process} />
             </TabsContent>
             <TabsContent value="interviews" className="space-y-6">
+              <FinalDecision
+                process={process}
+                busy={busy || loading}
+                onAction={open}
+              />
               <section id="interview-rounds" className="space-y-4">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <h2 className="text-lg font-semibold">Interview rounds</h2>
@@ -575,73 +551,6 @@ export function InterviewDetail({
                     )}
                   </article>
                 ))}
-                {editable &&
-                  process.rounds.some((r) => r.status === "completed") &&
-                  !process.roundsComplete && (
-                    <div className="space-y-2">
-                      <Button
-                        variant="outline"
-                        disabled={
-                          busy ||
-                          process.rounds.some(
-                            (r) =>
-                              r.status === "scheduled" ||
-                              missingFeedback(r).length,
-                          )
-                        }
-                        onClick={() =>
-                          open("finish_rounds", "Mark rounds complete")
-                        }
-                      >
-                        Mark rounds complete for final review
-                      </Button>
-                      <p className="text-xs text-muted-foreground">
-                        Requires at least one completed interview, every
-                        required evaluation submitted and no scheduled round.
-                      </p>
-                    </div>
-                  )}
-              </section>
-              <section
-                id="final-decision"
-                className="space-y-3 rounded-lg border p-4 sm:p-6"
-              >
-                <h2 className="font-semibold">Final decision</h2>
-                {process.outcome ? (
-                  <>
-                    <p className="font-medium">
-                      {INTERVIEW_LABELS[process.outcome]}
-                    </p>
-                    <p className="whitespace-pre-wrap break-words text-sm">
-                      {process.decisionReason}
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      Recorded by {process.decidedBy} ·{" "}
-                      {process.decidedAt &&
-                        new Date(process.decidedAt).toLocaleString()}
-                    </p>
-                  </>
-                ) : (
-                  <>
-                    <p className="text-sm text-muted-foreground">
-                      Recommendations support review. The owner records the
-                      final decision after explicitly completing the rounds.
-                    </p>
-                    {editable && process.stage === "decision" && (
-                      <Button
-                        variant="outline"
-                        disabled={busy}
-                        onClick={() => open("decide", "Record final decision")}
-                      >
-                        Record final decision
-                      </Button>
-                    )}
-                  </>
-                )}
-                <p className="text-xs text-muted-foreground">
-                  Interview passed does not mean Hired. Offers, acceptance and
-                  onboarding are outside this version.
-                </p>
               </section>
             </TabsContent>
             <TabsContent value="history" className="space-y-6">

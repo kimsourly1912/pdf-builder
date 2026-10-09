@@ -164,3 +164,42 @@ test("AM/PM entry preserves midnight, noon, and afternoon appointment hours", as
     "12:00 AM",
   );
 });
+
+test("final review readiness requires attendance, submitted feedback and no scheduled appointment", async () => {
+  const { finalReviewReadiness: ready } = await vite.ssrLoadModule(
+    "/features/interviews/final-review.ts",
+  );
+  assert.equal(ready(base).ready, false);
+  const completed = {
+    ...round,
+    status: "completed",
+    feedback: [
+      { interviewer: "Sokha", status: "submitted" },
+      { interviewer: "Dara", status: "draft" },
+    ],
+  };
+  const waiting = ready({ ...base, rounds: [completed] });
+  assert.equal(waiting.submitted, 1);
+  assert.equal(waiting.required, 2);
+  assert.equal(waiting.outstanding[0].interviewer, "Dara");
+  assert.equal(waiting.ready, false);
+  const assessed = {
+    ...completed,
+    feedback: completed.feedback.map((item) => ({
+      ...item,
+      status: "submitted",
+    })),
+  };
+  const process = { ...base, rounds: [assessed] };
+  assert.equal(ready(process).ready, true);
+  assert.equal(ready({ ...process, rounds: [assessed, round] }).ready, false);
+  assert.equal(
+    ready({ ...process, hold: { reason: "Budget pause" } }).ready,
+    false,
+  );
+  assert.equal(ready({ ...process, outcome: "passed" }).ready, false);
+  assert.equal(
+    ready({ ...process, rounds: [{ ...round, status: "no_show" }] }).ready,
+    false,
+  );
+});
