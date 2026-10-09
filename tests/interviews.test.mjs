@@ -973,3 +973,45 @@ test("competing scheduling mutations commit one round and its history, rejecting
     1,
   );
 });
+
+test("interview account preview returns only the pinned owner-scoped account summary", async (t) => {
+  const f = fixture(t),
+    p = await start(f);
+  const previews = await vite.ssrLoadModule(
+    "/features/interviews/account-preview.server.ts",
+  );
+  const account = await previews.interviewAccountPreview(f.owner, p.id);
+  assert.deepEqual(Object.keys(account).sort(), [
+    "accountType",
+    "blocked",
+    "email",
+    "mustChangePassword",
+    "name",
+  ]);
+  assert.equal(
+    account.email,
+    f.db.prepare("SELECT email FROM user WHERE id=?").get(f.userId).email,
+  );
+  await rejectStatus(
+    previews.interviewAccountPreview("foreign@owner.test", p.id),
+    404,
+  );
+  f.db
+    .prepare("UPDATE recipient_profiles SET created_by_email=? WHERE user_id=?")
+    .run("foreign@owner.test", f.userId);
+  await rejectStatus(previews.interviewAccountPreview(f.owner, p.id), 404);
+});
+
+test("interview account preview API rejects forged owner headers without a session", async (t) => {
+  fixture(t);
+  const route = await vite.ssrLoadModule(
+    "/app/api/interviews/[id]/account/route.ts",
+  );
+  const response = await route.GET(
+    new Request("http://localhost:5173/api/interviews/unknown/account", {
+      headers: { "x-chatgpt-email": "a@owner.test" },
+    }),
+    { params: Promise.resolve({ id: "unknown" }) },
+  );
+  assert.equal(response.status, 401);
+});

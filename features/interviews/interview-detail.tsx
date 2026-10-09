@@ -15,18 +15,18 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { MoreHorizontal, ArrowRight, Check } from "lucide-react";
 import { interviewDetailGuidance } from "./detail-guidance";
+import { InterviewDocuments } from "./interview-documents";
+import { InterviewHistory } from "./interview-history";
+import { InterviewGuide } from "./interview-guide";
+import { Badge } from "@/components/ui/badge";
+import { RoundAppointment, RoundFeedback } from "./round-presentation";
 import { Button } from "@/components/ui/button";
 import { errorText } from "@/features/workflows/client";
 import {
   INTERVIEW_LABELS,
-  INTERVIEW_ACTION_LABELS,
-  RECOMMENDATIONS,
-  CRITERIA,
-  appointmentDisplay,
   missingFeedback,
   type InterviewProcess,
   type InterviewRound,
-  type Appointment,
 } from "./interviews";
 import { interviewApi, InterviewApiError } from "./client";
 import {
@@ -394,63 +394,16 @@ export function InterviewDetail({
             onValueChange={setTab}
             className="min-w-0 space-y-6"
           >
-            <TabsList className="grid h-auto w-full grid-cols-3 sm:w-fit">
-              <TabsTrigger value="interviews">Interviews</TabsTrigger>
-              <TabsTrigger value="documents">Documents</TabsTrigger>
-              <TabsTrigger value="history">History</TabsTrigger>
-            </TabsList>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <TabsList className="grid h-auto w-full grid-cols-3 sm:w-fit">
+                <TabsTrigger value="interviews">Interviews</TabsTrigger>
+                <TabsTrigger value="documents">Documents</TabsTrigger>
+                <TabsTrigger value="history">History</TabsTrigger>
+              </TabsList>
+              <InterviewGuide process={process} />
+            </div>
             <TabsContent value="documents" className="space-y-6">
-              <section className="space-y-3 rounded-lg border p-4 sm:p-6">
-                <h2 className="font-semibold">
-                  Accepted preparation & documents
-                </h2>
-                <p className="text-sm text-muted-foreground">
-                  Original accepted context from{" "}
-                  {new Date(process.snapshot.acceptedAt).toLocaleString()}.
-                  Later CV or preparation changes do not replace it.
-                </p>
-                <div className="flex flex-wrap gap-2">
-                  <Button
-                    asChild
-                    variant="outline"
-                    className="h-auto max-w-full whitespace-normal break-words text-left"
-                  >
-                    <Link
-                      href={`/api/resumes/${process.snapshot.cv.id}/download`}
-                    >
-                      CV: {process.snapshot.cv.fileName}
-                    </Link>
-                  </Button>
-                  {process.snapshot.accountId && (
-                    <Button asChild variant="outline">
-                      <Link
-                        href={`/accounts?account=${process.snapshot.accountId}`}
-                      >
-                        Linked account
-                      </Link>
-                    </Button>
-                  )}
-                </div>
-                <ul className="space-y-2 text-sm">
-                  {process.snapshot.forms.map((f) => (
-                    <li key={f.id} className="flex flex-wrap gap-2">
-                      <span className="break-words">
-                        {f.name} · Documents accepted
-                      </span>
-                      {f.responseUrl && (
-                        <Link className="underline" href={f.responseUrl}>
-                          Review accepted submission
-                        </Link>
-                      )}
-                      {f.url && (
-                        <Link className="underline" href={f.url}>
-                          PDF
-                        </Link>
-                      )}
-                    </li>
-                  ))}
-                </ul>
-              </section>
+              <InterviewDocuments process={process} />
             </TabsContent>
             <TabsContent value="interviews" className="space-y-6">
               <section id="interview-rounds" className="space-y-4">
@@ -481,8 +434,11 @@ export function InterviewDetail({
                     className="min-w-0 space-y-4 rounded-lg border bg-card p-4 sm:p-6"
                   >
                     <div className="flex flex-wrap items-center gap-2">
-                      <h3 className="break-words font-semibold">
-                        Round {process.rounds.length - i}: {r.name}
+                      <Badge variant="outline">
+                        Round {process.rounds.length - i}
+                      </Badge>
+                      <h3 className="min-w-0 break-words text-lg font-semibold">
+                        {r.name}
                       </h3>
                       <StatusBadge
                         label={
@@ -502,31 +458,7 @@ export function InterviewDetail({
                         }
                       />
                     </div>
-                    <p className="break-words text-sm">
-                      {appointmentDisplay(r.appointment)}
-                    </p>
-                    <p className="break-words text-sm">
-                      {r.appointment.kind === "online" ? (
-                        <a
-                          href={r.appointment.location}
-                          className="underline"
-                          target="_blank"
-                          rel="noreferrer"
-                        >
-                          Open HTTPS meeting link
-                        </a>
-                      ) : (
-                        `Location: ${r.appointment.location}`
-                      )}
-                    </p>
-                    <p className="break-words text-sm">
-                      Interviewers: {r.interviewers.join(", ")}
-                    </p>
-                    {r.appointment.notes && (
-                      <p className="whitespace-pre-wrap break-words text-sm">
-                        Preparation notes: {r.appointment.notes}
-                      </p>
-                    )}
+                    <RoundAppointment round={r} />
                     {r.status === "scheduled" && (
                       <p className="text-xs text-muted-foreground">
                         Notify the candidate separately. After the start time,
@@ -627,98 +559,19 @@ export function InterviewDetail({
                         </div>
                       )}
                     {r.status === "completed" && (
-                      <div className="space-y-3">
-                        <h4 className="font-medium">Interviewer feedback</h4>
-                        <p className="text-sm text-muted-foreground">
-                          {missingFeedback(r).length
-                            ? `Missing submitted feedback: ${missingFeedback(r).join(", ")}`
-                            : "All required feedback submitted."}
-                        </p>
-                        {r.interviewers.map((interviewer) => {
-                          const f = r.feedback.find(
-                            (f) => f.interviewer === interviewer,
-                          );
-                          return (
-                            <section
-                              key={interviewer}
-                              className="space-y-3 rounded border p-3"
-                            >
-                              <div className="flex flex-wrap items-center justify-between gap-2">
-                                <h5 className="break-words text-sm font-medium">
-                                  {interviewer} ·{" "}
-                                  {f?.status === "submitted"
-                                    ? "Submitted"
-                                    : f?.status === "draft"
-                                      ? "Draft — awaiting submission"
-                                      : "Not started"}
-                                </h5>
-                                {editable &&
-                                  !process.roundsComplete &&
-                                  f?.status !== "submitted" && (
-                                    <Button
-                                      size="sm"
-                                      variant="outline"
-                                      onClick={() =>
-                                        open(
-                                          "feedback",
-                                          f
-                                            ? "Edit feedback draft"
-                                            : "Record feedback",
-                                          r,
-                                          interviewer,
-                                        )
-                                      }
-                                    >
-                                      {f ? "Edit draft" : "Record feedback"}
-                                    </Button>
-                                  )}
-                              </div>
-                              {f && (
-                                <>
-                                  <p className="text-xs text-muted-foreground break-words">
-                                    Entered by {f.enteredBy} ·{" "}
-                                    {new Date(f.updatedAt).toLocaleString()}
-                                  </p>
-                                  <dl className="grid gap-2 text-sm sm:grid-cols-2">
-                                    {CRITERIA.map((c, j) => (
-                                      <div key={c}>
-                                        <dt className="text-muted-foreground">
-                                          {c}
-                                        </dt>
-                                        <dd>
-                                          {f.scorecard.ratings[j] ??
-                                            "Not assessed"}
-                                        </dd>
-                                      </div>
-                                    ))}
-                                  </dl>
-                                  <p className="text-sm">
-                                    Recommendation:{" "}
-                                    {
-                                      RECOMMENDATIONS[
-                                        f.scorecard.recommendation
-                                      ]
-                                    }
-                                  </p>
-                                  {(
-                                    ["notes", "strengths", "concerns"] as const
-                                  ).map(
-                                    (key) =>
-                                      f.scorecard[key] && (
-                                        <p
-                                          key={key}
-                                          className="whitespace-pre-wrap break-words text-sm"
-                                        >
-                                          {key}: {f.scorecard[key]}
-                                        </p>
-                                      ),
-                                  )}
-                                </>
-                              )}
-                            </section>
-                          );
-                        })}
-                      </div>
+                      <RoundFeedback
+                        round={r}
+                        editable={editable && !process.roundsComplete}
+                        busy={busy}
+                        onEdit={(interviewer, draft) =>
+                          open(
+                            "feedback",
+                            draft ? "Edit feedback draft" : "Record feedback",
+                            r,
+                            interviewer,
+                          )
+                        }
+                      />
                     )}
                   </article>
                 ))}
@@ -792,83 +645,7 @@ export function InterviewDetail({
               </section>
             </TabsContent>
             <TabsContent value="history" className="space-y-6">
-              <section className="space-y-3">
-                <h2 className="text-lg font-semibold">Activity history</h2>
-                <p className="text-sm text-muted-foreground">
-                  Appointments, feedback, and decisions are kept here, including
-                  earlier versions.
-                </p>
-                <ol className="space-y-3">
-                  {process.activity.map((e) => (
-                    <li key={e.id} className="space-y-2 rounded border p-3">
-                      <p className="font-medium">
-                        {INTERVIEW_ACTION_LABELS[e.action] ??
-                          "Interview updated"}
-                      </p>
-                      <p className="break-words text-xs text-muted-foreground">
-                        {e.actor} · {new Date(e.at).toLocaleString()}
-                      </p>
-                      {typeof e.details.reason === "string" &&
-                        e.details.reason && (
-                          <p className="whitespace-pre-wrap break-words text-sm">
-                            Reason: {e.details.reason}
-                          </p>
-                        )}
-                      {typeof e.details.interviewer === "string" && (
-                        <p className="text-sm">
-                          {e.details.interviewer} · {String(e.details.status)}
-                        </p>
-                      )}
-                      {!!e.details.previousAppointment && (
-                        <p className="break-words text-sm">
-                          Previous appointment:{" "}
-                          {appointmentDisplay(
-                            e.details.previousAppointment as Appointment,
-                          )}{" "}
-                          ·{" "}
-                          {
-                            (e.details.previousAppointment as Appointment)
-                              .location
-                          }
-                        </p>
-                      )}
-                      {!!e.details.appointment && (
-                        <p className="break-words text-sm">
-                          Recorded appointment:{" "}
-                          {appointmentDisplay(
-                            e.details.appointment as Appointment,
-                          )}{" "}
-                          · {(e.details.appointment as Appointment).location}
-                        </p>
-                      )}
-                      {!!e.details.previousDecision &&
-                        (
-                          e.details.previousDecision as {
-                            outcome: string | null;
-                          }
-                        ).outcome && (
-                          <p className="break-words text-sm">
-                            Previous decision:{" "}
-                            {
-                              INTERVIEW_LABELS[
-                                (
-                                  e.details.previousDecision as {
-                                    outcome: keyof typeof INTERVIEW_LABELS;
-                                  }
-                                ).outcome
-                              ]
-                            }{" "}
-                            ·{" "}
-                            {String(
-                              (e.details.previousDecision as { reason: string })
-                                .reason,
-                            )}
-                          </p>
-                        )}
-                    </li>
-                  ))}
-                </ol>
-              </section>
+              <InterviewHistory process={process} />
             </TabsContent>
           </Tabs>
         </>

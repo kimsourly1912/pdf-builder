@@ -1,5 +1,6 @@
 "use client";
 import { useState, type ReactNode } from "react";
+import { hour12, hour24 } from "./appointment-presentation";
 import { DatePicker } from "@/components/ui/date-picker";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -121,6 +122,9 @@ export function InterviewOperationDialog({
   ].includes(action);
   const [date, time = ""] = appointment.localDateTime.split("T");
   const [hour = "", minute = ""] = time.split(":");
+  const [period, setPeriod] = useState<"AM" | "PM">(() =>
+    Number(hour) >= 12 ? "PM" : "AM",
+  );
   function updateLocalTime(
     nextDate: string,
     nextHour: string,
@@ -249,23 +253,24 @@ export function InterviewOperationDialog({
                       }
                     />
                   </InterviewField>
-                  <div className="grid grid-cols-2 gap-2">
-                    <InterviewField
-                      id="appointment-hour"
-                      label="Hour (24-hour)"
-                    >
+                  <div className="grid grid-cols-3 gap-2">
+                    <InterviewField id="appointment-hour" label="Hour">
                       <SelectField
                         id="appointment-hour"
-                        value={hour}
+                        value={hour12(hour)}
                         placeholder="Hour"
                         className="w-full"
                         disabled={busy}
                         onValueChange={(value) =>
-                          updateLocalTime(date ?? "", value, minute)
+                          updateLocalTime(
+                            date ?? "",
+                            hour24(value, period),
+                            minute,
+                          )
                         }
                       >
-                        {Array.from({ length: 24 }, (_, i) =>
-                          String(i).padStart(2, "0"),
+                        {Array.from({ length: 12 }, (_, i) =>
+                          String(i + 1),
                         ).map((value) => (
                           <SelectFieldOption key={value} value={value}>
                             {value}
@@ -291,6 +296,27 @@ export function InterviewOperationDialog({
                             {value}
                           </SelectFieldOption>
                         ))}
+                      </SelectField>
+                    </InterviewField>
+                    <InterviewField id="appointment-period" label="AM / PM">
+                      <SelectField
+                        id="appointment-period"
+                        value={period}
+                        className="w-full"
+                        disabled={busy}
+                        onValueChange={(value) => {
+                          const next = value as "AM" | "PM";
+                          setPeriod(next);
+                          if (hour !== "")
+                            updateLocalTime(
+                              date ?? "",
+                              hour24(hour12(hour), next),
+                              minute,
+                            );
+                        }}
+                      >
+                        <SelectFieldOption value="AM">AM</SelectFieldOption>
+                        <SelectFieldOption value="PM">PM</SelectFieldOption>
                       </SelectField>
                     </InterviewField>
                   </div>
