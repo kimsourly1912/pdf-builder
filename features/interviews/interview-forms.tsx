@@ -1,5 +1,6 @@
 "use client";
 import { useState, type ReactNode } from "react";
+import { DatePicker } from "@/components/ui/date-picker";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
@@ -40,6 +41,21 @@ export function InterviewField({
     </div>
   );
 }
+const COMMON_TIMEZONES = [
+  "Asia/Phnom_Penh",
+  "Asia/Bangkok",
+  "UTC",
+  "Europe/London",
+  "America/New_York",
+];
+const TIMEZONE_LABELS: Record<string, string> = {
+  "Asia/Phnom_Penh": "Cambodia · Asia/Phnom_Penh",
+  "Asia/Bangkok": "Thailand · Asia/Bangkok",
+  UTC: "UTC · Coordinated Universal Time",
+};
+const TIMEZONES = [
+  ...new Set([...COMMON_TIMEZONES, ...Intl.supportedValuesOf("timeZone")]),
+];
 const EMPTY_APPOINTMENT: Appointment = {
   startsAt: "",
   localDateTime: "",
@@ -103,6 +119,19 @@ export function InterviewOperationDialog({
     "hold",
     "resume",
   ].includes(action);
+  const [date, time = ""] = appointment.localDateTime.split("T");
+  const [hour = "", minute = ""] = time.split(":");
+  function updateLocalTime(
+    nextDate: string,
+    nextHour: string,
+    nextMinute: string,
+  ) {
+    setAppointment({
+      ...appointment,
+      localDateTime: `${nextDate}T${nextHour}:${nextMinute}`,
+    });
+  }
+  const [validationError, setValidationError] = useState("");
   function values() {
     return {
       action,
@@ -145,6 +174,22 @@ export function InterviewOperationDialog({
           className="space-y-6"
           onSubmit={(e) => {
             e.preventDefault();
+            if (scheduling && (!date || !hour || !minute)) {
+              setValidationError(
+                "Choose the interview date, hour, and minute.",
+              );
+              document
+                .getElementById(
+                  !date
+                    ? "appointment-date"
+                    : !hour
+                      ? "appointment-hour"
+                      : "appointment-minute",
+                )
+                ?.focus();
+              return;
+            }
+            setValidationError("");
             void onSave(values());
           }}
         >
@@ -154,8 +199,10 @@ export function InterviewOperationDialog({
               {feedback
                 ? `Evaluation attributed to ${operation.interviewer}. The management owner is recorded separately as the person entering it.`
                 : scheduling
-                  ? "Record an internal appointment. Scheduling does not send a message or confirm attendance."
-                  : "This records an explicit action and preserves earlier appointments and decisions in history."}
+                  ? "Choose when, where, and who will interview. Notify the candidate separately after saving."
+                  : action === "no_show"
+                    ? "Use this if the candidate did not attend. It records attendance, keeps this process open, and does not reject the candidate."
+                    : "This records an explicit action and preserves earlier appointments and decisions in history."}
             </DialogDescription>
           </DialogHeader>
           <fieldset disabled={busy} className="min-w-0 space-y-4">
@@ -163,7 +210,7 @@ export function InterviewOperationDialog({
               <>
                 {action === "schedule" && (
                   <>
-                    <InterviewField id="round-name" label="Interview name">
+                    <InterviewField id="round-name" label="Round title">
                       <Input
                         id="round-name"
                         value={name}
@@ -171,13 +218,13 @@ export function InterviewOperationDialog({
                         required
                         minLength={2}
                         maxLength={160}
-                        placeholder="HR interview / Manager interview"
+                        placeholder="e.g. HR interview or Manager interview"
                         autoFocus
                       />
                     </InterviewField>
                     <InterviewField
                       id="round-interviewers"
-                      label="Required interviewers (one name per line)"
+                      label="Who will interview? (one name per line)"
                     >
                       <Textarea
                         id="round-interviewers"
@@ -191,49 +238,86 @@ export function InterviewOperationDialog({
                   </>
                 )}
                 <div className="grid gap-4 sm:grid-cols-2">
-                  <InterviewField
-                    id="appointment-time"
-                    label="Local date and time"
-                  >
-                    <Input
-                      id="appointment-time"
-                      type="datetime-local"
-                      value={appointment.localDateTime}
-                      onChange={(e) =>
-                        setAppointment({
-                          ...appointment,
-                          localDateTime: e.target.value,
-                        })
-                      }
+                  <InterviewField id="appointment-date" label="Interview date">
+                    <DatePicker
+                      id="appointment-date"
+                      value={date ?? ""}
                       required
+                      disabled={busy}
+                      onValueChange={(value) =>
+                        updateLocalTime(value, hour, minute)
+                      }
                     />
                   </InterviewField>
-                  <InterviewField
-                    id="appointment-timezone"
-                    label="Explicit timezone (IANA)"
-                  >
-                    <Input
-                      id="appointment-timezone"
-                      list="interview-timezones"
-                      value={appointment.timezone}
-                      onChange={(e) =>
-                        setAppointment({
-                          ...appointment,
-                          timezone: e.target.value,
-                        })
-                      }
-                      required
-                      maxLength={80}
-                    />
-                    <datalist id="interview-timezones">
-                      <option value="Asia/Phnom_Penh" />
-                      <option value="Asia/Bangkok" />
-                      <option value="UTC" />
-                      <option value="Europe/London" />
-                      <option value="America/New_York" />
-                    </datalist>
-                  </InterviewField>
+                  <div className="grid grid-cols-2 gap-2">
+                    <InterviewField
+                      id="appointment-hour"
+                      label="Hour (24-hour)"
+                    >
+                      <SelectField
+                        id="appointment-hour"
+                        value={hour}
+                        placeholder="Hour"
+                        className="w-full"
+                        disabled={busy}
+                        onValueChange={(value) =>
+                          updateLocalTime(date ?? "", value, minute)
+                        }
+                      >
+                        {Array.from({ length: 24 }, (_, i) =>
+                          String(i).padStart(2, "0"),
+                        ).map((value) => (
+                          <SelectFieldOption key={value} value={value}>
+                            {value}
+                          </SelectFieldOption>
+                        ))}
+                      </SelectField>
+                    </InterviewField>
+                    <InterviewField id="appointment-minute" label="Minute">
+                      <SelectField
+                        id="appointment-minute"
+                        value={minute}
+                        placeholder="Minute"
+                        className="w-full"
+                        disabled={busy}
+                        onValueChange={(value) =>
+                          updateLocalTime(date ?? "", hour, value)
+                        }
+                      >
+                        {Array.from({ length: 60 }, (_, i) =>
+                          String(i).padStart(2, "0"),
+                        ).map((value) => (
+                          <SelectFieldOption key={value} value={value}>
+                            {value}
+                          </SelectFieldOption>
+                        ))}
+                      </SelectField>
+                    </InterviewField>
+                  </div>
                 </div>
+                <InterviewField id="appointment-timezone" label="Timezone">
+                  <SelectField
+                    id="appointment-timezone"
+                    value={appointment.timezone}
+                    className="w-full"
+                    disabled={busy}
+                    onValueChange={(timezone) =>
+                      setAppointment({ ...appointment, timezone })
+                    }
+                  >
+                    {[...new Set([appointment.timezone, ...TIMEZONES])].map(
+                      (zone) => (
+                        <SelectFieldOption key={zone} value={zone}>
+                          {TIMEZONE_LABELS[zone] ?? zone.replaceAll("_", " ")}
+                        </SelectFieldOption>
+                      ),
+                    )}
+                  </SelectField>
+                  <p className="text-xs text-muted-foreground">
+                    Date and time use this timezone. Cambodia is selected by
+                    default.
+                  </p>
+                </InterviewField>
                 <div className="grid gap-4 sm:grid-cols-2">
                   <InterviewField
                     id="appointment-duration"
@@ -464,11 +548,11 @@ export function InterviewOperationDialog({
                 id="hold-follow-up"
                 label="Optional follow-up date"
               >
-                <Input
+                <DatePicker
                   id="hold-follow-up"
-                  type="date"
                   value={followUp}
-                  onChange={(e) => setFollowUp(e.target.value)}
+                  onValueChange={setFollowUp}
+                  disabled={busy}
                 />
               </InterviewField>
             )}
@@ -487,11 +571,11 @@ export function InterviewOperationDialog({
               </p>
             )}
           </fieldset>
-          {error && (
+          {(error || validationError) && (
             <FeedbackAlert
               tone="error"
               title="Action could not be saved"
-              description={error}
+              description={error || validationError}
             />
           )}
           <DialogFooter className="flex flex-wrap gap-2">
