@@ -50,3 +50,11 @@ Normal Archive still retains interview context. CV/account/run permanent deletio
 This is internal interview tracking only. It does not send Telegram invitations, reminders or outcomes, synchronize calendars, evaluate with AI, manage vacancies, hire candidates, create offers or perform onboarding. Existing Telegram intake and preparation delivery retain their own behavior.
 
 `tests/interviews.test.mjs` uses the existing SQLite D1 helper and Vite server mocks to cover ownership/authentication, real accepted evidence, repeated/concurrent handoff, revision conflicts, atomic rollback, appointments/no-show, multiple rounds and required feedback, decisions/holds/withdrawal/correction/reopening, original-context isolation, archive and staging reset. Deployment smoke checks require the actual Candidate Preparation and Interview Progress headings and authenticated interview API. Exact validation and publication/deployment evidence belong in the PR and GitHub Actions.
+
+## Detail page navigation
+
+The candidate header leads with status, Schedule interview → Collect feedback → Final decision, and the next available task. A completed round with all feedback submitted offers Finish rounds & review directly, with Schedule another round available as an alternative. The Interviews tab contains newest rounds first, required feedback, and final decision; Documents contains the original accepted preparation; History contains the immutable action trail.
+
+Scheduling and optional follow-up dates use the shared shadcn calendar picker. Appointment time is entered with 24-hour hour/minute selects; the timezone defaults to Cambodia and remains explicitly editable. Native date/time inputs and datalist suggestions are prohibited for management screens in UI standards and ESLint.
+
+“Interview took place” and “Candidate did not attend (no-show)” become available after the start time. No-show records attendance without rejecting the candidate. Round cancellation and no-show, and process hold/withdraw/reopen/correction, are available through contextual More actions menus with the existing server validation and reason dialogs.

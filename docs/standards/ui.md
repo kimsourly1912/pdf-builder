@@ -34,7 +34,9 @@ Every label and its input need an explicit field wrapper, including inside setti
 
 Keep field groups `space-y-4` apart and major sections `space-y-6` apart. Use `flex flex-wrap items-center gap-2` for action rows and toolbars; grid children also need an explicit gap. A parent's section gap does not create spacing between a label and the input inside its child. Do not repair spacing with global label margins or empty spacer elements. Use `min-w-0` on shrinking containers and `w-full` on full-width field triggers; compact toolbar selectors should keep their intrinsic width. Reserve an error-message row when validation runs on blur so errors cannot move the submit button during a click. Only reference existing help/error IDs in `aria-describedby`.
 
-Use Checkbox's `onCheckedChange` (`checked === true`) and RadioGroup's `onValueChange`; preserve labels and keyboard selection. Native file pickers, specialized date/color inputs through Input, and document-coordinate text/drawing controls are legitimate browser/document controls. Their appearance must preserve PDF geometry. This exception does not apply to ordinary management controls or native dropdowns. Document overlays can customize the Select trigger's dimensions/color and hide its default icon when a scaled PDF icon is already present; the popup still uses the themed shadcn component.
+Use Checkbox's `onCheckedChange` (`checked === true`) and RadioGroup's `onValueChange`; preserve labels and keyboard selection. Use the shared `components/ui/date-picker.tsx` (shadcn Calendar + Popover) for application dates, including follow-up dates and scheduling dialogs. For date/time appointments, pair it with shadcn Select hour/minute controls and a labeled timezone selector. Do not use native `date`, `datetime-local`, `time`, or `<datalist>` pickers in management screens. Validate required calendar values explicitly, focus the missing control, retain entered values, and support clearing optional dates.
+
+Native file/color pickers and document-coordinate text/drawing controls are legitimate browser/document controls. Native dates are permitted only in PDF-coordinate overlays in `app/pdf-editor.tsx` and `features/templates/recipient-fill.tsx`, where their appearance must preserve PDF geometry. This exception does not apply to ordinary management controls or native dropdowns. ESLint enforces the picker prohibition with only these explicit PDF date exceptions. Document overlays can customize the Select trigger's dimensions/color and hide its default icon when a scaled PDF icon is already present; the popup still uses the themed shadcn component.
 
 Before finishing UI changes, search the touched screens for native controls and missing field/control-row gaps. Open dropdowns in dialogs, test Escape and arrow keys, clear an optional value, and verify long options, disabled states, validation focus, both themes, and narrow screens. Keep popup content inside the viewport and ensure spacing fixes do not hide overflow. These checks are part of delivery, not an optional visual polish step.
 
@@ -55,6 +57,12 @@ Derive operational status from the shared progress model and evidence. Do not in
 | Failed or rejected | Red |
 
 Always include a text label. CV approved does not mean a workflow is configured or contact is confirmed. Ready for HR does not mean HR has accepted the application.
+
+## Interview detail pages
+
+Lead with candidate identity, current status, a short step overview, and one clear next action. Explain what remains before the next step can proceed. Keep round appointments and required feedback together; show the newest round first. Separate documents and activity history into labeled shadcn tabs rather than placing them ahead of the current task. Group hold, withdrawal, cancellation, no-show, correction and reopen actions in contextual shadcn menus.
+
+Use plain task language: “Interview took place” and “Candidate did not attend (no-show)”. Explain that no-show records attendance and does not reject a candidate. Disable attendance actions until the scheduled start and state why. Completing feedback should offer final review directly while still allowing another round. Draft feedback must remain visibly outstanding. Keep consequential actions in reason/confirmation dialogs and preserve server guards.
 
 ## Candidate and CV context
 
