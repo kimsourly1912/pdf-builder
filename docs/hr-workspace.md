@@ -35,7 +35,7 @@ Each submission can be decided once. Concurrent, superseded, archived, disabled-
 
 This release organizes existing recruitment/document preparation. It does not introduce hiring decisions, jobs/interviews, employee records, payroll, multiple management roles or automatic reminder sending. Management authorization remains scoped to the configured owner. Legacy PDF templates remain available.
 
-CV updates require candidate confirmation and an HR decision. Previewing another PDF does not change progress. Existing preparations retain their original CV/information snapshot after update approval. [Candidate progress](candidate-progress.md#protected-cv-updates-and-explicit-review) describes these safeguards and the explicit Start CV review action.
+CV updates require candidate confirmation and an HR decision. Previewing another PDF does not change progress. Existing preparations retain their original CV/information snapshot after update approval. [Candidate Preparation](candidate-progress.md#protected-cv-updates-and-explicit-review) describes these safeguards and the explicit Start CV review action.
 
 ## Guided daily journey (October 2026)
 
@@ -58,3 +58,5 @@ CV approval opens a read-only summary of matching published approval workflows a
 After successful approval, the Worker schedules only the returned queued runs in the background; scheduled processing remains the recovery mechanism. The profile returns to Overview and shows preparation steps, failures, safe retry and invitation controls inline. Routine follow-up stays on the candidate page; detailed workflow execution is optional. A confirmed Telegram association is reused for the same candidate and connection. Changing the recipient requires confirmation, and contact revisions are checked again by the send action. Invitation controls use actual delivery evidence: Send, Retry, Sent/Resend or uncertain-delivery checking. Sent never proves reading; sending/uncertain deliveries are never silently repeated.
 
 No paid extraction or language-model command interface is introduced by this guided flow. The experience uses contextual actions and existing workflow execution.
+
+Candidate Preparation and Interview Progress are separate entries under Candidates. Candidate profiles retain document/preparation evidence and include interview activity in History. **Move to interviews** is available only after actual Documents accepted; afterward **View interview progress** opens the linked process. Interview passed never implies hiring. See [Interview Progress](interview-progress.md).

@@ -433,9 +433,9 @@ function deletionRule(type: ArchiveType) {
   }
   if (type === "account") {
     query =
-      "SELECT id FROM form_assignments WHERE user_id=? UNION ALL SELECT id FROM recipient_links WHERE assigned_user_id=? UNION ALL SELECT id FROM candidates WHERE user_id=? LIMIT 1";
+      "SELECT id FROM form_assignments WHERE user_id=? UNION ALL SELECT id FROM recipient_links WHERE assigned_user_id=? UNION ALL SELECT id FROM candidates WHERE user_id=? UNION ALL SELECT id FROM interview_processes WHERE account_id=? LIMIT 1";
     reason =
-      "This account has candidate links or assigned forms. Preserve their history; unlink an unused candidate before deleting an unused account.";
+      "This account has candidate links, assigned forms or interview history. Preserve their history; unlink an unused candidate before deleting an unused account.";
   }
   if (type === "workflow") {
     query = "SELECT id FROM workflow_runs WHERE workflow_id=? LIMIT 1";
@@ -444,14 +444,14 @@ function deletionRule(type: ArchiveType) {
   }
   if (type === "workflow_run") {
     query =
-      "SELECT id FROM workflow_runs WHERE id=? AND json_extract(context_json,'$.userId') IS NOT NULL UNION ALL SELECT id FROM telegram_deliveries WHERE run_id=? LIMIT 1";
+      "SELECT id FROM workflow_runs WHERE id=? AND json_extract(context_json,'$.userId') IS NOT NULL UNION ALL SELECT id FROM telegram_deliveries WHERE run_id=? UNION ALL SELECT id FROM interview_processes WHERE run_id=? LIMIT 1";
     reason =
-      "This run created or linked an account, or has Telegram delivery history. It must remain as evidence.";
+      "This run created or linked an account, or has Telegram delivery history. It must remain as preparation/interview evidence.";
   }
   if (type === "resume") {
     query =
-      "SELECT id FROM workflow_runs WHERE resume_id=? AND status IN ('queued','running','waiting_review') UNION ALL SELECT resume_id FROM candidate_cv_updates WHERE base_resume_id=? OR (resume_id=? AND status='accepted') LIMIT 1";
-    reason = "This CV is used by an active workflow or protected CV update/approval history.";
+      "SELECT id FROM workflow_runs WHERE resume_id=? AND status IN ('queued','running','waiting_review') UNION ALL SELECT resume_id FROM candidate_cv_updates WHERE base_resume_id=? OR (resume_id=? AND status='accepted') UNION ALL SELECT id FROM interview_processes WHERE resume_id=? LIMIT 1";
+    reason = "This CV is used by an active workflow or protected CV update/approval or interview history.";
   }
   if (type === "ai_run") {
     query =

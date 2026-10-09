@@ -452,6 +452,7 @@ async function verifyDeployment(hostname, authenticatedCookie) {
     "/api/archive",
     "/api/test-data",
     "/api/candidates",
+    "/api/interviews",
     "/api/ai-field-detection/runs",
     "/",
     "/forms",
@@ -466,6 +467,7 @@ async function verifyDeployment(hostname, authenticatedCookie) {
     "/archive",
     "/test-data",
     "/candidates",
+    "/interviews",
     "/analyses",
   ]) {
     const response = await waitForResponse(

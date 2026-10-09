@@ -403,7 +403,7 @@ export function FormResponses(props: {
               <Link href={assignedLink}>Open form link</Link>
             </Button>
             <Button asChild size="sm" variant="ghost">
-              <Link href="/candidates">Open candidates</Link>
+              <Link href="/candidates">Open Candidate Preparation</Link>
             </Button>
           </div>
         </section>

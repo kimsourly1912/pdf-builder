@@ -19,7 +19,8 @@ Use the root [agent guide](../AGENTS.md) for a short working checklist. Read the
 - [Web form builder](form-builder.md): visual form layout, separate PDF mapping, whole-form account assignments and recoverable JSON/PDF responses.
 - [Telegram candidate intake](telegram-candidate-intake.md)
 - [Candidate preparation workflows](candidate-workflows.md)
-- [Candidate progress](candidate-progress.md)
+- [Candidate Preparation](candidate-progress.md)
+- [Interview Progress](interview-progress.md): explicit accepted-document handoff, multiple rounds, scorecards, holds and audited decisions.
 - [Archive and retention](archive.md)
 - AI field detection: [phase 1](ai-field-detection-phase-1.md), [phase 2](ai-field-detection-phase-2.md), [phase 3](ai-field-detection-phase-3.md)
 

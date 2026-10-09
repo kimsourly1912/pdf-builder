@@ -20,3 +20,7 @@ Preview fingerprints cover selected database rows and eligible stored-file refer
 Active processing blocks reset until it finishes. Foreign/shared references outside the selected scope block deletion instead of cascading into another workspace. Retained template versions and other live file references prevent shared PDFs from being queued for cleanup. Submitted images and saved-draft images are included. R2 deletion is a separate eventual operation: if it fails, database reset is still complete and scheduled cleanup retries. The completion message reports pending files accurately.
 
 This is a staging convenience, not a backup/restore tool. Application reset does not purge Cloudflare infrastructure, secrets or database migrations.
+
+## Interview dependencies
+
+Clear candidates, Clear forms and preparation history, and Reset all test data include the owner's interview accepted-document links, evaluations, immutable interview events, rounds and processes in the atomic preview/deletion plan. Forms/history reset explicitly removes interviews because their original accepted documents/preparation are also removed; it does not leave dangling context. Clear eligible automation history excludes interview-linked preparation runs. Other owners and the administrator remain protected. Interview events can be deleted only through owner-matching checked reset membership. See [Interview Progress](interview-progress.md).

@@ -11,6 +11,7 @@ Read this guide first. Read only the documentation relevant to the task:
 - [Architecture](docs/architecture.md): runtime and feature map.
 - [Decisions](docs/decisions.md): product and technical constraints to preserve.
 - [Roadmap](docs/roadmap.md): shipped work versus proposed improvements.
+- [Interview Progress](docs/interview-progress.md): accepted-preparation handoff, rounds, feedback, decisions and retention.
 - [Documentation index](docs/README.md): detailed feature guides.
 
 User instructions determine scope. These documents guide implementation; roadmap proposals do not authorize feature development. Check the current code when a document appears stale and update the relevant documentation with the change.

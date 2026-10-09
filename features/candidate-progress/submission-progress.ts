@@ -71,7 +71,7 @@ export function submissionProgress(item: CandidateProgress) {
         ? f.accepted === f.required
           ? "View accepted documents"
           : "Review submitted forms"
-        : "View candidate progress",
+        : "View Candidate Preparation",
       href: `/candidates/${item.id}?tab=forms`,
     };
   if (f.invitationSent)

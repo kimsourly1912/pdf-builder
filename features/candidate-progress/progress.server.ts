@@ -1,3 +1,4 @@
+import { INTERVIEW_ACTION_LABELS } from "@/features/interviews/interviews";
 import { attentionForCandidates } from "@/features/hr/attention-records.server";
 import { attentionResponsibility } from "@/features/hr/attention";
 import { getCvUpdate } from "./cv-updates.server";
@@ -95,7 +96,7 @@ async function rows<T>(query: string, owner: string) {
     .results;
 }
 async function load(owner: string, resumeId?: string) {
-  const [cvs, metadata, runs, forms, deliveries, accounts, moves, updates] =
+  const [cvs, metadata, runs, forms, deliveries, accounts, moves, updates, interviews] =
     await Promise.all([
       rows<CvRow>(
         `SELECT c.id,c.full_name name,c.email,c.user_id userId,c.updated_at candidateRevision,r.id resumeId,r.file_name fileName,r.created_at receivedAt,r.updated_at resumeRevision,
@@ -129,6 +130,7 @@ async function load(owner: string, resumeId?: string) {
         owner,
       ),
       rows<{resumeId: string; candidateId: string; baseResumeId: string; fileName: string; status: string; createdAt: string; updatedAt: string; reason: string | null}>("SELECT u.resume_id resumeId,u.candidate_id candidateId,u.base_resume_id baseResumeId,r.file_name fileName,u.status,u.created_at createdAt,u.updated_at updatedAt,u.reason FROM candidate_cv_updates u JOIN resumes r ON r.id=u.resume_id WHERE u.owner_email=? AND u.status NOT IN ('awaiting_confirmation','cancelled','replaced') AND NOT EXISTS(SELECT 1 FROM archive_records a WHERE a.entity_type='resume' AND a.entity_id=r.id) ORDER BY u.created_at DESC", owner),
+      rows<{ id: string; candidate_id: string; position: string; outcome: string | null }>("SELECT id,candidate_id,position,outcome FROM interview_processes WHERE owner_email=?", owner),
     ]);
   const groups = new Map<string, CvRow[]>();
   for (const r of cvs) {
@@ -461,6 +463,10 @@ async function load(owner: string, resumeId?: string) {
       });
     const item: CandidateProgress = {
       id,
+      interview: (() => {
+        const process = interviews.find(p => p.candidate_id === id);
+        return process ? { id:process.id, position:process.position, outcome:process.outcome } : undefined;
+      })(),
       name: cv.name || "Unnamed candidate",
       email: cv.email,
       telegram: cv.telegram ?? "",
@@ -611,7 +617,7 @@ export async function detailProgress(owner: string, id: string) {
   const events = (
     await getDatabaseBinding()
       .prepare(
-        "SELECT id,action,actor_id actor,created_at at,metadata_json FROM audit_events WHERE owner_email=? AND target_type='candidate' AND target_id=? AND (action LIKE 'candidate.progress_%' OR action LIKE 'candidate.cv_update_%' OR action='candidate.changes_saved') ORDER BY created_at DESC LIMIT 100",
+        "SELECT id,action,actor_id actor,created_at at,metadata_json FROM audit_events WHERE owner_email=? AND target_type='candidate' AND target_id=? AND (action LIKE 'candidate.progress_%' OR action LIKE 'candidate.cv_update_%' OR action='candidate.changes_saved' OR action LIKE 'candidate.interview_%') ORDER BY created_at DESC LIMIT 100",
       )
       .bind(owner, id)
       .all<{
@@ -626,7 +632,7 @@ export async function detailProgress(owner: string, id: string) {
     ...events.map((a) => ({
       id: a.id,
       action:
-        a.action === "candidate.changes_saved" ? "CV review draft saved" : a.action === "candidate.progress_stage_changed"
+        a.action.startsWith("candidate.interview_") ? (INTERVIEW_ACTION_LABELS[a.action.slice("candidate.interview_".length)] ?? "Interview updated") : a.action === "candidate.changes_saved" ? "CV review draft saved" : a.action === "candidate.progress_stage_changed"
           ? "HR stage changed"
           : a.action === "candidate.progress_cv_selected"
             ? "Selected CV changed"
@@ -813,4 +819,11 @@ export async function updateProgress(
 
 export async function progressOverview(owner: string, resumeId?: string) {
   return (await load(owner, resumeId)).map((e) => e.item);
+}
+
+// Internal evidence only; the handoff service rechecks it in its atomic batch.
+export async function preparationForInterview(owner: string, id: string) {
+  const entry = (await load(owner)).find(e => e.item.id === id);
+  if (!entry) fail("Candidate with an active CV not found.", 404);
+  return entry;
 }

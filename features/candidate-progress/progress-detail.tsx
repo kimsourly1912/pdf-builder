@@ -1,4 +1,5 @@
 "use client";
+import { HandoffButton } from "@/features/interviews/handoff-button";
 import { CandidateRunProgress } from "@/features/hr/candidate-run-progress";
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
@@ -268,9 +269,10 @@ export function ProgressDetail({
         className="flex items-center gap-2 text-sm text-muted-foreground"
       >
         <ArrowLeft className="size-4" />
-        All candidates
+        Candidate Preparation
       </Link>
       <PageHeader
+        className="[&_h1]:break-words [&_p]:break-words"
         title={item?.name ?? "Candidate profile"}
         description={
           item
@@ -279,6 +281,7 @@ export function ProgressDetail({
         }
         actions={
           <div className="flex flex-wrap gap-2">
+            {item && <HandoffButton item={item} onChanged={() => void load()} />}
             {item && (
               <MoveMenu
                 item={item}
