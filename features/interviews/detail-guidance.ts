@@ -9,7 +9,7 @@ export function interviewDetailGuidance(
     return {
       title: "This interview process is closed",
       description:
-        "Review the final decision below. Use More actions if you need to correct or reopen it.",
+        "Review the final decision below. Use Manage status if you need to correct or reopen it.",
       label: "View final decision",
       action: "view_decision",
     };
@@ -28,7 +28,7 @@ export function interviewDetailGuidance(
     return {
       title: "Collect interviewer feedback",
       description: `${missingFeedback(awaiting).join(", ")} still need to submit feedback for ${awaiting.name}. Drafts do not count as submitted feedback.`,
-      label: "Add missing feedback",
+      label: "Complete interviewer feedback",
       action: "feedback",
       round: awaiting,
       interviewer: missingFeedback(awaiting)[0],
@@ -58,15 +58,15 @@ export function interviewDetailGuidance(
       title: "Ready for the final decision",
       description:
         "All required feedback is submitted and the rounds are complete. Choose Interview passed or Not selected.",
-      label: "Record final decision",
+      label: "Choose final outcome",
       action: "decide",
     };
   if (process.rounds.some((round) => round.status === "completed"))
     return {
-      title: "Feedback is complete — choose what comes next",
+      title: "Ready to prepare the final decision",
       description:
-        "Move to the final decision, or schedule another round if you need more information.",
-      label: "Finish rounds & review",
+        "Review the submitted feedback, then prepare the final decision. You can schedule another round instead if you need more information.",
+      label: "Prepare final decision",
       action: "finish_rounds",
     };
   return {

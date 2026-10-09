@@ -53,11 +53,11 @@ This is internal interview tracking only. It does not send Telegram invitations,
 
 ## Detail page navigation
 
-The candidate header leads with status, Schedule interview → Collect feedback → Final decision, and the next available task. A completed round with all feedback submitted offers Finish rounds & review directly, with Schedule another round available as an alternative. The Interviews tab contains newest rounds first, required feedback, and final decision; Documents contains the original accepted preparation; History contains the immutable action trail.
+The candidate header leads with status, Schedule interview → Collect feedback → Final decision, and the next available task. A completed round with all feedback submitted offers Prepare final decision directly, with Schedule another round available as an alternative. The Interviews tab contains newest rounds first, required feedback, and final decision; Documents contains the original accepted preparation; History contains the immutable action trail.
 
 Scheduling and optional follow-up dates use the shared shadcn calendar picker. Appointment time is entered with 12-hour hour/minute and AM/PM selects; the timezone defaults to Cambodia and remains explicitly editable. Native date/time inputs and datalist suggestions are prohibited for management screens in UI standards and ESLint.
 
-“Interview took place” and “Candidate did not attend (no-show)” become available after the start time. No-show records attendance without rejecting the candidate. Round cancellation and no-show, and process hold/withdraw/reopen/correction, are available through contextual More actions menus with the existing server validation and reason dialogs.
+“Interview took place” and “Candidate did not attend (no-show)” become available after the start time. No-show records attendance without rejecting the candidate. Round cancellation and no-show, and process hold/withdraw/reopen/correction, are available through explained Manage status dialogs with the existing server validation and reason dialogs.
 
 Round cards group the appointment date, AM/PM time, timezone, duration, location and interviewer badges. Feedback cards show submitted counts, separate recommendation/status badges, scores out of five (with Not assessed unscored), and labeled notes, strengths and concerns. Recommendations remain separate from final decisions. AM/PM entry converts to the existing local-time payload without changing timezone or UTC persistence.
 
@@ -66,3 +66,9 @@ Round cards group the appointment date, AM/PM time, timezone, duration, location
 Documents opens read-only shadcn dialogs: the original CV uses the shared PDF renderer, accepted forms show submitted answers and an available PDF tab, and the linked account shows only current name/email/category/access/password-setup status through an owner-scoped interview endpoint. Credentials and session data are never included. Preview failures offer retry without leaving the interview. Existing submission and PDF authorization and archive rules remain in force.
 
 History is a compact, newest-first table with ten entries per page. Details opens full reasons and earlier appointment/decision context; summary truncation never removes the original history. The Interview guide button opens the ordered workflow and explanations of appointment, feedback, final-decision, hold/withdraw/reopen/correction actions. Previews and guide do not perform mutations or send messages.
+
+## Visible actions and final-decision readiness
+
+The final-decision panel appears above interview rounds and shows completed-interview, submitted-feedback, and pending-appointment requirements. Prepare final decision explicitly marks rounds complete; it does not choose an outcome or close interviews. Choose final outcome then requires an explicit Interview passed or Not selected selection and reason before closing. Missing feedback has a direct completion action; paused processes must resume first. The previous bottom-only rounds-complete control is removed.
+
+Manage status explains temporary Pause interviews versus closing as Candidate withdrawn, and describes resume/reopen/correct actions. Each operation dialog has action-specific consequences, a descriptive reason label and confirmation button. Scheduling keeps appointment creation separate from notification. Success messages explain the resulting state and next step. All transitions retain existing server authorization, versions, reasons and audit history.

@@ -33,7 +33,7 @@ const steps = [
   },
   {
     title: "Finish rounds or schedule another",
-    text: "When all required feedback is submitted and no appointment is pending, choose Finish rounds & review. If you need more information, schedule another round instead. A recommendation is an interviewer’s view, not the final decision.",
+    text: "When all required feedback is submitted and no appointment is pending, choose Prepare final decision. If you need more information, schedule another round instead. A recommendation is an interviewer’s view, not the final decision.",
   },
   {
     title: "Record the final decision",
@@ -97,14 +97,14 @@ export function InterviewGuide({ process }: { process: InterviewProcess }) {
           </AccordionItem>
           <AccordionItem value="pause">
             <AccordionTrigger>
-              Put interviews on hold or record withdrawal
+              Pause interviews or record withdrawal
             </AccordionTrigger>
             <AccordionContent className="space-y-2 text-sm text-muted-foreground">
               <p>
-                Use the process’s <strong>More actions</strong> menu.
+                Use the process’s <strong>Manage status</strong> button.
               </p>
               <p>
-                <strong>Put on hold:</strong> pause with a reason and optional
+                <strong>Pause interviews:</strong> pause with a reason and optional
                 follow-up date. Resume interviews returns to the previous step;
                 it does not schedule a reminder.
               </p>
@@ -121,7 +121,7 @@ export function InterviewGuide({ process }: { process: InterviewProcess }) {
             </AccordionTrigger>
             <AccordionContent className="space-y-2 text-sm text-muted-foreground">
               <p>
-                For a closed process, use <strong>More actions</strong>.
+                For a closed process, use <strong>Manage status</strong>.
               </p>
               <p>
                 <strong>Correct final decision:</strong> fix a recorded
