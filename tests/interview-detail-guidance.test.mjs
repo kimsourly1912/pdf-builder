@@ -203,3 +203,178 @@ test("final review readiness requires attendance, submitted feedback and no sche
     false,
   );
 });
+
+test("work queues distinguish due attendance, drafts, paused follow-ups and final review", async () => {
+  const {
+    interviewWork: work,
+    matchesInterviewFilter: matches,
+    followUpToday,
+  } = await vite.ssrLoadModule("/features/interviews/flow-presentation.ts");
+  const now = Date.parse("2030-01-02T18:00:00Z");
+  assert.equal(followUpToday(now), "2030-01-03");
+  const scheduled = { ...base, rounds: [round] };
+  assert.equal(work(scheduled, now).upcoming, true);
+  assert.equal(work(scheduled, now).attendanceDue, false);
+  assert.equal(matches(scheduled, "attention", now), false);
+  assert.equal(
+    work(scheduled, Date.parse(round.appointment.startsAt)).attendanceDue,
+    true,
+  );
+  const completed = {
+    ...round,
+    status: "completed",
+    feedback: [
+      { interviewer: "Sokha", status: "submitted" },
+      { interviewer: "Dara", status: "draft" },
+    ],
+  };
+  const p = { ...base, rounds: [completed] };
+  assert.equal(work(p, now).missing, 1);
+  assert.equal(matches(p, "missing_feedback", now), true);
+  const paused = { ...p, hold: { followUp: "2030-01-03" } };
+  assert.equal(work(paused, now).followUpDue, true);
+  assert.equal(matches(paused, "missing_feedback", now), false);
+  assert.equal(matches(paused, "attention", now), true);
+  assert.equal(
+    matches({ ...paused, hold: { followUp: "2030-01-04" } }, "attention", now),
+    false,
+  );
+  completed.feedback[1].status = "submitted";
+  assert.equal(matches(p, "final_review", now), true);
+  for (const filter of [
+    "attention",
+    "upcoming",
+    "final_review",
+    "missing_feedback",
+    "follow_up",
+    "hold",
+  ])
+    assert.equal(
+      matches({ ...paused, outcome: "withdrawn" }, filter, now),
+      false,
+    );
+});
+test("status age follows actual lifecycle changes and ignores draft or partial feedback updates", async () => {
+  const { interviewStageSince: since } = await vite.ssrLoadModule(
+    "/features/interviews/flow-presentation.ts",
+  );
+  const events = [
+    {
+      action: "schedule",
+      at: "2030-01-01T01:00:00Z",
+      roundId: "r",
+      interviewers: ["Sokha", "Dara"],
+    },
+    { action: "complete", at: "2030-01-02T01:00:00Z", roundId: "r" },
+    {
+      action: "feedback",
+      at: "2030-01-02T02:00:00Z",
+      roundId: "r",
+      interviewer: "Sokha",
+      status: "submitted",
+    },
+    {
+      action: "feedback",
+      at: "2030-01-02T03:00:00Z",
+      roundId: "r",
+      interviewer: "Dara",
+      status: "draft",
+    },
+  ];
+  assert.equal(since(events, "2030-01-01T00:00:00Z"), events[1].at);
+  events.push({
+    action: "feedback",
+    at: "2030-01-02T04:00:00Z",
+    roundId: "r",
+    interviewer: "Dara",
+    status: "submitted",
+  });
+  assert.equal(since(events, "2030-01-01T00:00:00Z"), events.at(-1).at);
+  for (const event of [
+    { action: "finish_rounds" },
+    { action: "hold" },
+    { action: "resume" },
+    { action: "decide", outcome: "passed" },
+    { action: "reopen" },
+  ]) {
+    events.push({ ...event, at: `2030-01-03T0${events.length - 4}:00:00Z` });
+    assert.equal(since(events, "2030-01-01T00:00:00Z"), events.at(-1).at);
+  }
+});
+test("candidate messages include appointment context without internal preparation or feedback", async () => {
+  const { appointmentMessage } = await vite.ssrLoadModule(
+    "/features/interviews/communication.ts",
+  );
+  const message = appointmentMessage(
+    {
+      snapshot: { name: "TEST Candidate" },
+      position: "HR officer",
+      responsible: "hr@example.test",
+    },
+    {
+      ...round,
+      appointment: {
+        startsAt: "2026-10-09T08:10:00Z",
+        timezone: "Asia/Phnom_Penh",
+        duration: 60,
+        kind: "online",
+        location: "https://meet.example.test/room",
+        notes: "PRIVATE internal assessment",
+      },
+    },
+  );
+  assert.match(message, /3:10 PM/);
+  assert.match(message, /GMT\+7/);
+  assert.match(message, /https:\/\/meet.example.test\/room/);
+  assert.match(message, /hr@example.test/);
+  assert(!message.includes("PRIVATE"));
+  assert(!message.includes("Sokha"));
+  assert.match(message, /reply to confirm/);
+});
+test("preparation comparison distinguishes newer CVs and changed accepted form versions", async () => {
+  const { preparationChanges: changes } = await vite.ssrLoadModule(
+    "/features/interviews/preparation-context.ts",
+  );
+  const snapshot = {
+    cv: { id: "cv" },
+    runId: "run",
+    forms: [{ id: "form", versionNumber: 1 }],
+  };
+  const current = {
+    selectedCv: { id: "cv" },
+    currentCv: { id: "cv" },
+    run: { id: "run" },
+    forms: [
+      {
+        id: "form",
+        versionNumber: 1,
+        reviewStatus: "accepted",
+        isRequired: true,
+      },
+    ],
+    facts: { preparationCurrent: true },
+  };
+  assert.deepEqual(changes(snapshot, current), []);
+  assert.match(
+    changes(snapshot, { ...current, currentCv: { id: "new-cv" } }).join(" "),
+    /newer CV/,
+  );
+  assert.match(
+    changes(snapshot, { ...current, selectedCv: { id: "new-cv" } }).join(" "),
+    /selected CV/,
+  );
+  assert.match(
+    changes(snapshot, {
+      ...current,
+      forms: [{ ...current.forms[0], versionNumber: 2 }],
+    }).join(" "),
+    /versions/,
+  );
+  assert.match(
+    changes(snapshot, {
+      ...current,
+      forms: [{ ...current.forms[0], reviewStatus: "corrections_requested" }],
+    }).join(" "),
+    /awaiting acceptance/,
+  );
+});

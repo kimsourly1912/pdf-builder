@@ -92,6 +92,21 @@ export function HandoffButton({
               acceptance is preserved.
             </DialogDescription>
           </DialogHeader>
+          <div className="space-y-3 rounded-lg bg-muted/40 p-4 text-sm">
+            <p className="font-medium">What carries into interviews</p>
+            <p className="break-words">
+              Accepted CV: {item.selectedCv.fileName}
+            </p>
+            <p>
+              {item.forms.filter((f) => f.isRequired !== false).length} required
+              accepted forms
+            </p>
+            <p className="text-muted-foreground">
+              This accepted context stays with the interview. Later CV or
+              preparation changes remain separate. Next, schedule the first
+              round.
+            </p>
+          </div>
           <div className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor={`position-${item.id}`}>Position / title</Label>

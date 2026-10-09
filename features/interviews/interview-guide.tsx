@@ -21,7 +21,7 @@ import type { InterviewProcess } from "./interviews";
 const steps = [
   {
     title: "Schedule an interview",
-    text: "Choose a round title (such as HR interview), interviewers, date, AM/PM time, timezone and location or meeting link. Save, then notify the candidate separately. Scheduling does not send an invitation.",
+    text: "Choose a round title (such as HR interview), interviewers, date, AM/PM time, timezone and location or meeting link. Review the summary, save, then use Prepare candidate message to copy the appointment details. Scheduling does not send an invitation.",
   },
   {
     title: "Record attendance",
@@ -29,7 +29,7 @@ const steps = [
   },
   {
     title: "Collect each interviewer’s feedback",
-    text: "Record scores from 1 (limited evidence) to 5 (strong evidence), or Not assessed if you did not evaluate a criterion. Add notes, strengths, concerns and a recommendation. Save draft to continue later; choose Submitted when finished. Every named interviewer needs submitted feedback. Submitted feedback is retained and cannot be edited.",
+    text: "Record scores from 1 (limited evidence) to 5 (exceptional evidence), or Not assessed if you did not evaluate a criterion. Add notes, strengths, concerns and a recommendation. Save draft to continue later; choose Submit feedback when finished. Every named interviewer needs submitted feedback. Submitted feedback is retained and cannot be edited.",
   },
   {
     title: "Finish rounds or schedule another",
@@ -40,7 +40,7 @@ const steps = [
     text: "Choose Interview passed or Not selected and give a meaningful reason. Interview passed does not mean hired. The process moves to Closed after the final decision.",
   },
 ];
-export function InterviewGuide({ process }: { process: InterviewProcess }) {
+export function InterviewGuide({ process }: { process?: InterviewProcess }) {
   return (
     <Dialog>
       <DialogTrigger asChild>
@@ -56,10 +56,12 @@ export function InterviewGuide({ process }: { process: InterviewProcess }) {
             Follow these steps, then use the extra actions when plans change.
           </DialogDescription>
         </DialogHeader>
-        <div className="rounded-lg bg-muted p-3 text-sm">
-          <span className="font-medium">Your next step: </span>
-          {interviewDetailGuidance(process).label}
-        </div>
+        {process && (
+          <div className="rounded-lg bg-muted p-3 text-sm">
+            <span className="font-medium">Your next step: </span>
+            {interviewDetailGuidance(process).label}
+          </div>
+        )}
         <ol className="space-y-4">
           {steps.map((step, index) => (
             <li key={step.title} className="flex gap-3">
@@ -104,9 +106,9 @@ export function InterviewGuide({ process }: { process: InterviewProcess }) {
                 Use the process’s <strong>Manage status</strong> button.
               </p>
               <p>
-                <strong>Pause interviews:</strong> pause with a reason and optional
-                follow-up date. Resume interviews returns to the previous step;
-                it does not schedule a reminder.
+                <strong>Pause interviews:</strong> pause with a reason and
+                optional follow-up date. Resume interviews returns to the
+                previous step; it does not schedule a reminder.
               </p>
               <p>
                 <strong>Record candidate withdrawal:</strong> use when the

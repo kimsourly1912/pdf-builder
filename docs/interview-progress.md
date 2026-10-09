@@ -8,7 +8,7 @@ The process pins the original candidate display information, CV, approved profil
 
 ## Active and Closed
 
-The Active board derives its stage from evidence:
+The Active list and optional stage board derive their stage from evidence:
 
 | Stage | Evidence and next action |
 | --- | --- |
@@ -17,7 +17,7 @@ The Active board derives its stage from evidence:
 | Awaiting feedback | A completed round has missing required submitted evaluations. Drafts remain outstanding. |
 | Decision pending | The owner explicitly marked rounds complete after at least one completed interview, every required evaluation submitted and no scheduled round. Record the final decision. |
 
-Closed lists Interview passed, Not selected and Withdrawn. Interview passed does **not** mean Hired. Search matches the pinned candidate name, email, Telegram username and position. Stage/outcome and On hold filters, matching totals and 25-process pagination use owner-scoped data. The Active board scrolls horizontally within its container on narrow screens; all actions are buttons/menus and require no dragging. URL/session filters persist separately for each owner.
+Closed lists Interview passed, Not selected and Withdrawn. Interview passed does **not** mean Hired. Search matches the pinned candidate name, email, Telegram username and position. The default action list shows status, time in the current status, next appointment, blockers, interview owner and a next-action link. Phones use compact cards; the stage board remains available as an optional view. Stage/outcome, Interviews paused and work-queue filters, matching totals and 25-process pagination use owner-scoped data. Search, filters, pagination and view persist in URL/session state separately for each owner. Queue counts cover all matching results before pagination. Next-action links open the appropriate task dialog or scroll to appointment/final decision without changing records.
 
 ## Rounds and appointments
 
@@ -35,7 +35,7 @@ The authenticated owner records feedback attributed to a named interviewer; the 
 
 Interview passed and Not selected require completed rounds, submitted feedback, an explicit rounds-complete action and a meaningful reason (10–2000 characters). Withdrawn is a separate outcome with its own reason and can occur before interviews. Every decision records the authenticated owner and server timestamp. Closure blocks ordinary scheduling/feedback until reopening.
 
-On hold requires a reason and supports an optional follow-up date. It retains the current stage and blocks ordinary editing until explicit resumption; withdrawal remains available. Resume, decision correction and reopening require reasons. Correction retains the previous outcome, reason, actor and timestamp in history. Reopening retains original appointments, scorecards and previous decisions; it enables another round or final review according to existing evidence.
+Pause interviews requires a reason and supports an optional follow-up date. It retains the current stage and blocks ordinary editing until explicit resumption; withdrawal remains available. Resume, decision correction and reopening require reasons. Correction retains the previous outcome, reason, actor and timestamp in history. Reopening retains original appointments, scorecards and previous decisions; it enables another round or final review according to existing evidence.
 
 ## Persistence, authorization and retention
 
@@ -57,7 +57,7 @@ The candidate header leads with status, Schedule interview → Collect feedback 
 
 Scheduling and optional follow-up dates use the shared shadcn calendar picker. Appointment time is entered with 12-hour hour/minute and AM/PM selects; the timezone defaults to Cambodia and remains explicitly editable. Native date/time inputs and datalist suggestions are prohibited for management screens in UI standards and ESLint.
 
-“Interview took place” and “Candidate did not attend (no-show)” become available after the start time. No-show records attendance without rejecting the candidate. Round cancellation and no-show, and process hold/withdraw/reopen/correction, are available through explained Manage status dialogs with the existing server validation and reason dialogs.
+“Interview took place” and “Candidate did not attend (no-show)” become available after the start time. No-show records attendance without rejecting the candidate. Round cancellation and no-show use the round’s contextual menu; process pause/withdraw/reopen/correction use explained Manage status dialogs with the existing server validation and reason dialogs.
 
 Round cards group the appointment date, AM/PM time, timezone, duration, location and interviewer badges. Feedback cards show submitted counts, separate recommendation/status badges, scores out of five (with Not assessed unscored), and labeled notes, strengths and concerns. Recommendations remain separate from final decisions. AM/PM entry converts to the existing local-time payload without changing timezone or UTC persistence.
 
@@ -72,3 +72,18 @@ History is a compact, newest-first table with ten entries per page. Details open
 The final-decision panel appears above interview rounds and shows completed-interview, submitted-feedback, and pending-appointment requirements. Prepare final decision explicitly marks rounds complete; it does not choose an outcome or close interviews. Choose final outcome then requires an explicit Interview passed or Not selected selection and reason before closing. Missing feedback has a direct completion action; paused processes must resume first. The previous bottom-only rounds-complete control is removed.
 
 Manage status explains temporary Pause interviews versus closing as Candidate withdrawn, and describes resume/reopen/correct actions. Each operation dialog has action-specific consequences, a descriptive reason label and confirmation button. Scheduling keeps appointment creation separate from notification. Success messages explain the resulting state and next step. All transitions retain existing server authorization, versions, reasons and audit history.
+
+
+## Work queues, scheduling and review
+
+Needs attention includes unscheduled active processes, attendance awaiting recording after the start time, outstanding submitted feedback, final review and due paused follow-ups. Upcoming appointments excludes paused and closed processes. Missing feedback excludes paused processes and counts required interviewers with no submitted response, including drafts. Ready for decision includes fully assessed rounds ready to be explicitly completed and rounds already completed for final decision. Follow-up due uses the calendar date in Asia/Phnom_Penh; this timezone is shown beside follow-up controls and detail dates. Dates do not send reminders or advance the lifecycle.
+
+Time in status is derived by replaying immutable lifecycle metadata in event order. Draft saves and partial feedback do not reset the Awaiting feedback age. Pausing, resuming and closing/reopening change the displayed status age. This adds no schema or historical backfill and never mutates state on reads.
+
+Scheduling walks through Round & people, Date & time, Location, and Review & save. Rescheduling retains the round name and interviewers and starts at date/time. Back preserves entered values; the final summary shows AM/PM wall time, explicit timezone, duration, format/location and interviewers before saving. Existing server timezone/DST/future-time, reason and concurrency validation remains authoritative.
+
+Feedback provides separate Save draft and Submit feedback actions and a shared five-level rating guide. Not assessed remains unscored. Final review compares only submitted assessments across completed rounds, including recommendations, strengths, concerns, scores and notes. Recommendations are evidence for owner review, never votes or automatic outcomes.
+
+The handoff dialog explains the accepted CV and required forms that will be retained. Documents compares the accepted context with current candidate preparation through the existing owner-scoped candidate endpoint, identifies selected/newer CV, preparation-run and required-form-version or acceptance changes, and offers retry if comparison fails. Original document previews remain read-only and use the accepted context.
+
+Prepare candidate message opens an editable appointment message with candidate name, role/round, date, AM/PM time, timezone/offset, duration, location/meeting link and interview contact. Internal preparation notes and feedback are excluded. Copy message writes only to the local clipboard; users send it through their usual channel. Permission failure offers manual copying. There is no invitation dispatch, delivery/read receipt, calendar sync or automatic reminder.

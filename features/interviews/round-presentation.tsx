@@ -182,7 +182,7 @@ export function RoundFeedback({
                   <div className="space-y-2">
                     <p className="text-sm font-medium">Assessment scores</p>
                     <p className="text-xs text-muted-foreground">
-                      1 = limited evidence · 5 = strong evidence
+                      1 = limited evidence · 5 = exceptional evidence
                     </p>
                     <dl className="divide-y">
                       {CRITERIA.map((criterion, index) => {

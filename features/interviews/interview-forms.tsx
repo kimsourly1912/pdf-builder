@@ -1,5 +1,8 @@
 "use client";
 import { useState, type ReactNode } from "react";
+import { SchedulingSummary } from "./scheduling-summary";
+import { RatingGuide, RATING_LEVELS } from "./rating-guide";
+import { FOLLOW_UP_TIMEZONE } from "./flow-presentation";
 import { hour12, hour24 } from "./appointment-presentation";
 import { INTERVIEW_OPERATION_COPY } from "./final-review";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
@@ -110,7 +113,26 @@ export function InterviewOperationDialog({
       recommendation: "proceed",
     },
   );
-  const [feedbackStatus, setFeedbackStatus] = useState("draft");
+  const [scheduleStep, setScheduleStep] = useState(
+    action === "reschedule" ? 1 : 0,
+  );
+  function goToStep(step: number) {
+    setScheduleStep(step);
+    setTimeout(
+      () =>
+        document
+          .getElementById(
+            [
+              "round-name",
+              "appointment-date",
+              "appointment-kind",
+              "appointment-review",
+            ][step],
+          )
+          ?.focus(),
+      0,
+    );
+  }
   const needsReason = [
     "reschedule",
     "cancel",
@@ -138,7 +160,7 @@ export function InterviewOperationDialog({
     });
   }
   const [validationError, setValidationError] = useState("");
-  function values() {
+  function values(feedbackStatus: "draft" | "submitted" = "draft") {
     return {
       action,
       ...(round ? { roundId: round.id } : {}),
@@ -178,8 +200,78 @@ export function InterviewOperationDialog({
       <DialogContent className="max-h-[90svh] overflow-y-auto sm:max-w-2xl">
         <form
           className="space-y-6"
+          noValidate={scheduling}
           onSubmit={(e) => {
             e.preventDefault();
+            if (scheduling && scheduleStep < 3) {
+              const controls = e.currentTarget.querySelectorAll<
+                HTMLInputElement | HTMLTextAreaElement
+              >(
+                `[data-schedule-step="${scheduleStep}"] input, [data-schedule-step="${scheduleStep}"] textarea`,
+              );
+              for (const control of controls)
+                if (!control.checkValidity()) {
+                  control.reportValidity();
+                  return;
+                }
+              if (scheduleStep === 0) {
+                const names = interviewers
+                  .split("\n")
+                  .map((n) => n.trim())
+                  .filter(Boolean);
+                if (
+                  name.trim().length < 2 ||
+                  !names.length ||
+                  names.length > 10 ||
+                  names.some((n) => n.length < 2 || n.length > 120) ||
+                  new Set(names.map((n) => n.toLowerCase())).size !==
+                    names.length
+                ) {
+                  setValidationError(
+                    "Enter a round title and 1–10 different interviewer names (2–120 characters each).",
+                  );
+                  document.getElementById("round-interviewers")?.focus();
+                  return;
+                }
+              }
+              if (scheduleStep === 2) {
+                if (appointment.location.trim().length < 3) {
+                  setValidationError("Enter a location or HTTPS meeting link.");
+                  document.getElementById("appointment-location")?.focus();
+                  return;
+                }
+                if (appointment.kind === "online") {
+                  try {
+                    const url = new URL(appointment.location);
+                    if (
+                      url.protocol !== "https:" ||
+                      url.username ||
+                      url.password ||
+                      !url.hostname.includes(".")
+                    )
+                      throw new Error();
+                  } catch {
+                    setValidationError(
+                      "Enter a valid HTTPS meeting link without credentials.",
+                    );
+                    document.getElementById("appointment-location")?.focus();
+                    return;
+                  }
+                }
+                if (needsReason && reason.trim().length < 10) {
+                  setValidationError(
+                    "Enter a meaningful reason of at least 10 characters.",
+                  );
+                  document.getElementById("action-reason")?.focus();
+                  return;
+                }
+              }
+              if (scheduleStep !== 1) {
+                setValidationError("");
+                goToStep(scheduleStep + 1);
+                return;
+              }
+            }
             if (scheduling && (!date || !hour || !minute)) {
               setValidationError(
                 "Choose the interview date, hour, and minute.",
@@ -195,13 +287,26 @@ export function InterviewOperationDialog({
                 ?.focus();
               return;
             }
+            if (scheduling && scheduleStep === 1) {
+              setValidationError("");
+              goToStep(2);
+              return;
+            }
             if (["decide", "correct_decision"].includes(action) && !outcome) {
               setValidationError("Choose Interview passed or Not selected.");
               document.getElementById("outcome-passed")?.focus();
               return;
             }
             setValidationError("");
-            void onSave(values());
+            const submitter = (e.nativeEvent as SubmitEvent).submitter;
+            void onSave(
+              values(
+                submitter instanceof HTMLButtonElement &&
+                  submitter.dataset.feedbackStatus === "submitted"
+                  ? "submitted"
+                  : "draft",
+              ),
+            );
           }}
         >
           <DialogHeader>
@@ -213,11 +318,32 @@ export function InterviewOperationDialog({
                   "Record this interview action.")}
             </DialogDescription>
           </DialogHeader>
+          {scheduling && (
+            <ol
+              aria-label="Scheduling steps"
+              className="grid grid-cols-2 gap-2 sm:grid-cols-4"
+            >
+              {[
+                "Round & people",
+                "Date & time",
+                "Location",
+                "Review & save",
+              ].map((label, index) => (
+                <li
+                  key={label}
+                  aria-current={index === scheduleStep ? "step" : undefined}
+                  className={`rounded-md border p-2 text-xs ${index === scheduleStep ? "border-primary bg-primary/5 font-semibold" : "text-muted-foreground"}`}
+                >
+                  {index + 1}. {label}
+                </li>
+              ))}
+            </ol>
+          )}
           <fieldset disabled={busy} className="min-w-0 space-y-4">
             {scheduling && (
               <>
-                {action === "schedule" && (
-                  <>
+                {action === "schedule" && scheduleStep === 0 && (
+                  <div data-schedule-step="0" className="space-y-4">
                     <InterviewField id="round-name" label="Round title">
                       <Input
                         id="round-name"
@@ -243,198 +369,233 @@ export function InterviewOperationDialog({
                         placeholder={"Sokha\nDara"}
                       />
                     </InterviewField>
-                  </>
-                )}
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <InterviewField id="appointment-date" label="Interview date">
-                    <DatePicker
-                      id="appointment-date"
-                      value={date ?? ""}
-                      required
-                      disabled={busy}
-                      onValueChange={(value) =>
-                        updateLocalTime(value, hour, minute)
-                      }
-                    />
-                  </InterviewField>
-                  <div className="grid grid-cols-3 gap-2">
-                    <InterviewField id="appointment-hour" label="Hour">
-                      <SelectField
-                        id="appointment-hour"
-                        value={hour12(hour)}
-                        placeholder="Hour"
-                        className="w-full"
-                        disabled={busy}
-                        onValueChange={(value) =>
-                          updateLocalTime(
-                            date ?? "",
-                            hour24(value, period),
-                            minute,
-                          )
-                        }
-                      >
-                        {Array.from({ length: 12 }, (_, i) =>
-                          String(i + 1),
-                        ).map((value) => (
-                          <SelectFieldOption key={value} value={value}>
-                            {value}
-                          </SelectFieldOption>
-                        ))}
-                      </SelectField>
-                    </InterviewField>
-                    <InterviewField id="appointment-minute" label="Minute">
-                      <SelectField
-                        id="appointment-minute"
-                        value={minute}
-                        placeholder="Minute"
-                        className="w-full"
-                        disabled={busy}
-                        onValueChange={(value) =>
-                          updateLocalTime(date ?? "", hour, value)
-                        }
-                      >
-                        {Array.from({ length: 60 }, (_, i) =>
-                          String(i).padStart(2, "0"),
-                        ).map((value) => (
-                          <SelectFieldOption key={value} value={value}>
-                            {value}
-                          </SelectFieldOption>
-                        ))}
-                      </SelectField>
-                    </InterviewField>
-                    <InterviewField id="appointment-period" label="AM / PM">
-                      <SelectField
-                        id="appointment-period"
-                        value={period}
-                        className="w-full"
-                        disabled={busy}
-                        onValueChange={(value) => {
-                          const next = value as "AM" | "PM";
-                          setPeriod(next);
-                          if (hour !== "")
-                            updateLocalTime(
-                              date ?? "",
-                              hour24(hour12(hour), next),
-                              minute,
-                            );
-                        }}
-                      >
-                        <SelectFieldOption value="AM">AM</SelectFieldOption>
-                        <SelectFieldOption value="PM">PM</SelectFieldOption>
-                      </SelectField>
-                    </InterviewField>
                   </div>
-                </div>
-                <InterviewField id="appointment-timezone" label="Timezone">
-                  <SelectField
-                    id="appointment-timezone"
-                    value={appointment.timezone}
-                    className="w-full"
-                    disabled={busy}
-                    onValueChange={(timezone) =>
-                      setAppointment({ ...appointment, timezone })
-                    }
-                  >
-                    {[...new Set([appointment.timezone, ...TIMEZONES])].map(
-                      (zone) => (
-                        <SelectFieldOption key={zone} value={zone}>
-                          {TIMEZONE_LABELS[zone] ?? zone.replaceAll("_", " ")}
-                        </SelectFieldOption>
-                      ),
-                    )}
-                  </SelectField>
-                  <p className="text-xs text-muted-foreground">
-                    Date and time use this timezone. Cambodia is selected by
-                    default.
-                  </p>
-                </InterviewField>
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <InterviewField
-                    id="appointment-duration"
-                    label="Duration (minutes)"
-                  >
-                    <Input
-                      id="appointment-duration"
-                      type="number"
-                      min={5}
-                      max={480}
-                      value={appointment.duration}
-                      onChange={(e) =>
-                        setAppointment({
-                          ...appointment,
-                          duration: Number(e.target.value),
-                        })
-                      }
-                      required
-                    />
-                  </InterviewField>
-                  <InterviewField
-                    id="appointment-kind"
-                    label="Interview format"
-                  >
-                    <SelectField
+                )}
+                {scheduleStep === 1 && (
+                  <div data-schedule-step="1" className="space-y-4">
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <InterviewField
+                        id="appointment-date"
+                        label="Interview date"
+                      >
+                        <DatePicker
+                          id="appointment-date"
+                          value={date ?? ""}
+                          required
+                          disabled={busy}
+                          onValueChange={(value) =>
+                            updateLocalTime(value, hour, minute)
+                          }
+                        />
+                      </InterviewField>
+                      <div className="grid grid-cols-3 gap-2">
+                        <InterviewField id="appointment-hour" label="Hour">
+                          <SelectField
+                            id="appointment-hour"
+                            value={hour12(hour)}
+                            placeholder="Hour"
+                            className="w-full"
+                            disabled={busy}
+                            onValueChange={(value) =>
+                              updateLocalTime(
+                                date ?? "",
+                                hour24(value, period),
+                                minute,
+                              )
+                            }
+                          >
+                            {Array.from({ length: 12 }, (_, i) =>
+                              String(i + 1),
+                            ).map((value) => (
+                              <SelectFieldOption key={value} value={value}>
+                                {value}
+                              </SelectFieldOption>
+                            ))}
+                          </SelectField>
+                        </InterviewField>
+                        <InterviewField id="appointment-minute" label="Minute">
+                          <SelectField
+                            id="appointment-minute"
+                            value={minute}
+                            placeholder="Minute"
+                            className="w-full"
+                            disabled={busy}
+                            onValueChange={(value) =>
+                              updateLocalTime(date ?? "", hour, value)
+                            }
+                          >
+                            {Array.from({ length: 60 }, (_, i) =>
+                              String(i).padStart(2, "0"),
+                            ).map((value) => (
+                              <SelectFieldOption key={value} value={value}>
+                                {value}
+                              </SelectFieldOption>
+                            ))}
+                          </SelectField>
+                        </InterviewField>
+                        <InterviewField id="appointment-period" label="AM / PM">
+                          <SelectField
+                            id="appointment-period"
+                            value={period}
+                            className="w-full"
+                            disabled={busy}
+                            onValueChange={(value) => {
+                              const next = value as "AM" | "PM";
+                              setPeriod(next);
+                              if (hour !== "")
+                                updateLocalTime(
+                                  date ?? "",
+                                  hour24(hour12(hour), next),
+                                  minute,
+                                );
+                            }}
+                          >
+                            <SelectFieldOption value="AM">AM</SelectFieldOption>
+                            <SelectFieldOption value="PM">PM</SelectFieldOption>
+                          </SelectField>
+                        </InterviewField>
+                      </div>
+                    </div>
+                    <InterviewField id="appointment-timezone" label="Timezone">
+                      <SelectField
+                        id="appointment-timezone"
+                        value={appointment.timezone}
+                        className="w-full"
+                        disabled={busy}
+                        onValueChange={(timezone) =>
+                          setAppointment({ ...appointment, timezone })
+                        }
+                      >
+                        {[...new Set([appointment.timezone, ...TIMEZONES])].map(
+                          (zone) => (
+                            <SelectFieldOption key={zone} value={zone}>
+                              {TIMEZONE_LABELS[zone] ??
+                                zone.replaceAll("_", " ")}
+                            </SelectFieldOption>
+                          ),
+                        )}
+                      </SelectField>
+                      <p className="text-xs text-muted-foreground">
+                        Date and time use this timezone. Cambodia is selected by
+                        default.
+                      </p>
+                    </InterviewField>
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <InterviewField
+                        id="appointment-duration"
+                        label="Duration (minutes)"
+                      >
+                        <Input
+                          id="appointment-duration"
+                          type="number"
+                          min={5}
+                          max={480}
+                          value={appointment.duration}
+                          onChange={(e) =>
+                            setAppointment({
+                              ...appointment,
+                              duration: Number(e.target.value),
+                            })
+                          }
+                          required
+                        />
+                      </InterviewField>
+                    </div>
+                  </div>
+                )}
+                {scheduleStep === 2 && (
+                  <div data-schedule-step="2" className="space-y-4">
+                    <InterviewField
                       id="appointment-kind"
-                      className="w-full"
-                      value={appointment.kind}
-                      onValueChange={(kind) =>
-                        setAppointment({
-                          ...appointment,
-                          kind: kind as Appointment["kind"],
-                        })
+                      label="Interview format"
+                    >
+                      <SelectField
+                        id="appointment-kind"
+                        className="w-full"
+                        value={appointment.kind}
+                        onValueChange={(kind) =>
+                          setAppointment({
+                            ...appointment,
+                            kind: kind as Appointment["kind"],
+                          })
+                        }
+                      >
+                        <SelectFieldOption value="in_person">
+                          In-person
+                        </SelectFieldOption>
+                        <SelectFieldOption value="online">
+                          Online (HTTPS meeting link)
+                        </SelectFieldOption>
+                      </SelectField>
+                    </InterviewField>
+                    <InterviewField
+                      id="appointment-location"
+                      label={
+                        appointment.kind === "online"
+                          ? "HTTPS meeting link"
+                          : "In-person location"
                       }
                     >
-                      <SelectFieldOption value="in_person">
-                        In-person
-                      </SelectFieldOption>
-                      <SelectFieldOption value="online">
-                        Online (HTTPS meeting link)
-                      </SelectFieldOption>
-                    </SelectField>
-                  </InterviewField>
-                </div>
-                <InterviewField
-                  id="appointment-location"
-                  label={
-                    appointment.kind === "online"
-                      ? "HTTPS meeting link"
-                      : "In-person location"
-                  }
-                >
-                  <Input
-                    id="appointment-location"
-                    type={appointment.kind === "online" ? "url" : "text"}
-                    value={appointment.location}
-                    onChange={(e) =>
-                      setAppointment({
-                        ...appointment,
-                        location: e.target.value,
-                      })
+                      <Input
+                        id="appointment-location"
+                        type={appointment.kind === "online" ? "url" : "text"}
+                        value={appointment.location}
+                        onChange={(e) =>
+                          setAppointment({
+                            ...appointment,
+                            location: e.target.value,
+                          })
+                        }
+                        required
+                        maxLength={1000}
+                      />
+                    </InterviewField>
+                    <InterviewField
+                      id="appointment-notes"
+                      label="Internal preparation notes"
+                    >
+                      <Textarea
+                        id="appointment-notes"
+                        value={appointment.notes}
+                        onChange={(e) =>
+                          setAppointment({
+                            ...appointment,
+                            notes: e.target.value,
+                          })
+                        }
+                        maxLength={2000}
+                      />
+                    </InterviewField>
+                  </div>
+                )}
+                {scheduleStep === 3 && (
+                  <SchedulingSummary
+                    appointment={appointment}
+                    reason={action === "reschedule" ? reason : undefined}
+                    name={
+                      action === "schedule"
+                        ? name
+                        : (round?.name ?? "Interview")
                     }
-                    required
-                    maxLength={1000}
-                  />
-                </InterviewField>
-                <InterviewField
-                  id="appointment-notes"
-                  label="Internal preparation notes"
-                >
-                  <Textarea
-                    id="appointment-notes"
-                    value={appointment.notes}
-                    onChange={(e) =>
-                      setAppointment({ ...appointment, notes: e.target.value })
+                    interviewers={
+                      action === "schedule"
+                        ? interviewers
+                            .split("\n")
+                            .map((n) => n.trim())
+                            .filter(Boolean)
+                        : (round?.interviewers ?? [])
                     }
-                    maxLength={2000}
                   />
-                </InterviewField>
+                )}
               </>
             )}
             {feedback && (
               <>
                 <p className="text-sm text-muted-foreground">
-                  Use 1 (limited evidence) to 5 (strong evidence). Not assessed
-                  remains unscored.
+                  Use the rating guide to assess evidence against the role’s
+                  requirements. Not assessed remains unscored.
                 </p>
+                <RatingGuide />
                 <div className="grid gap-4 sm:grid-cols-2">
                   {CRITERIA.map((criterion, i) => (
                     <InterviewField
@@ -464,7 +625,8 @@ export function InterviewOperationDialog({
                         </SelectFieldOption>
                         {[1, 2, 3, 4, 5].map((r) => (
                           <SelectFieldOption key={r} value={r}>
-                            {r}
+                            {r} ·{" "}
+                            {RATING_LEVELS[r as keyof typeof RATING_LEVELS]}
                           </SelectFieldOption>
                         ))}
                       </SelectField>
@@ -514,21 +676,6 @@ export function InterviewOperationDialog({
                         {label}
                       </SelectFieldOption>
                     ))}
-                  </SelectField>
-                </InterviewField>
-                <InterviewField id="feedback-status" label="Evaluation status">
-                  <SelectField
-                    id="feedback-status"
-                    className="w-full"
-                    value={feedbackStatus}
-                    onValueChange={setFeedbackStatus}
-                  >
-                    <SelectFieldOption value="draft">
-                      Draft — still outstanding
-                    </SelectFieldOption>
-                    <SelectFieldOption value="submitted">
-                      Submitted — retained for review
-                    </SelectFieldOption>
                   </SelectField>
                 </InterviewField>
                 <p className="text-sm text-muted-foreground">
@@ -587,7 +734,7 @@ export function InterviewOperationDialog({
                 </p>
               </>
             )}
-            {needsReason && (
+            {needsReason && (!scheduling || scheduleStep === 2) && (
               <InterviewField
                 id="action-reason"
                 label={
@@ -621,6 +768,13 @@ export function InterviewOperationDialog({
                 />
               </InterviewField>
             )}
+            {action === "hold" && (
+              <p className="text-xs text-muted-foreground">
+                Follow-ups appear in Interview Progress on this date in{" "}
+                {FOLLOW_UP_TIMEZONE.replaceAll("_", " ")}. No reminder is sent
+                automatically.
+              </p>
+            )}
             {action === "finish_rounds" && (
               <p className="text-sm">
                 Next, you will choose Interview passed or Not selected and enter
@@ -635,33 +789,64 @@ export function InterviewOperationDialog({
               </p>
             )}
           </fieldset>
-          {(error || validationError) && (
-            <FeedbackAlert
-              tone="error"
-              title="Action could not be saved"
-              description={error || validationError}
-            />
-          )}
-          <DialogFooter className="flex flex-wrap gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              disabled={busy}
-              onClick={onClose}
-            >
-              Cancel
-            </Button>
-            <Button disabled={busy}>
-              {busy
-                ? "Saving…"
-                : feedback
-                  ? feedbackStatus === "submitted"
-                    ? "Submit feedback"
-                    : "Save draft"
-                  : (INTERVIEW_OPERATION_COPY[action]?.submit ??
-                    operation.title)}
-            </Button>
-          </DialogFooter>
+          <div className="sticky bottom-0 z-10 space-y-3 border-t bg-background pt-3">
+            {(error || validationError) && (
+              <FeedbackAlert
+                tone="error"
+                title="Action could not be saved"
+                description={error || validationError}
+              />
+            )}
+            <DialogFooter className="flex flex-wrap gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                disabled={busy}
+                onClick={onClose}
+              >
+                Cancel
+              </Button>
+              {scheduling &&
+                scheduleStep > (action === "reschedule" ? 1 : 0) && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={busy}
+                    onClick={() => {
+                      setValidationError("");
+                      goToStep(scheduleStep - 1);
+                    }}
+                  >
+                    Back
+                  </Button>
+                )}
+              {feedback && (
+                <Button
+                  type="submit"
+                  variant="outline"
+                  disabled={busy}
+                  data-feedback-status="draft"
+                >
+                  Save draft
+                </Button>
+              )}
+              <Button
+                disabled={busy}
+                data-feedback-status={feedback ? "submitted" : undefined}
+              >
+                {busy
+                  ? "Saving…"
+                  : scheduling && scheduleStep < 3
+                    ? scheduleStep === 2
+                      ? "Review appointment"
+                      : "Continue"
+                    : feedback
+                      ? "Submit feedback"
+                      : (INTERVIEW_OPERATION_COPY[action]?.submit ??
+                        operation.title)}
+              </Button>
+            </DialogFooter>
+          </div>
         </form>
       </DialogContent>
     </Dialog>

@@ -2,6 +2,7 @@
 import { Check, Circle, ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/patterns/status-badge";
+import { FinalReviewSummary } from "./final-review-summary";
 import { finalReviewReadiness } from "./final-review";
 import {
   INTERVIEW_LABELS,
@@ -57,6 +58,13 @@ export function FinalDecision({
           }
         />
       </div>
+      <FinalReviewSummary
+        key={`${process.id}:${process.roundsComplete}:${readiness.ready}`}
+        process={process}
+        expanded={
+          !!process.outcome || process.roundsComplete || readiness.ready
+        }
+      />
       {process.outcome ? (
         <>
           <p className="whitespace-pre-wrap break-words text-sm">

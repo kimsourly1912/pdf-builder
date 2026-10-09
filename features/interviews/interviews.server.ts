@@ -1,4 +1,11 @@
 import "server-only";
+import {
+  interviewStageSince,
+  matchesInterviewFilter,
+  WORK_FILTERS,
+  followUpToday,
+  type StageEvent,
+} from "./flow-presentation";
 import { getDatabaseBinding, type DatabaseStatement } from "@/db";
 import { fail } from "@/features/workflows/workflow.server";
 import { preparationForInterview } from "@/features/candidate-progress/progress.server";
@@ -107,7 +114,7 @@ async function ownedProcesses(owner: string, id?: string) {
   ).results;
   if (!rows.length) return [];
   const ids = JSON.stringify(rows.map((p) => p.id));
-  const [rounds, feedback] = await Promise.all([
+  const [rounds, feedback, events] = await Promise.all([
     db
       .prepare(
         "SELECT r.* FROM interview_rounds r JOIN interview_processes p ON p.id=r.process_id WHERE p.owner_email=? AND p.id IN (SELECT value FROM json_each(?)) ORDER BY r.created_at,r.id",
@@ -120,9 +127,24 @@ async function ownedProcesses(owner: string, id?: string) {
       )
       .bind(owner, ids)
       .all<FeedbackRow>(),
+    db
+      .prepare(
+        "SELECT e.process_id,e.action,e.created_at,json_extract(e.details_json,'$.roundId') roundId,json_extract(e.details_json,'$.interviewers') interviewers,json_extract(e.details_json,'$.interviewer') interviewer,json_extract(e.details_json,'$.status') status,json_extract(e.details_json,'$.outcome') outcome FROM interview_events e JOIN interview_processes p ON p.id=e.process_id WHERE p.owner_email=? AND p.id IN (SELECT value FROM json_each(?)) ORDER BY e.created_at,e.rowid",
+      )
+      .bind(owner, ids)
+      .all<{
+        process_id: string;
+        action: string;
+        created_at: string;
+        roundId?: string;
+        interviewers?: string;
+        interviewer?: string;
+        status?: string;
+        outcome?: string;
+      }>(),
   ]);
-  return rows.map((row) =>
-    processDto(
+  return rows.map((row) => ({
+    ...processDto(
       row,
       rounds.results
         .filter((r) => r.process_id === row.id)
@@ -143,7 +165,22 @@ async function ownedProcesses(owner: string, id?: string) {
             })),
         })),
     ),
-  );
+    stageSince: interviewStageSince(
+      events.results
+        .filter((e) => e.process_id === row.id)
+        .map(
+          (e) =>
+            ({
+              ...e,
+              at: e.created_at,
+              interviewers: e.interviewers
+                ? JSON.parse(e.interviewers)
+                : undefined,
+            }) as StageEvent,
+        ),
+      row.created_at,
+    ),
+  }));
 }
 export async function detailInterview(owner: string, id: string) {
   identifier(id, "interview process");
@@ -185,11 +222,8 @@ export async function listInterviews(owner: string, query: URLSearchParams) {
           .toLowerCase()
           .includes(search)),
   );
-  const items = matching.filter(
-    (p) =>
-      filter === "all" ||
-      (filter === "hold" ? !!p.hold : (p.outcome ?? p.stage) === filter),
-  );
+  const now = Date.now();
+  const items = matching.filter((p) => matchesInterviewFilter(p, filter, now));
   const pageSize = 25,
     total = items.length,
     pages = Math.max(1, Math.ceil(total / pageSize)),
@@ -203,14 +237,18 @@ export async function listInterviews(owner: string, query: URLSearchParams) {
     page,
     pageSize,
     counts: Object.fromEntries(
-      [...OUTCOMES, "ready", "scheduled", "feedback", "decision", "hold"].map(
-        (s) => [
-          s,
-          matching.filter((p) =>
-            s === "hold" ? !!p.hold : (p.outcome ?? p.stage) === s,
-          ).length,
-        ],
-      ),
+      [
+        ...OUTCOMES,
+        "ready",
+        "scheduled",
+        "feedback",
+        "decision",
+        "hold",
+        ...Object.keys(WORK_FILTERS),
+      ].map((s) => [
+        s,
+        matching.filter((p) => matchesInterviewFilter(p, s, now)).length,
+      ]),
     ),
     active: all.filter((p) => !p.outcome).length,
     closed: all.filter((p) => p.outcome).length,
@@ -666,7 +704,7 @@ export async function mutateInterview(
         !/^\d{4}-\d\d-\d\d$/.test(followUp) ||
         !Number.isFinite(Date.parse(followUp)) ||
         new Date(followUp).toISOString().slice(0, 10) !== followUp ||
-        followUp < now.slice(0, 10) ||
+        followUp < followUpToday(Date.parse(now)) ||
         followUp > "2100-12-31")
     )
       fail("Choose a real optional follow-up date today or later.", 422);

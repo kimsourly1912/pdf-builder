@@ -20,20 +20,36 @@ import {
   ACTIVE_STAGES,
   OUTCOMES,
   INTERVIEW_LABELS,
-  interviewNextAction,
   appointmentDisplay,
   type InterviewProcess,
 } from "./interviews";
+import { InterviewWorkList } from "./interview-work-list";
+import { InterviewGuide } from "./interview-guide";
+import { WORK_FILTERS, interviewWork } from "./flow-presentation";
 import { interviewApi, InterviewApiError } from "./client";
-const DEFAULTS = { search: "", tab: "active", filter: "all", page: "1" };
+const DEFAULTS = {
+  search: "",
+  tab: "active",
+  filter: "all",
+  page: "1",
+  view: "list",
+};
 function validFilter(key: keyof typeof DEFAULTS, value: string) {
   return key === "tab"
     ? ["active", "closed"].includes(value)
-    : key === "filter"
-      ? ["all", "hold", ...ACTIVE_STAGES, ...OUTCOMES].includes(value)
-      : key === "page"
-        ? /^[1-9]\d{0,5}$/.test(value)
-        : value.length <= 200;
+    : key === "view"
+      ? ["list", "board"].includes(value)
+      : key === "filter"
+        ? [
+            "all",
+            "hold",
+            ...ACTIVE_STAGES,
+            ...OUTCOMES,
+            ...Object.keys(WORK_FILTERS),
+          ].includes(value)
+        : key === "page"
+          ? /^[1-9]\d{0,5}$/.test(value)
+          : value.length <= 200;
 }
 type Board = {
   items: InterviewProcess[];
@@ -100,7 +116,8 @@ export function InterviewDashboard({
     pageSize = data?.pageSize ?? 25;
   function card(p: InterviewProcess) {
     const round = p.rounds.at(-1),
-      next = p.rounds.find((r) => r.status === "scheduled");
+      work = interviewWork(p),
+      next = work.scheduled;
     return (
       <article
         key={p.id}
@@ -121,7 +138,7 @@ export function InterviewDashboard({
         </div>
         {p.hold && (
           <StatusBadge
-            label={`On hold${p.hold.followUp ? ` · follow up ${p.hold.followUp}` : ""}`}
+            label={`Interviews paused${p.hold.followUp ? ` · follow up ${p.hold.followUp}` : ""}`}
             tone="warning"
           />
         )}
@@ -134,6 +151,7 @@ export function InterviewDashboard({
             ? `Next: ${appointmentDisplay(next.appointment)}`
             : "No next appointment"}
         </p>
+        <p className="break-words text-sm font-medium">{work.blocker}</p>
         <p className="break-words text-xs text-muted-foreground">
           Responsible: {p.responsible}
         </p>
@@ -143,24 +161,30 @@ export function InterviewDashboard({
           size="sm"
           className="h-auto max-w-full whitespace-normal"
         >
-          <Link href={`/interviews/${p.id}`}>{interviewNextAction(p)}</Link>
+          <Link href={`/interviews/${p.id}?task=next`}>{work.next.label}</Link>
         </Button>
       </article>
     );
   }
   return (
-    <AppShell displayName={displayName} fullWidth={!closed}>
+    <AppShell
+      displayName={displayName}
+      fullWidth={!closed && filters.view === "board"}
+    >
       <PageHeader
         title="Interview Progress"
         description="Manage rounds, feedback and final review after documents are accepted. Interview passed does not mean Hired."
         actions={
-          <Button
-            variant="outline"
-            onClick={() => void load()}
-            disabled={loading}
-          >
-            Refresh
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <InterviewGuide />
+            <Button
+              variant="outline"
+              onClick={() => void load()}
+              disabled={loading}
+            >
+              Refresh
+            </Button>
+          </div>
         }
       />
       <Tabs
@@ -176,6 +200,30 @@ export function InterviewDashboard({
           </TabsTrigger>
         </TabsList>
       </Tabs>
+      {!closed && (
+        <div
+          className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4"
+          aria-label="Interview work queues"
+        >
+          {(
+            ["attention", "upcoming", "final_review", "follow_up"] as const
+          ).map((filter) => (
+            <Button
+              key={filter}
+              variant={filters.filter === filter ? "secondary" : "outline"}
+              aria-pressed={filters.filter === filter}
+              className="h-auto justify-between gap-2 p-4"
+              disabled={!data || permission}
+              onClick={() => setFilters({ filter, page: "1" })}
+            >
+              <span>{WORK_FILTERS[filter]}</span>
+              <span className="font-semibold tabular-nums">
+                {data?.counts[filter] ?? 0}
+              </span>
+            </Button>
+          ))}
+        </div>
+      )}
       <div className="flex flex-wrap items-end gap-2">
         <div className="w-full min-w-0 space-y-2 sm:w-auto sm:flex-1">
           <Label htmlFor="interview-search">Search interviews</Label>
@@ -189,7 +237,7 @@ export function InterviewDashboard({
         </div>
         <div className="space-y-2">
           <Label htmlFor="interview-filter">
-            {closed ? "Outcome" : "Stage"}
+            {closed ? "Outcome" : "Show"}
           </Label>
           <SelectField
             id="interview-filter"
@@ -198,21 +246,44 @@ export function InterviewDashboard({
             onValueChange={(filter) => setFilters({ filter, page: "1" })}
           >
             <SelectFieldOption value="all">
-              All {closed ? "outcomes" : "stages"}
+              All {closed ? "outcomes" : "interviews"}
             </SelectFieldOption>
+            {!closed &&
+              Object.entries(WORK_FILTERS).map(([key, label]) => (
+                <SelectFieldOption key={key} value={key}>
+                  {label}
+                </SelectFieldOption>
+              ))}
             {stages.map((s) => (
               <SelectFieldOption key={s} value={s}>
                 {INTERVIEW_LABELS[s]}
               </SelectFieldOption>
             ))}
             {!closed && (
-              <SelectFieldOption value="hold">On hold</SelectFieldOption>
+              <SelectFieldOption value="hold">
+                Interviews paused
+              </SelectFieldOption>
             )}
           </SelectField>
         </div>
+        {!closed && (
+          <div className="space-y-2">
+            <Label htmlFor="interview-view">View</Label>
+            <SelectField
+              id="interview-view"
+              value={filters.view}
+              onValueChange={(view) => setFilters({ view })}
+            >
+              <SelectFieldOption value="list">Action list</SelectFieldOption>
+              <SelectFieldOption value="board">Stage board</SelectFieldOption>
+            </SelectField>
+          </div>
+        )}
         <Button
           variant="ghost"
-          onClick={() => setFilters({ ...DEFAULTS, tab: filters.tab })}
+          onClick={() =>
+            setFilters({ ...DEFAULTS, tab: filters.tab, view: filters.view })
+          }
         >
           Clear filters
         </Button>
@@ -263,10 +334,8 @@ export function InterviewDashboard({
       )}
       {!permission &&
         !!data?.items.length &&
-        (closed ? (
-          <div className="grid min-w-0 gap-4 sm:grid-cols-2 xl:grid-cols-3">
-            {data.items.map(card)}
-          </div>
+        (closed || filters.view === "list" ? (
+          <InterviewWorkList items={data.items} />
         ) : (
           <div
             role="region"
