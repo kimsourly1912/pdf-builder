@@ -444,13 +444,13 @@ function deletionRule(type: ArchiveType) {
   }
   if (type === "workflow_run") {
     query =
-      "SELECT id FROM workflow_runs WHERE id=? AND json_extract(context_json,'$.userId') IS NOT NULL UNION ALL SELECT id FROM telegram_deliveries WHERE run_id=? UNION ALL SELECT id FROM interview_processes WHERE run_id=? UNION ALL SELECT id FROM hiring_applications WHERE json_extract(evidence_json,'$.runId')=? LIMIT 1";
+      "SELECT id FROM workflow_runs WHERE id=? AND (json_extract(context_json,'$.userId') IS NOT NULL OR EXISTS(SELECT 1 FROM hiring_preparations hp WHERE hp.run_id=workflow_runs.id)) UNION ALL SELECT id FROM telegram_deliveries WHERE run_id=? UNION ALL SELECT id FROM interview_processes WHERE run_id=? UNION ALL SELECT id FROM hiring_applications WHERE json_extract(evidence_json,'$.runId')=? LIMIT 1";
     reason =
       "This run created or linked an account, or has Telegram delivery history. It must remain as preparation/interview evidence.";
   }
   if (type === "resume") {
     query =
-      "SELECT id FROM workflow_runs WHERE resume_id=? AND status IN ('queued','running','waiting_review') UNION ALL SELECT resume_id FROM candidate_cv_updates WHERE base_resume_id=? OR (resume_id=? AND status='accepted') UNION ALL SELECT id FROM interview_processes WHERE resume_id=? UNION ALL SELECT id FROM hiring_applications WHERE resume_id=? LIMIT 1";
+      "SELECT id FROM workflow_runs WHERE resume_id=? AND (status IN ('queued','running','waiting_review') OR EXISTS(SELECT 1 FROM hiring_preparations hp WHERE hp.run_id=workflow_runs.id)) UNION ALL SELECT resume_id FROM candidate_cv_updates WHERE base_resume_id=? OR (resume_id=? AND status='accepted') UNION ALL SELECT id FROM interview_processes WHERE resume_id=? UNION ALL SELECT id FROM hiring_applications WHERE resume_id=? LIMIT 1";
     reason = "This CV is used by a hiring application, active workflow, protected CV update/approval or interview history.";
   }
   if (type === "ai_run") {

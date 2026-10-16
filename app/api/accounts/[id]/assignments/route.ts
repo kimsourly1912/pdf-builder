@@ -1,8 +1,10 @@
+import { getApplication, applicationFacts } from "@/features/hiring/hiring.server";
 import { and, desc, eq, isNull, sql } from "drizzle-orm";
 
 import { getDatabaseBinding, getDb } from "@/db";
 import {
   auditEvents,
+  hiringGuards,
   candidateProfileVersions,
   candidates,
   formAssignments,
@@ -40,6 +42,7 @@ export async function POST(
   context: { params: Promise<{ id: string }> },
 ) {
   try {
+    if(request.headers.get("origin") && request.headers.get("origin")!==new URL(request.url).origin) return jsonError("Use the same site to assign forms.",403);
     const ownerEmail = await requireRequestOwner(request);
     const { id: userId } = await context.params;
     const idempotencyKey = request.headers.get("Idempotency-Key");
@@ -47,6 +50,14 @@ export async function POST(
       return jsonError("A valid idempotency key is required.", 400);
     }
     const body = (await request.json()) as Record<string, unknown>;
+    const application = body.applicationId ? await getApplication(ownerEmail, String(body.applicationId)) : null;
+    const applicationEvidence = application ? await applicationFacts(ownerEmail, application) : null;
+    if (application) {
+      if (application.outcome || application.hold) return jsonError("Resume or reopen this application before assigning forms.", 409);
+      if (!applicationEvidence?.cv_approved) return jsonError("Approve this application's current CV before assigning forms.", 409);
+      body.candidateProfileVersionId = applicationEvidence.profileId;
+    }
+
     const templateId = String(body.templateId ?? "").trim();
     const roleId = String(body.roleId ?? "").trim();
     const profileMismatchConfirmed = body.profileMismatchConfirmed === true;
@@ -140,6 +151,7 @@ export async function POST(
       allowedFieldIds: allowedFieldIds ?? [],
       allowedProfileKeys: requestedAllowedProfileKeys,
       profileMismatchConfirmed,
+      ...(application ? { applicationId: application.id } : {}),
     });
     const db = getDb();
     const [existingAssignment] = await db
@@ -218,6 +230,7 @@ export async function POST(
       });
     }
 
+    if (application && application.revision !== body.expectedApplicationRevision) return jsonError("This application changed. Refresh before assigning forms.", 409);
     const [account] = await db
       .select({ id: user.id, candidate: candidates })
       .from(recipientProfiles)
@@ -260,6 +273,7 @@ export async function POST(
     );
     if (!role) return jsonError("Recipient role not found.", 404);
 
+    if (application && account.candidate?.id !== application.candidateId) return jsonError("Choose the account linked to this application's candidate.", 409);
     const tokenHash = await hashRecipientToken(createRecipientToken());
     const now = new Date().toISOString();
     const linkId = crypto.randomUUID();
@@ -408,6 +422,7 @@ export async function POST(
         422,
       );
     }
+    const scopeGuard = crypto.randomUUID();
     await db.batch([
       db.insert(recipientLinks).values({
         id: linkId,
@@ -425,8 +440,10 @@ export async function POST(
         createdAt: now,
         updatedAt: now,
       }),
+      ...(application ? [db.insert(hiringGuards).values({id: scopeGuard, checkPassed: sql`CASE WHEN EXISTS(SELECT 1 FROM hiring_applications a JOIN candidates c ON c.id=a.candidate_id AND c.owner_email=a.owner_email JOIN resumes r ON r.id=a.resume_id AND r.owner_email=a.owner_email JOIN candidate_profile_versions p ON p.resume_id=r.id AND p.candidate_id=c.id AND p.owner_email=a.owner_email WHERE a.id=${application.id} AND a.owner_email=${ownerEmail} AND a.revision=${application.revision} AND a.outcome IS NULL AND a.hold IS NULL AND c.user_id=${userId} AND p.id=${applicationEvidence?.profileId} AND p.created_at>=r.updated_at AND p.created_at>=c.updated_at AND r.verification_status='verified' AND c.verification_status='verified') THEN 1 ELSE 0 END`})] : []),
       db.insert(formAssignments).values({
         id: assignmentId,
+        applicationId: application?.id ?? null,
         userId,
         templateId,
         templateVersionId: template.version.id,
@@ -472,6 +489,7 @@ export async function POST(
           createdAt: now,
         }),
       ),
+      ...(application ? [db.delete(hiringGuards).where(eq(hiringGuards.id, scopeGuard))] : []),
     ]);
 
     return Response.json(
@@ -821,6 +839,7 @@ export async function PATCH(
 }
 
 async function assignmentRequestFingerprint(value: {
+  applicationId?: string;
   templateId: string;
   roleId: string;
   prefillMode: string;

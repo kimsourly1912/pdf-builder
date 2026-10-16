@@ -9,6 +9,7 @@ Use the root [agent guide](../AGENTS.md) for a short working checklist. Read the
 - [Architecture](architecture.md)
 - [Decision log](decisions.md)
 - [Roadmap and current status](roadmap.md)
+- [Unified hiring workspace design](proposals/unified-hiring-workspace.md): delivery plan and acceptance scenarios; current behavior is documented in Hiring pipelines.
 
 - [Production test-data reset](production-reset.md) — destructive, explicitly requested operations only.
 

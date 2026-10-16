@@ -2,6 +2,8 @@
 
 ## 2026-10-16 implementation: hiring pipelines
 
+The unified workspace extension brings CV review, application-owned preparation/forms, interview tasks, offer records and activity into application detail. It adds evidence-event routing, pinned preparation actions, interview stage/round mapping, task queues, legacy adoption and compatible old links. Separate preparation/interview sidebar entries are consolidated into Hiring. GitHub Actions for the exact published commit records deployment verification. See [Hiring pipelines](hiring-pipelines.md#unified-application-workspace). First-time HR usability and user-confirmed real recipient delivery remain follow-up validation.
+
 Configurable published hiring models, job openings, independent applications, a dynamic board/list, guarded entry/exit requirements, application event routing, connected application interviews and explicit offer/outcome records are implemented. Existing preparation remains available, with explicit legacy import and protected evidence. See [Hiring pipelines](hiring-pipelines.md) for setup and exact scope. Publication/deployment status remains separate from this implementation record.
 
 Follow-up work includes application-scoped account/form preparation actions in application graphs, automatic form/feedback event triggers, round-specific stage requirements and scorecards, job-specific public intake links, offer generation/signing, and company/team authentication. Existing guarded preparation automation remains available.
@@ -17,7 +19,7 @@ As of 2026-10-03. This page focuses on the recent candidate intake, workflow, ar
 | Preparation workflows | Interactive canvas and focus mode, contextual catalog, node names/annotations and search, draft/live change review and recovery, safe sample previews, execution input/output inspection, saved overview filters and inactive duplication; purpose presets and starting events; guarded review/account reuse; CV linking, pinned forms, Telegram activation/sign-in invitations, recovery and history. |
 | Intake guidance | One next-step summary, actual progress, direct missing-requirement actions, selected CV context, state-specific preparation actions. |
 | Archive | Linked intake/CV groups, restore, eligibility and protected-history explanations, limited Undo, guarded permanent deletion and durable file cleanup. |
-| Candidate Preparation | Candidates sidebar submenu, Kanban/List toggle, guarded dragging/menu transitions, CV/run selection, forms, and timeline. |
+| Candidate Preparation | Original Kanban/List, guarded transitions, CV/run selection, forms and timeline remain available through compatibility routes and Legacy records; daily tasks live in Hiring. |
 | Web form builder | Click/drag fields, reorder, shared candidate preview, separate PDF mapping, immutable whole-form assignments, private media, JSON/PDF responses and PDF retry; legacy PDF templates remain available. |
 | HR workspace | Task-based Home/navigation, tabbed candidate profile, centered reading containers, HR form acceptance and new correction attempts preserving original history. |
 | Progress usability | Saved owner-scoped filters/view, useful page/column counts, event-based waiting times, sorting, consistent status presentation, issue-resolution links, responsive layouts. |
@@ -27,6 +29,8 @@ As of 2026-10-03. This page focuses on the recent candidate intake, workflow, ar
 Feature details live in the [documentation index](README.md). Automated integration and browser checks have covered the recent changes; actual HR usability sessions remain useful and are listed below.
 
 ## Proposed next improvements
+
+- [Unified hiring workspace design](proposals/unified-hiring-workspace.md): delivery direction and acceptance scenarios. Follow-up work includes first-time HR usability verification and richer preparation attempts.
 
 These ideas are not implemented or scheduled by this roadmap. They need their own agreed scope before development.
 

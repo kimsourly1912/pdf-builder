@@ -1,5 +1,15 @@
 # Decision log
 
+## 2026-10-16: Unified application workspace and preparation scope
+
+- Hiring applications are the primary workspace for CV review, document preparation/review, interviews and offers. Legacy progress/list routes remain compatibility and shared-person tools, with explicit application selection for multiple jobs.
+- Preparation runs and required assignments have an application scope. Existing account/template/role uniqueness remains for legacy assignments; new applications can collect independent copies. Reusing an account never implicitly reuses another application's answers.
+- Unchanged approved CV data reuse their approval snapshot during application preparation review. Real CV changes still require approval and do not overwrite original forms/interview context.
+- Application preparation ownership is explicit. Selecting it prevents new legacy CV-approval preparation rules for that CV while any active application selects it. Existing runs/graphs remain retained, and active preparation must resolve before cutover.
+- Evidence updates append durable application events in the same transaction. Published application rules pin child preparation versions; retries reuse the same application/workflow/CV intent and retain account/contact review gates.
+- Interview completion may be scoped to mapped rounds in a pinned stage. Whole-process behavior remains the default for existing published models. Application closure requires resolving scheduled interview appointments; interview outcomes remain separate from hiring decisions.
+- Legacy adoption is previewed, revision-checked and idempotent. Unknown archived stages require an explicit mapping; migration never sends messages or starts workflow executions.
+
 ## 2026-10-16: Configurable hiring pipelines and application identity
 
 - A candidate can have independent job applications, each pinned to a published hiring model and stage. Draft stage edits and job configuration changes do not rewrite existing application or workflow versions.

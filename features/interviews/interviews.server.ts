@@ -47,6 +47,7 @@ type ProcessRow = {
   updated_at: string;
 };
 type RoundRow = {
+  stage_id: string | null;
   id: string;
   process_id: string;
   name: string;
@@ -152,6 +153,7 @@ async function ownedProcesses(owner: string, id?: string) {
         .filter((r) => r.process_id === row.id)
         .map((r) => ({
           id: r.id,
+          stageId: r.stage_id,
           name: r.name,
           interviewers: JSON.parse(r.interviewers_json),
           status: r.status,
@@ -209,6 +211,15 @@ export async function detailInterview(owner: string, id: string) {
     at: e.created_at,
     details: JSON.parse(e.details_json),
   }));
+  {
+    const app = await getDatabaseBinding().prepare("SELECT a.id,a.stage_id,v.definition_json FROM hiring_applications a JOIN hiring_pipeline_versions v ON v.id=a.pipeline_version_id AND v.owner_email=a.owner_email WHERE a.owner_email=? AND a.interview_id=? ORDER BY a.created_at,a.id LIMIT 1").bind(owner, id).first<{id:string;stage_id:string;definition_json:string}>();
+    if (app) {
+      process.applicationId = app.id;
+      const stages = (JSON.parse(app.definition_json) as {stages:{id:string;name:string;activity:string}[]}).stages;
+      process.stageOptions = stages.filter(s=>s.activity === "interview").map(({id,name})=>({id,name}));
+      process.applicationStage = stages.find(s=>s.id === app.stage_id);
+    }
+  }
   return process;
 }
 export async function listInterviews(owner: string, query: URLSearchParams) {
@@ -466,6 +477,9 @@ export async function mutateInterview(
     body.expectedVersion !== process.version
   )
     conflict();
+  const application = process.applicationId ? await db.prepare("SELECT a.revision,a.stage_id,a.hold,a.outcome,v.definition_json FROM hiring_applications a JOIN hiring_pipeline_versions v ON v.id=a.pipeline_version_id AND v.owner_email=a.owner_email WHERE a.id=? AND a.owner_email=? AND a.interview_id=?").bind(process.applicationId,owner,id).first<{revision:number;stage_id:string;hold:string|null;outcome:string|null;definition_json:string}>() : null;
+  if (process.applicationId && (!application || application.hold || application.outcome)) fail("Resume or reopen the hiring application before changing its interviews.",409);
+  const hiringStages = application ? (JSON.parse(application.definition_json) as { stages: { id:string;name:string;activity:string }[] }).stages : [];
   const action = boundedText(body.action, "an interview action", 1, 40),
     now = new Date().toISOString(),
     guardId = crypto.randomUUID();
@@ -519,7 +533,7 @@ export async function mutateInterview(
     effects.push(
       db
         .prepare(
-          "INSERT INTO interview_rounds(id,process_id,name,interviewers_json,status,appointment_json,created_at,updated_at) VALUES(?,?,?,?,'scheduled',?,?,?)",
+          "INSERT INTO interview_rounds(id,process_id,name,interviewers_json,status,appointment_json,created_at,updated_at,stage_id) VALUES(?,?,?,?,'scheduled',?,?,?,?)",
         )
         .bind(
           roundId,
@@ -529,10 +543,16 @@ export async function mutateInterview(
           JSON.stringify(appointment),
           now,
           now,
+          hiringStages.find(s=>s.id===application?.stage_id && s.activity==='interview')?.id ?? null,
         ),
     );
     update("rounds_complete=0");
     Object.assign(details, { roundId, name, interviewers, appointment });
+  } else if (action === "map_round") {
+    const r = round(), stage = hiringStages.find(s=>s.id===body.stageId && s.activity==="interview");
+    if(!application || !stage) fail("Choose an interview stage from this application's published model.",422);
+    effects.push(db.prepare("UPDATE interview_rounds SET stage_id=?,updated_at=? WHERE id=? AND process_id=?").bind(stage.id,now,r.id,id));
+    Object.assign(details,{roundId:r.id,stageId:stage.id,stageName:stage.name,reason:reason(body.reason)});
   } else if (["reschedule", "cancel", "complete", "no_show"].includes(action)) {
     const r = round();
     if (action !== "reschedule" && r.status !== "scheduled")
@@ -728,9 +748,9 @@ export async function mutateInterview(
   const statements = [
     db
       .prepare(
-        "INSERT INTO interview_guards(id,check_passed) SELECT ?,CASE WHEN EXISTS(SELECT 1 FROM interview_processes WHERE id=? AND owner_email=? AND version=?) THEN 1 ELSE 0 END",
+        `INSERT INTO interview_guards(id,check_passed) SELECT ?,CASE WHEN EXISTS(SELECT 1 FROM interview_processes WHERE id=? AND owner_email=? AND version=?) ${application ? "AND EXISTS(SELECT 1 FROM hiring_applications WHERE id=? AND owner_email=? AND revision=? AND hold IS NULL AND outcome IS NULL)" : ""} THEN 1 ELSE 0 END`,
       )
-      .bind(guardId, id, owner, process.version),
+      .bind(guardId, id, owner, process.version, ...(application ? [process.applicationId,owner,application.revision] : [])),
     ...effects,
     db
       .prepare(

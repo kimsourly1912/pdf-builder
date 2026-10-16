@@ -1,3 +1,4 @@
+import { startApplicationPreparation } from "./preparation.server";
 import "server-only";
 import { getDatabaseBinding } from "@/db";
 import { workflowRuns } from "@/features/workflows/schema";
@@ -38,6 +39,23 @@ export async function validateApplicationGraph(
     );
   const stageIds = new Set(version.definition.stages.map((s) => s.id));
   for (const node of graph.nodes) {
+    if (node.kind === "prepare_application") {
+      const child = await (
+        await import("@/features/workflows/workflow.server")
+      ).getWorkflow(owner, node.config.preparationWorkflowId ?? "");
+      if (
+        child.archived ||
+        !child.active ||
+        !child.published ||
+        isApplicationTrigger(workflowTrigger(child.published)) ||
+        !child.published.nodes.some((n) => n.kind === "review_resume")
+      )
+        hiringFail(
+          "Choose an active published CV preparation workflow with a review gate.",
+        );
+      node.config.preparationWorkflowVersion = child.version;
+      node.config.preparationWorkflowName = child.name;
+    }
     if (node.config.stageId)
       node.config.stageLabel = version.definition.stages.find(
         (s) => s.id === node.config.stageId,
@@ -302,6 +320,30 @@ export async function processApplicationRouting(
           },
         );
         note = "Application moved after checking its current requirements";
+      } else if (node.kind === "prepare_application") {
+        const application = await getApplication(
+          row.ownerEmail,
+          event.applicationId,
+        );
+        if (application.evidence.preparationMode !== "application")
+          hiringFail(
+            "Open the application's CV & documents tab and explicitly select application preparation automation before running this action.",
+            409,
+          );
+        await startApplicationPreparation(
+          row.ownerEmail,
+          event.applicationId,
+          {
+            workflowId: node.config.preparationWorkflowId,
+            publishedVersion: node.config.preparationWorkflowVersion,
+            expectedRevision: event.applicationRevision,
+            confirmIndependent: true,
+            confirmLegacySeparation: true,
+          },
+          { runId: row.id, token, chain: [...event.chain, row.workflowId] },
+        );
+        note =
+          "Application preparation started; HR account/contact review is required";
       } else if (!["resume_uploaded", "complete", "stop"].includes(node.kind))
         hiringFail(
           "This application workflow contains an unsupported preparation action.",

@@ -6,7 +6,7 @@ import {
   telegramIntakes,
   telegramConnections,
 } from "@/features/telegram/schema";
-import { and, desc, eq, ne, or, type SQL } from "drizzle-orm";
+import { and, desc, eq, isNull, sql, ne, or, type SQL } from "drizzle-orm";
 
 import { getDatabaseBinding, getDb } from "@/db";
 import {
@@ -404,6 +404,8 @@ export async function PATCH(
         and(
           eq(workflowRuns.resumeId, resume.id),
           eq(workflowRuns.ownerEmail, ownerEmail),
+          isNull(workflowRuns.applicationId), isNull(workflowRuns.eventId),
+          sql`NOT EXISTS(SELECT 1 FROM hiring_applications a WHERE a.owner_email=${ownerEmail} AND a.resume_id=${resume.id} AND a.outcome IS NULL AND json_extract(a.evidence_json,'$.preparationMode')='application')`,
         ),
       );
     const continuation = pending
@@ -429,6 +431,7 @@ export async function PATCH(
             and(
               eq(workflowRuns.id, run.id),
               eq(workflowRuns.updatedAt, run.updatedAt),
+              sql`NOT EXISTS(SELECT 1 FROM hiring_applications a WHERE a.owner_email=${ownerEmail} AND a.resume_id=${resume.id} AND a.outcome IS NULL AND json_extract(a.evidence_json,'$.preparationMode')='application')`,
             ),
           ),
       );
@@ -510,7 +513,7 @@ export async function PATCH(
     ]);
     let preparationRunIds: string[] = [];
     try {
-      preparationRunIds = (await getDb().select({id:workflowRuns.id}).from(workflowRuns).where(and(eq(workflowRuns.ownerEmail,ownerEmail),eq(workflowRuns.resumeId,resume.id),eq(workflowRuns.status,"queued")))).map(r=>r.id);
+      preparationRunIds = (await getDb().select({id:workflowRuns.id}).from(workflowRuns).where(and(eq(workflowRuns.ownerEmail,ownerEmail),eq(workflowRuns.resumeId,resume.id),isNull(workflowRuns.applicationId),isNull(workflowRuns.eventId),eq(workflowRuns.status,"queued")))).map(r=>r.id);
     } catch {
       // Approval already committed. Scheduled processing can recover queued runs.
       console.warn("Approval saved; immediate preparation scheduling deferred.");

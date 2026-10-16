@@ -445,6 +445,7 @@ async function verifyDeployment(hostname, authenticatedCookie) {
   }
 
   for (const path of [
+    "/api/hiring/applications",
     "/api/forms",
     "/api/workflows",
     "/api/workflow-runs",
@@ -455,6 +456,9 @@ async function verifyDeployment(hostname, authenticatedCookie) {
     "/api/interviews",
     "/api/ai-field-detection/runs",
     "/",
+    "/hiring",
+    "/hiring/legacy",
+    "/hiring/pipelines",
     "/forms",
     "/submissions",
     "/administration",

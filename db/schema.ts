@@ -55,6 +55,20 @@ export const hiringReceipts = sqliteTable("hiring_receipts", {
   id: text("id").primaryKey(), ownerEmail: text("owner_email").notNull(), requestHash: text("request_hash").notNull(),
   applicationId: text("application_id").notNull().references(() => hiringApplications.id, { onDelete: "cascade" }),
 }, t => [index("hiring_receipts_application_idx").on(t.applicationId)]);
+export const hiringPreparations = sqliteTable("hiring_preparations", {
+  runId: text("run_id").primaryKey().references(() => workflowRuns.id, { onDelete: "restrict" }),
+  applicationId: text("application_id").notNull().references(() => hiringApplications.id, { onDelete: "cascade" }),
+  ownerEmail: text("owner_email").notNull(),
+  resumeId: text("resume_id").notNull().references(() => resumes.id, { onDelete: "restrict" }),
+  createdAt: text("created_at").notNull(),
+}, t => [index("hiring_preparations_application_idx").on(t.applicationId)]);
+export const hiringApplicationForms = sqliteTable("hiring_application_forms", {
+  id: text("id").primaryKey(),
+  applicationId: text("application_id").notNull().references(() => hiringApplications.id, { onDelete: "cascade" }),
+  assignmentId: text("assignment_id").notNull().references(() => formAssignments.id, { onDelete: "restrict" }),
+  provenance: text("provenance").notNull(),
+  createdAt: text("created_at").notNull(),
+}, t => [uniqueIndex("hiring_application_form_unique").on(t.applicationId, t.assignmentId)]);
 export const hiringGuards = sqliteTable("hiring_guards", {
   id: text("id").primaryKey(), checkPassed: integer("check_passed").notNull(),
 }, t => [check("hiring_checked", sql`${t.checkPassed}=1`)]);
@@ -288,7 +302,9 @@ export const recipientProfiles = sqliteTable(
 export const formAssignments = sqliteTable(
   "form_assignments",
   {
+    // Keep the non-null ID first so nullable joins retain legacy assignments.
     id: text("id").primaryKey(),
+    applicationId: text("application_id").references(() => hiringApplications.id, { onDelete: "set null" }),
     userId: text("user_id")
       .notNull()
       .references(() => user.id, { onDelete: "cascade" }),
@@ -327,7 +343,8 @@ export const formAssignments = sqliteTable(
       table.userId,
       table.templateVersionId,
       table.roleId,
-    ),
+    ).where(sql`${table.applicationId} IS NULL`),
+    uniqueIndex("form_assignments_application_unique").on(table.applicationId, table.templateVersionId, table.roleId).where(sql`${table.applicationId} IS NOT NULL`),
     index("form_assignments_user_status_idx").on(table.userId, table.status),
     index("form_assignments_user_assigned_idx").on(
       table.userId,
@@ -798,6 +815,7 @@ export const interviewRounds = sqliteTable(
   "interview_rounds",
   {
     id: text("id").primaryKey(),
+    stageId: text("stage_id"),
     processId: text("process_id")
       .notNull()
       .references(() => interviewProcesses.id, { onDelete: "restrict" }),

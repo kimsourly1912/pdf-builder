@@ -63,7 +63,7 @@ export const STEP_GROUPS = [
     name: "Candidate",
     kinds: ["extract_resume", "review_resume", "create_account", "link_resume"],
   },
-  { name: "Forms", kinds: ["assign_forms"] },
+  { name: "Forms", kinds: ["assign_forms", "prepare_application"] },
   { name: "Communication", kinds: ["send_telegram"] },
   { name: "Logic", kinds: ["condition", "move_stage", "complete", "stop"] },
 ] as const;
@@ -146,6 +146,9 @@ export function previewWorkflow(
             ? "yes"
             : "no";
         step.result = `Condition would follow ${outcome}`;
+        break;
+      case "prepare_application":
+        step.result="Would start the pinned application preparation and wait for HR account/contact review. No accounts, forms or messages are created in this preview.";
         break;
       case "move_stage":
         step.result = "Would request the configured stage move. Live evidence and concurrent changes must be checked during execution.";

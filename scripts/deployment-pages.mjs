@@ -1,5 +1,8 @@
 export const MANAGEMENT_PAGE_TITLES = {
   "/": "HR Home",
+  "/hiring": "Hiring pipeline",
+  "/hiring/legacy": "Legacy hiring records",
+  "/hiring/pipelines": "Hiring pipelines",
   "/forms": "Form templates",
   "/submissions": "Submitted forms",
   "/administration": "Administration",

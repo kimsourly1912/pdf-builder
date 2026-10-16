@@ -47,6 +47,8 @@ type BoardData = {
 };
 const defaults = {
   pipeline: "",
+  queue: "pipeline",
+  candidate: "",
   job: "",
   search: "",
   stage: "",
@@ -97,7 +99,10 @@ export function HiringBoard({
         config?.versions.find((v) => !v.archived)?.id ||
         "";
   const version = config?.versions.find((v) => v.id === versionId),
-    view = version && filters.closed !== "true" ? filters.view : "list";
+    view =
+      version && filters.closed !== "true" && filters.queue === "pipeline"
+        ? filters.view
+        : "list";
   const query = new URLSearchParams({
     ...filters,
     pipeline: versionId,
@@ -145,6 +150,9 @@ export function HiringBoard({
         actions={
           <>
             <Button variant="outline" asChild>
+              <Link href="/hiring/legacy">Legacy records</Link>
+            </Button>
+            <Button variant="outline" asChild>
               <Link href="/hiring/pipelines">Manage pipelines & jobs</Link>
             </Button>
             <Button
@@ -190,6 +198,36 @@ export function HiringBoard({
         </div>
       ) : (
         <>
+          <div className="space-y-2">
+            <Label htmlFor="hiring-work-view">Work view</Label>
+            <SelectField
+              id="hiring-work-view"
+              value={filters.queue}
+              onValueChange={(queue) =>
+                setFilters({
+                  queue,
+                  pipeline: queue === "pipeline" ? filters.pipeline : "all",
+                  stage: "",
+                  closed: "false",
+                  page: "1",
+                })
+              }
+            >
+              <SelectFieldOption value="pipeline">Pipeline</SelectFieldOption>
+              <SelectFieldOption value="attention">
+                Needs attention
+              </SelectFieldOption>
+              <SelectFieldOption value="upcoming">
+                Upcoming interviews
+              </SelectFieldOption>
+              <SelectFieldOption value="paused">
+                On hold / interviews paused
+              </SelectFieldOption>
+              <SelectFieldOption value="follow_up">
+                Interview follow-up due
+              </SelectFieldOption>
+            </SelectField>
+          </div>
           <div className="flex flex-wrap items-end gap-3">
             <div className="min-w-52 space-y-2">
               <Label htmlFor="board-pipeline">Pipeline version</Label>
@@ -371,6 +409,13 @@ export function HiringBoard({
                             <Badge variant="outline">Interview linked</Badge>
                           )}
                         </div>
+                        {app.documentCounts &&
+                          app.documentCounts.required > 0 && (
+                            <Badge variant="outline">
+                              {app.documentCounts.accepted}/
+                              {app.documentCounts.required} documents accepted
+                            </Badge>
+                          )}
                         <p className="text-xs text-muted-foreground">
                           {app.stageEnteredAt
                             ? `${Math.max(0, Math.floor((Date.now() - Date.parse(app.stageEnteredAt)) / 86400000))} days in stage`
@@ -378,8 +423,10 @@ export function HiringBoard({
                         </p>
                         <div className="flex flex-wrap gap-2">
                           <Button variant="outline" size="sm" asChild>
-                            <Link href={`/hiring/${app.id}`}>
-                              Open application
+                            <Link
+                              href={`/hiring/${app.id}?tab=${app.nextTask?.tab ?? "overview"}`}
+                            >
+                              {app.nextTask?.label ?? "Open application"}
                             </Link>
                           </Button>
                           <Button
@@ -435,13 +482,38 @@ export function HiringBoard({
                         </p>
                       </TableCell>
                       <TableCell>{app.jobTitle}</TableCell>
-                      <TableCell>{stageName(app)}</TableCell>
+                      <TableCell>
+                        {stageName(app)}
+                        {app.documentCounts &&
+                          app.documentCounts.required > 0 && (
+                            <p className="text-xs text-muted-foreground">
+                              {app.documentCounts.accepted}/
+                              {app.documentCounts.required} documents accepted
+                            </p>
+                          )}
+                      </TableCell>
                       <TableCell>
                         {app.outcome ?? (app.hold ? "On hold" : "Active")}
+                        {app.nextAppointment && (
+                          <p className="text-xs text-muted-foreground">
+                            {new Date(app.nextAppointment).toLocaleString(
+                              undefined,
+                              {
+                                timeZone:
+                                  app.nextAppointmentTimezone ?? undefined,
+                              },
+                            )}{" "}
+                            ({app.nextAppointmentTimezone ?? "local time"})
+                          </p>
+                        )}
                       </TableCell>
                       <TableCell>
                         <Button variant="link" asChild>
-                          <Link href={`/hiring/${app.id}`}>Open</Link>
+                          <Link
+                            href={`/hiring/${app.id}?tab=${app.nextTask?.tab ?? "overview"}`}
+                          >
+                            {app.nextTask?.label ?? "Open"}
+                          </Link>
                         </Button>
                       </TableCell>
                     </TableRow>

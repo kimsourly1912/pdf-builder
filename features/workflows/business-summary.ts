@@ -12,6 +12,7 @@ export function workflowBusinessSummary(graph: WorkflowGraph) {
     kinds.has("link_resume") ? "Link the approved CV" : null,
     kinds.has("assign_forms") ? "Assign selected forms" : null,
     kinds.has("send_telegram") ? "Send Telegram invitation" : null,
+    kinds.has("prepare_application") ? "Start application preparation with HR review" : null,
     kinds.has("move_stage") ? "Move application after checking stage requirements" : null,
   ].filter((action): action is string => !!action);
   return {

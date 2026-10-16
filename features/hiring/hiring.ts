@@ -33,6 +33,7 @@ export const stageSchema = z.object({
   description: text(500).default(""),
   color: z.enum(COLORS).default("neutral"),
   activity: z.enum(ACTIVITY_TYPES).default("custom"),
+  interviewScope: z.enum(["process", "stage"]).optional(),
   entry: z
     .array(z.enum(Object.keys(REQUIREMENTS) as [Requirement, ...Requirement[]]))
     .max(5)
@@ -44,6 +45,7 @@ export const stageSchema = z.object({
 });
 export const definitionSchema = z
   .object({
+    preparationMode: z.enum(["legacy", "application"]).optional(),
     stages: z.array(stageSchema).min(1).max(30),
   })
   .superRefine((v, ctx) => {
@@ -97,6 +99,10 @@ export type HiringJob = {
   archived: boolean;
 };
 export type HiringApplication = {
+  documentCounts?: { required: number; submitted: number; accepted: number };
+  nextTask?: import("./tasks").ApplicationTask;
+  nextAppointment?: string | null;
+  nextAppointmentTimezone?: string | null;
   id: string;
   candidateId: string;
   name: string;
@@ -117,6 +123,8 @@ export type HiringApplication = {
   createdAt: string;
 };
 export type ApplicationEvidence = {
+  preparationMode?: "legacy" | "application";
+  preparationModeSource?: "pipeline" | "owner" | "preparation";
   runId?: string;
   assignments?: string[];
   profileId?: string;
@@ -148,11 +156,13 @@ export function initialDefinition(): PipelineDefinition {
     name,
     activity,
     color,
+    ...(activity === "interview" ? { interviewScope: "stage" as const } : {}),
     description: "",
     entry,
     exit: [],
   });
   return {
+    preparationMode: "application",
     stages: [
       stage("applied", "Applied", "inbox", "neutral"),
       stage("screening", "CV screening", "cv_review", "amber"),

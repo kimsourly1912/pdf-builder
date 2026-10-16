@@ -63,6 +63,7 @@ export const STEP_ICONS = {
   send_telegram: Send,
   condition: GitBranch,
   move_stage: GitBranch,
+  prepare_application: GitBranch,
   complete: CheckCircle2,
   stop: CircleStop,
 };

@@ -264,6 +264,7 @@ export function ProgressDetail({
   }
   return (
     <AppShell displayName={displayName}>
+      <Alert><AlertDescription className="flex flex-wrap items-center justify-between gap-2"><span>Shared candidate profile and original preparation records. Manage job-specific tasks in Hiring pipeline.</span><Button variant="outline" size="sm" asChild><Link href={`/hiring?pipeline=all&view=list&candidate=${candidateId}`}>View hiring applications</Link></Button></AlertDescription></Alert>
       <Link
         href="/candidates"
         className="flex items-center gap-2 text-sm text-muted-foreground"

@@ -55,7 +55,7 @@ const worker = {
         }
       }
       const durationMs = requestDurationMs(startedAt);
-      if (context && response.ok && request.method !== "GET" && (/^\/api\/hiring\/applications(?:\/[^/]+)?$/.test(path) || /^\/api\/resumes\/[^/]+$/.test(path))) {
+      if (context && response.ok && ["POST", "PATCH", "PUT", "DELETE"].includes(request.method) && (/^\/api\/hiring\/applications(?:\/[^/]+)?(?:\/preparation|\/interviews)?$/.test(path) || /^\/api\/resumes\/[^/]+$/.test(path) || /^\/api\/interviews\/[^/]+$/.test(path) || /^\/api\/submissions\/[^/]+\/review$/.test(path) || /^\/api\/fill\/[^/]+$/.test(path) || /^\/api\/workflow-runs\/[^/]+(?:\/review)?$/.test(path))) {
         context.waitUntil((async () => { await dispatchApplicationEvents(); await processPendingWorkflowRuns({ applicationOnly: true }); })().catch(() => console.error("Application routing processing unavailable")));
       }
       console.info("Request completed", {

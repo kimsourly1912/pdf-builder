@@ -1,4 +1,5 @@
 "use client";
+import { WorkflowPreparationSettings } from "@/features/hiring/workflow-preparation-settings";
 import { SelectField, SelectFieldOption } from "@/components/patterns/select-field";
 import { Checkbox } from "@/components/ui/checkbox";
 import Link from "next/link";
@@ -252,6 +253,7 @@ export function StepSettings(props: {
           </p>
         </div>
       )}
+      {node.kind === "prepare_application" && <WorkflowPreparationSettings config={config} onChange={props.onChange}/>}
       {((node.kind==="resume_uploaded"&&isApplicationTrigger(config.trigger??""))||node.kind==="move_stage")&&<WorkflowStageSettings node={node} pipelineVersionId={props.pipelineVersionId} onChange={props.onChange}/>}
       {node.kind === "review_resume" && (
         <p className="text-sm text-muted-foreground">

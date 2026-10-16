@@ -74,7 +74,11 @@ type ReviewValues = {
   existingAccountId: string;
   credentialsSaved: boolean;
 };
-export function WorkflowReview(props: { displayName: string; runId: string }) {
+export function WorkflowReview(props: { displayName: string; runId: string; embedded?: boolean; onCompleted?: () => void }) {
+  const content = <ReviewContent {...props} />;
+  return props.embedded ? content : <AppShell displayName={props.displayName}>{content}</AppShell>;
+}
+function ReviewContent(props: { runId: string; onCompleted?: () => void }) {
   const [data, setData] = useState<ReviewData | null>(null);
   const [error, setError] = useState("");
   const [revision, setRevision] = useState(0);
@@ -90,7 +94,7 @@ export function WorkflowReview(props: { displayName: string; runId: string }) {
     return () => controller.abort();
   }, [props.runId, revision]);
   return (
-    <AppShell displayName={props.displayName}>
+    <>
       {error && (
         <Alert variant="destructive">
           <AlertDescription>{error}</AlertDescription>
@@ -100,6 +104,7 @@ export function WorkflowReview(props: { displayName: string; runId: string }) {
         <ReviewBody
           key={`${data.run.id}-${revision}`}
           data={data}
+          onCompleted={props.onCompleted}
           reload={() => {
             setData(null);
             setRevision((v) => v + 1);
@@ -110,7 +115,7 @@ export function WorkflowReview(props: { displayName: string; runId: string }) {
           {error ? "Review unavailable." : "Loading CV review…"}
         </p>
       )}
-    </AppShell>
+    </>
   );
 }
 
@@ -140,9 +145,11 @@ const CHECKS = [
 function ReviewBody({
   data,
   reload,
+  onCompleted,
 }: {
   data: ReviewData;
   reload: () => void;
+  onCompleted?: () => void;
 }) {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -276,7 +283,8 @@ function ReviewBody({
         reload();
       } else {
         form.setFieldValue("temporaryPassword", "");
-        window.location.assign(`/workflows/${data.run.workflowId}?tab=runs`);
+        if (onCompleted) onCompleted();
+        else window.location.assign(`/workflows/${data.run.workflowId}?tab=runs`);
       }
     } catch (e) {
       setError(errorText(e));

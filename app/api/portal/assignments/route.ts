@@ -23,6 +23,7 @@ export async function GET(request: Request) {
     const rows = await getDb()
       .select({
         id: formAssignments.id,
+        applicationJob: sql<string|null>`(SELECT COALESCE(j.title,'Application documents') FROM hiring_applications a LEFT JOIN hiring_jobs j ON j.id=a.job_id AND j.owner_email=a.owner_email WHERE a.id=${formAssignments.applicationId} AND a.owner_email=${templates.ownerEmail})`,
         correctionReason: submissionReviews.reason,
         reviewStatus: sql<string>`(SELECT h.status FROM submission_reviews h JOIN submissions s ON s.id=h.submission_id WHERE s.recipient_link_id=${recipientLinks.id} ORDER BY s.submitted_at DESC LIMIT 1)`,
         templateId: formAssignments.templateId,
@@ -71,6 +72,7 @@ export async function GET(request: Request) {
             : row.assignmentStatus;
         return {
           id: row.id,
+          applicationJob: row.applicationJob,
           correctionReason: row.correctionReason,
           reviewStatus: row.reviewStatus ?? "pending",
           templateId: row.templateId,

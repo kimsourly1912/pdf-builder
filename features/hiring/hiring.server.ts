@@ -1,3 +1,12 @@
+import {
+  attentionSql,
+  failedSql,
+  nextAppointmentSql,
+  nextAppointmentZoneSql,
+  interviewPausedSql,
+  followUpSql,
+} from "./work.server";
+import { applicationTask } from "./tasks";
 import "server-only";
 import { z } from "zod";
 import { getDatabaseBinding, type DatabaseStatement } from "@/db";
@@ -6,6 +15,7 @@ import {
   detailProgress,
   listProgress,
 } from "@/features/candidate-progress/progress.server";
+import type { WorkflowGraph, RunContext } from "@/features/workflows/workflow";
 import { preparationProofSql } from "@/features/interviews/preparation-proof.server";
 import {
   idSchema,
@@ -390,8 +400,11 @@ export async function applicationCandidates(
       }>()
   ).results;
 }
-const applicationSelect = `SELECT a.*,c.full_name name,c.email,r.file_name,j.title job_title FROM hiring_applications a JOIN candidates c ON c.id=a.candidate_id AND c.owner_email=a.owner_email JOIN resumes r ON r.id=a.resume_id AND r.owner_email=a.owner_email AND r.candidate_id=a.candidate_id LEFT JOIN hiring_jobs j ON j.id=a.job_id AND j.owner_email=a.owner_email WHERE a.owner_email=?`;
+const applicationSelect = `SELECT a.*,${failedSql} failed,${nextAppointmentSql} next_appointment,${nextAppointmentZoneSql} next_appointment_timezone,c.full_name name,c.email,r.file_name,j.title job_title FROM hiring_applications a JOIN candidates c ON c.id=a.candidate_id AND c.owner_email=a.owner_email JOIN resumes r ON r.id=a.resume_id AND r.owner_email=a.owner_email AND r.candidate_id=a.candidate_id LEFT JOIN hiring_jobs j ON j.id=a.job_id AND j.owner_email=a.owner_email WHERE a.owner_email=?`;
 type ApplicationRow = {
+  failed: number;
+  next_appointment: string | null;
+  next_appointment_timezone: string | null;
   id: string;
   candidate_id: string;
   name: string;
@@ -414,6 +427,8 @@ type ApplicationRow = {
 function appDto(a: ApplicationRow): HiringApplication {
   return {
     id: a.id,
+    nextAppointment: a.next_appointment,
+    nextAppointmentTimezone: a.next_appointment_timezone,
     candidateId: a.candidate_id,
     name: a.name,
     email: a.email,
@@ -449,7 +464,20 @@ export async function listApplications(owner: string, query: URLSearchParams) {
   const search = (query.get("search") ?? "").slice(0, 200),
     closed = query.get("closed") === "true";
   const stage = query.get("stage") || "";
-  const clause = ` AND (?='' OR a.pipeline_version_id=?) AND (?='' OR a.job_id=?) AND (?='' OR a.candidate_id=?) AND instr(lower(c.full_name||' '||c.email||' '||coalesce(j.title,'')),lower(?))>0 AND ${closed ? "a.outcome IS NOT NULL" : "a.outcome IS NULL"} AND NOT EXISTS(SELECT 1 FROM archive_records x WHERE x.entity_type='resume' AND x.entity_id=r.id)`;
+  const queue = query.get("queue") ?? "pipeline";
+  const queueClause =
+    queue === "attention"
+      ? ` AND ${attentionSql}`
+      : queue === "upcoming"
+        ? ` AND ${nextAppointmentSql} IS NOT NULL`
+        : queue === "paused"
+          ? ` AND (a.hold IS NOT NULL OR ${interviewPausedSql})`
+          : queue === "follow_up"
+            ? ` AND ${followUpSql}`
+            : "";
+  const clause =
+    queueClause +
+    ` AND (?='' OR a.pipeline_version_id=?) AND (?='' OR a.job_id=?) AND (?='' OR a.candidate_id=?) AND instr(lower(c.full_name||' '||c.email||' '||coalesce(j.title,'')),lower(?))>0 AND ${closed ? "a.outcome IS NOT NULL" : "a.outcome IS NULL"} AND NOT EXISTS(SELECT 1 FROM archive_records x WHERE x.entity_type='resume' AND x.entity_id=r.id)`;
   const values = [
       owner,
       versionId,
@@ -481,13 +509,26 @@ export async function listApplications(owner: string, query: URLSearchParams) {
       .prepare(
         applicationSelect +
           clause +
-          " AND (?='' OR a.stage_id=?) ORDER BY a.updated_at DESC,a.id LIMIT 50 OFFSET ?",
+          ` AND (?='' OR a.stage_id=?) ORDER BY ${queue === "upcoming" ? "next_appointment ASC," : ""}a.updated_at DESC,a.id LIMIT 50 OFFSET ?`,
       )
       .bind(...values, stage, stage, (page - 1) * 50)
       .all<ApplicationRow>()
   ).results;
+  const config = await hiringConfiguration(owner);
+  const items = await Promise.all(
+    rows.map(async (row) => {
+      const app = appDto(row),
+        stage = config.versions
+          .find((v) => v.id === app.pipelineVersionId)
+          ?.definition.stages.find((s) => s.id === app.stageId);
+      const facts = await applicationFacts(owner, app);
+      app.documentCounts = facts.documentCounts;
+      app.nextTask = applicationTask(app, stage, facts, !!row.failed);
+      return app;
+    }),
+  );
   return {
-    items: rows.map(appDto),
+    items,
     total,
     page,
     pageSize: 50,
@@ -516,7 +557,7 @@ export async function applicationFacts(owner: string, app: HiringApplication) {
   const db = getDatabaseBinding();
   const cv = await db
     .prepare(
-      `SELECT p.id FROM candidate_profile_versions p JOIN resumes r ON r.id=p.resume_id JOIN candidates c ON c.id=p.candidate_id WHERE r.id=? AND c.id=? AND p.owner_email=? AND r.owner_email=p.owner_email AND c.owner_email=p.owner_email AND p.created_by_email=p.owner_email AND p.verification_status='verified' AND r.verification_status='verified' AND c.verification_status='verified' AND r.duplicate_candidate_id IS NULL AND p.created_at>=r.updated_at AND p.created_at>=c.updated_at ORDER BY p.version_number DESC LIMIT 1`,
+      `SELECT p.id FROM candidate_profile_versions p JOIN resumes r ON r.id=p.resume_id JOIN candidates c ON c.id=p.candidate_id WHERE r.id=? AND c.id=? AND p.owner_email=? AND r.owner_email=p.owner_email AND c.owner_email=p.owner_email AND p.created_by_email=p.owner_email AND p.verification_status='verified' AND r.verification_status='verified' AND c.verification_status='verified' AND r.duplicate_candidate_id IS NULL AND p.created_at>=r.updated_at AND p.created_at>=c.updated_at AND NOT EXISTS(SELECT 1 FROM archive_records x WHERE x.entity_type='resume' AND x.entity_id=r.id) ORDER BY p.version_number DESC LIMIT 1`,
     )
     .bind(app.resumeId, app.candidateId, owner)
     .first<{ id: string }>();
@@ -524,25 +565,52 @@ export async function applicationFacts(owner: string, app: HiringApplication) {
   const forms = (
     await db
       .prepare(
-        `SELECT f.id,f.status,(SELECT h.status FROM submission_reviews h JOIN submissions s ON s.id=h.submission_id WHERE s.recipient_link_id=f.recipient_link_id AND h.owner_email=? AND h.reviewed_by=? ORDER BY s.submitted_at DESC,s.id DESC LIMIT 1) review_status FROM form_assignments f JOIN recipient_profiles p ON p.user_id=f.user_id JOIN candidates c ON c.user_id=f.user_id AND c.owner_email=p.created_by_email JOIN templates t ON t.id=f.template_id AND t.owner_email=p.created_by_email WHERE f.id IN (SELECT value FROM json_each(?)) AND c.id=? AND p.created_by_email=? AND t.archived_at IS NULL`,
+        `SELECT f.id,f.status,f.template_id,f.template_version_id,f.role_id,f.candidate_profile_version_id,(SELECT h.status FROM submission_reviews h JOIN submissions s ON s.id=h.submission_id WHERE s.recipient_link_id=f.recipient_link_id AND h.owner_email=? AND h.reviewed_by=? ORDER BY s.submitted_at DESC,s.id DESC LIMIT 1) review_status FROM form_assignments f JOIN user u ON u.id=f.user_id AND COALESCE(u.banned,0)=0 JOIN recipient_profiles p ON p.user_id=f.user_id JOIN candidates c ON c.user_id=f.user_id AND c.owner_email=p.created_by_email JOIN templates t ON t.id=f.template_id AND t.owner_email=p.created_by_email WHERE f.id IN (SELECT value FROM json_each(?)) AND c.id=? AND p.created_by_email=? AND t.archived_at IS NULL AND NOT EXISTS(SELECT 1 FROM archive_records x WHERE (x.entity_type='account' AND x.entity_id=f.user_id) OR (x.entity_type='template' AND x.entity_id=f.template_id) OR (x.entity_type='submission' AND x.entity_id=(SELECT sub.id FROM submissions sub WHERE sub.recipient_link_id=f.recipient_link_id ORDER BY sub.submitted_at DESC,sub.id DESC LIMIT 1)))`,
       )
       .bind(owner, owner, JSON.stringify(assignments), app.candidateId, owner)
-      .all<{ id: string; status: string; review_status: string | null }>()
+      .all<{
+        id: string;
+        status: string;
+        review_status: string | null;
+        template_id: string;
+        template_version_id: string;
+        role_id: string;
+        candidate_profile_version_id: string | null;
+      }>()
   ).results;
   const run = app.evidence.runId
     ? await db
         .prepare(
-          "SELECT status FROM workflow_runs WHERE id=? AND owner_email=? AND resume_id=? AND event_id IS NULL AND NOT EXISTS(SELECT 1 FROM archive_records WHERE entity_type='workflow_run' AND entity_id=workflow_runs.id)",
+          "SELECT status,context_json,graph_json,EXISTS(SELECT 1 FROM telegram_deliveries d WHERE d.run_id=workflow_runs.id AND d.owner_email=workflow_runs.owner_email AND d.status='sent') invitation_sent FROM workflow_runs WHERE id=? AND owner_email=? AND resume_id=? AND event_id IS NULL AND NOT EXISTS(SELECT 1 FROM archive_records WHERE entity_type='workflow_run' AND entity_id=workflow_runs.id)",
         )
         .bind(app.evidence.runId, owner, app.resumeId)
-        .first<{ status: string }>()
+        .first<{
+          status: string;
+          context_json: string;
+          graph_json: string;
+          invitation_sent: number;
+        }>()
     : null;
+  const selectedStage = await db
+    .prepare(
+      "SELECT json_extract(s.value,'$.interviewScope') scope FROM hiring_pipeline_versions v,json_each(v.definition_json,'$.stages') s WHERE v.id=? AND v.owner_email=? AND json_extract(s.value,'$.id')=?",
+    )
+    .bind(app.pipelineVersionId, owner, app.stageId)
+    .first<{ scope: string | null }>();
+  const scopedRounds = selectedStage?.scope === "stage";
+  const roundScope =
+    "r.process_id=p.id" + (scopedRounds ? " AND r.stage_id=?" : "");
   const interview = app.interviewId
     ? await db
         .prepare(
-          `SELECT p.rounds_complete,p.outcome, (SELECT count(*) FROM interview_rounds r WHERE r.process_id=p.id AND r.status='completed') completed, (SELECT count(*) FROM interview_rounds r,json_each(r.interviewers_json) j WHERE r.process_id=p.id AND r.status='completed' AND NOT EXISTS(SELECT 1 FROM interview_feedback f WHERE f.round_id=r.id AND f.interviewer=j.value AND f.status='submitted')) missing,(SELECT count(*) FROM interview_rounds r WHERE r.process_id=p.id AND r.status='scheduled') scheduled FROM interview_processes p WHERE p.id=? AND p.candidate_id=? AND p.owner_email=?`,
+          `SELECT p.rounds_complete,p.outcome, (SELECT count(*) FROM interview_rounds r WHERE ${roundScope} AND r.status='completed') completed, (SELECT count(*) FROM interview_rounds r,json_each(r.interviewers_json) j WHERE ${roundScope} AND r.status='completed' AND NOT EXISTS(SELECT 1 FROM interview_feedback f WHERE f.round_id=r.id AND f.interviewer=j.value AND f.status='submitted')) missing,(SELECT count(*) FROM interview_rounds r WHERE ${roundScope} AND r.status='scheduled') scheduled FROM interview_processes p WHERE p.id=? AND p.candidate_id=? AND p.owner_email=?`,
         )
-        .bind(app.interviewId, app.candidateId, owner)
+        .bind(
+          ...(scopedRounds ? [app.stageId, app.stageId, app.stageId] : []),
+          app.interviewId,
+          app.candidateId,
+          owner,
+        )
         .first<{
           rounds_complete: number;
           outcome: string | null;
@@ -551,23 +619,41 @@ export async function applicationFacts(owner: string, app: HiringApplication) {
           scheduled: number;
         }>()
     : null;
-  const preparation =
-    app.evidence.runId || assignments.length
-      ? await detailProgress(owner, app.candidateId)
-      : null;
+  const graph = run ? (JSON.parse(run.graph_json) as WorkflowGraph) : null;
+  const context = run ? (JSON.parse(run.context_json) as RunContext) : null;
+  const targets =
+    graph?.nodes.flatMap((n) =>
+      n.kind === "assign_forms" ? (n.config.forms ?? []) : [],
+    ) ?? [];
+  const preparationReady =
+    !!cv &&
+    forms.length === assignments.length &&
+    (!run ||
+      (run.status === "completed" &&
+        context?.profileVersionId === cv.id &&
+        !context.rejection)) &&
+    (run !== null || forms.length > 0) &&
+    targets.every((t) =>
+      forms.some(
+        (f) =>
+          f.template_id === t.templateId &&
+          f.template_version_id === t.versionId &&
+          f.role_id === t.roleId,
+      ),
+    ) &&
+    forms.every((f) => f.candidate_profile_version_id === cv?.id) &&
+    (!graph?.nodes.some((n) => n.kind === "send_telegram") ||
+      !!run?.invitation_sent);
   return {
+    documentCounts: {
+      required: assignments.length,
+      submitted: forms.filter((f) => f.status === "completed").length,
+      accepted: forms.filter(
+        (f) => f.status === "completed" && f.review_status === "accepted",
+      ).length,
+    },
     cv_approved: !!cv,
-    preparation_ready:
-      !!cv &&
-      !!preparation &&
-      preparation.selectedCv.id === app.resumeId &&
-      (preparation.run?.id ?? null) === (app.evidence.runId ?? null) &&
-      preparation.facts.preparationCurrent &&
-      preparation.facts.runStatus === "completed" &&
-      (!run || run.status === "completed") &&
-      preparation.facts.assigned === preparation.facts.required &&
-      (!preparation.facts.invitationRequired ||
-        preparation.facts.invitationSent),
+    preparation_ready: preparationReady,
     forms_submitted:
       assignments.length > 0 &&
       forms.length === assignments.length &&
@@ -734,7 +820,10 @@ export async function createApplication(
       hold: null,
       offer: "none",
       interviewId: null,
-      evidence: {},
+      evidence: {
+        preparationMode: version.definition.preparationMode ?? "legacy",
+        preparationModeSource: "pipeline",
+      },
       createdAt: at,
     };
   const proof = await applicationProof(owner, app);
@@ -848,7 +937,8 @@ export async function mutateApplication(
         version.definition.stages.indexOf(oldStage)
     )
       reasonText(body.reason, true);
-    await requireEvidence(owner, app, [...oldStage.exit, ...target.entry]);
+    await requireEvidence(owner, app, oldStage.exit);
+    await requireEvidence(owner, { ...app, stageId: target.id }, target.entry);
     next.stageId = target.id;
     next.stageEnteredAt = nowIso();
     from = app.stageId;
@@ -881,7 +971,22 @@ export async function mutateApplication(
         "Map this application to a stage in the job's published pipeline.",
       );
     if (app.jobId) reasonText(body.reason, true);
-    await requireEvidence(owner, app, [...oldStage.exit, ...targetStage.entry]);
+    await requireEvidence(owner, app, oldStage.exit);
+    await requireEvidence(
+      owner,
+      { ...app, pipelineVersionId: target.id, stageId: targetStage.id },
+      targetStage.entry,
+    );
+    if (
+      !app.evidence.runId &&
+      !app.evidence.assignments?.length &&
+      app.evidence.preparationModeSource !== "owner"
+    )
+      next.evidence = {
+        ...app.evidence,
+        preparationMode: target.definition.preparationMode ?? "legacy",
+        preparationModeSource: "pipeline",
+      };
     next.jobId = job.id;
     next.jobTitle = job.title;
     next.pipelineVersionId = target.id;
@@ -921,6 +1026,11 @@ export async function mutateApplication(
     next.hold = null;
     kind = "application_resumed";
   } else if (body.action === "close") {
+    if (app.nextAppointment)
+      hiringFail(
+        "Cancel or complete the scheduled interview appointment before closing this application. Open Interviews to resolve it.",
+        409,
+      );
     if (app.outcome) hiringFail("This application is already closed.");
     next.outcome = parse(
       z.enum(["hired", "rejected", "withdrawn"]),
@@ -952,6 +1062,33 @@ export async function mutateApplication(
     );
     reasonText(body.reason, true);
     kind = "offer_recorded";
+  } else if (body.action === "preparation_mode") {
+    if (app.hold || app.outcome)
+      hiringFail("Resume or reopen before changing preparation automation.");
+    if (body.mode !== "application" && body.mode !== "legacy")
+      hiringFail("Choose application or legacy preparation.");
+    if (body.confirmCutover !== true)
+      hiringFail(
+        "Confirm the effect on future CV-approval preparation for this CV.",
+      );
+    reasonText(body.reason, true);
+    const active = await db
+      .prepare(
+        "SELECT id FROM workflow_runs WHERE owner_email=? AND resume_id=? AND event_id IS NULL AND status IN ('queued','running','waiting_review') AND (graph_json LIKE '%assign_forms%' OR graph_json LIKE '%create_account%') LIMIT 1",
+      )
+      .bind(owner, app.resumeId)
+      .first();
+    if (active)
+      hiringFail(
+        "Finish or resolve active preparation before changing its automation ownership.",
+        409,
+      );
+    next.evidence = {
+      ...app.evidence,
+      preparationMode: body.mode,
+      preparationModeSource: "owner",
+    };
+    kind = "preparation_mode_changed";
   } else if (body.action === "link_preparation") {
     if (app.outcome || app.hold)
       hiringFail("Reopen or resume before linking preparation.");
@@ -976,6 +1113,7 @@ export async function mutateApplication(
         "Confirm that this application should use these existing form assignments.",
       );
     next.evidence = {
+      preparationMode: "legacy",
       runId: current.run?.id,
       assignments: current.forms
         .filter((f) => f.isRequired !== false)
@@ -1042,6 +1180,15 @@ export async function mutateApplication(
         id,
         owner,
       ),
+    ...(body.action === "link_preparation"
+      ? (next.evidence.assignments ?? []).map((assignmentId) =>
+          db
+            .prepare(
+              "INSERT OR IGNORE INTO hiring_application_forms(id,application_id,assignment_id,provenance,created_at) VALUES(?,?,?,'confirmed_reuse',?)",
+            )
+            .bind(crypto.randomUUID(), id, assignmentId, nowIso()),
+        )
+      : []),
     applicationEvent(owner, next, kind, from, reason, chain, false, {
       ...(body.action === "change_cv"
         ? { previousCvId: app.resumeId, previousCvName: app.fileName }
@@ -1092,7 +1239,7 @@ export async function applicationDetail(owner: string, id: string) {
   const executions = (
     await db
       .prepare(
-        "SELECT id,workflow_id workflowId,workflow_name name,status,error_message error,created_at createdAt FROM workflow_runs WHERE application_id=? AND owner_email=? ORDER BY created_at DESC LIMIT 20",
+        "SELECT id,workflow_id workflowId,workflow_name name,status,error_message error,created_at createdAt,EXISTS(SELECT 1 FROM archive_records x WHERE x.entity_type='workflow_run' AND x.entity_id=workflow_runs.id) archived FROM workflow_runs WHERE application_id=? AND owner_email=? ORDER BY created_at DESC LIMIT 20",
       )
       .bind(id, owner)
       .all<{
@@ -1100,6 +1247,7 @@ export async function applicationDetail(owner: string, id: string) {
         workflowId: string;
         name: string;
         status: string;
+        archived: number;
         error: string | null;
         createdAt: string;
       }>()

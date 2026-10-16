@@ -1,5 +1,5 @@
 import type { ResumeCandidateSummary } from "@/features/resumes/resume.types";
-export const APPLICATION_TRIGGERS = ["application_received", "job_assigned", "stage_entered", "stage_left", "application_cv_approved"] as const;
+export const APPLICATION_TRIGGERS = ["application_received", "job_assigned", "stage_entered", "stage_left", "application_cv_approved", "application_preparation_completed", "application_forms_submitted", "application_forms_accepted", "application_interview_ready", "application_interview_decided"] as const;
 export type ApplicationTrigger = (typeof APPLICATION_TRIGGERS)[number];
 export function isApplicationTrigger(value: string): value is ApplicationTrigger {
   return (APPLICATION_TRIGGERS as readonly string[]).includes(value);
@@ -15,6 +15,7 @@ export const STEP_KINDS = [
   "send_telegram",
   "condition",
   "move_stage",
+  "prepare_application",
   "complete",
   "stop",
 ] as const;
@@ -43,6 +44,11 @@ export const TRIGGER_LABELS: Record<WorkflowTrigger, string> = {
   stage_entered: "Application enters a stage",
   stage_left: "Application leaves a stage",
   application_cv_approved: "Application CV approved by HR",
+  application_preparation_completed: "Application preparation completed",
+  application_forms_submitted: "All required application forms submitted",
+  application_forms_accepted: "All required application forms accepted",
+  application_interview_ready: "Interview round feedback complete",
+  application_interview_decided: "Application interview decision recorded",
 };
 export type ResumeEditorApproval = {
   resumeRevision: string;
@@ -61,6 +67,9 @@ export type StepConfig = {
   forms?: FormTarget[];
   skipExisting?: boolean;
   field?: "source" | "appliedPosition" | "stageId" | "jobId";
+  preparationWorkflowId?: string;
+  preparationWorkflowVersion?: number;
+  preparationWorkflowName?: string;
   pipelineVersionId?: string;
   stageId?: string;
   fromStageId?: string;
@@ -102,6 +111,8 @@ export type StepResult = {
   outcome?: WorkflowEdge["outcome"];
 };
 export type RunContext = {
+  preparationApplicationId?: string;
+  applicationChain?: string[];
   applicationEvent?: { id: string; applicationId: string; pipelineVersionId: string; stageId: string; fromStageId: string | null; jobId: string | null; applicationRevision: number; chain: string[] };
   reviewStartedAt?: string;
   preparationCompletedAt?: string;
@@ -173,6 +184,7 @@ export const STEP_LABELS: Record<StepKind, string> = {
   send_telegram: "Send Telegram invitation",
   condition: "Condition",
   move_stage: "Move application",
+  prepare_application: "Prepare application account & forms",
   complete: "Complete",
   stop: "Stop",
 };
@@ -186,6 +198,7 @@ export const STEP_DESCRIPTIONS: Record<StepKind, string> = {
   send_telegram: "Send account access to a confirmed Telegram contact",
   condition: "Branch by source, position, job or application stage",
   move_stage: "Move an application after checking the stage requirements",
+  prepare_application: "Start a pinned preparation workflow with application-specific forms and HR review",
   complete: "Finish preparation; form submissions are tracked separately",
   stop: "End this path",
 };
@@ -329,6 +342,10 @@ export function parseGraph(
       config.trigger =
         (n.config.trigger as WorkflowTrigger | undefined) ?? "staff_upload";
     }
+    if (n.kind === "prepare_application" && n.config.preparationWorkflowVersion !== undefined) {
+      if (!Number.isInteger(n.config.preparationWorkflowVersion) || Number(n.config.preparationWorkflowVersion) < 1) return null;
+      config.preparationWorkflowVersion = Number(n.config.preparationWorkflowVersion);
+    }
     if (n.kind === "send_telegram") {
       if (
         n.config.message !== undefined &&
@@ -354,7 +371,7 @@ export function parseGraph(
       if (n.config.operator !== undefined && !["is", "is_not"].includes(String(n.config.operator))) return null;
       if (n.config.operator !== undefined) config.operator = n.config.operator === "is_not" ? "is_not" : "is";
     }
-    for (const key of ["pipelineVersionId", "stageId", "fromStageId"] as const) {
+    for (const key of ["pipelineVersionId", "stageId", "fromStageId", "preparationWorkflowId"] as const) {
       if (n.config[key] !== undefined) {
         if (n.config[key] !== "" && !validId(n.config[key])) return null;
         config[key] = n.config[key] as string;
@@ -430,9 +447,9 @@ export function graphIssues(graph: WorkflowGraph): string[] {
       issues.add("The starting event cannot have incoming connections.");
   }
   for (const n of graph.nodes) {
-    if (application && !["resume_uploaded", "condition", "move_stage", "complete", "stop"].includes(n.kind))
-      issues.add("Application routing supports conditions, Move application, Complete and Stop. Use the existing CV-approval workflow for account and form preparation.");
-    if (!application && (n.kind === "move_stage" || ["stageId", "jobId"].includes(n.config.field ?? "")))
+    if (application && !["resume_uploaded", "condition", "move_stage", "prepare_application", "complete", "stop"].includes(n.kind))
+      issues.add("Application workflows support conditions, Move application, Prepare application, Complete and Stop.");
+    if (!application && (["move_stage", "prepare_application"].includes(n.kind) || ["stageId", "jobId"].includes(n.config.field ?? "")))
       issues.add("Choose an application starting event before using application stages or jobs.");
     if (application && n.kind === "resume_uploaded" && !n.config.pipelineVersionId)
       issues.add("Choose a published hiring pipeline for this application event.");
@@ -440,6 +457,7 @@ export function graphIssues(graph: WorkflowGraph): string[] {
       issues.add("Choose the stage that starts this workflow.");
     if (n.kind === "move_stage" && (!n.config.stageId || !n.config.fromStageId))
       issues.add("Choose both the expected source stage and destination for Move application.");
+    if (n.kind === "prepare_application" && !n.config.preparationWorkflowId) issues.add("Choose a published preparation workflow.");
     const outgoing = graph.edges.filter((e) => e.source === n.id);
     const expected =
       n.kind === "review_resume"

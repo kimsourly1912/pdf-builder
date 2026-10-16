@@ -46,7 +46,7 @@ async function ownedReview(owner: string, id: string) {
     FROM submissions s JOIN templates t ON t.id=s.template_id JOIN template_versions v ON v.id=s.template_version_id
     LEFT JOIN form_submission_artifacts a ON a.submission_id=s.id LEFT JOIN submission_reviews h ON h.submission_id=s.id
     LEFT JOIN recipient_links l ON l.id=s.recipient_link_id
-    LEFT JOIN form_assignments f ON f.user_id=l.assigned_user_id AND f.template_version_id=s.template_version_id AND f.role_id=l.role_id
+    LEFT JOIN form_assignments f ON f.recipient_link_id IN (WITH RECURSIVE chain(id,depth) AS (SELECT s.recipient_link_id,0 UNION ALL SELECT h.correction_link_id,c.depth+1 FROM chain c JOIN submissions old ON old.recipient_link_id=c.id JOIN submission_reviews h ON h.submission_id=old.id WHERE h.correction_link_id IS NOT NULL AND c.depth<100) SELECT id FROM chain)
     WHERE s.id=? AND t.owner_email=? AND NOT EXISTS(SELECT 1 FROM archive_records r WHERE r.entity_type='submission' AND r.entity_id=s.id)`,
     )
     .bind(id, owner)

@@ -14,7 +14,7 @@ export function resetTables(choice: ResetChoice): ResetTable[] {
   const all = choice.scope === "all";
   const history = choice.scope === "history";
   const users = `SELECT p.user_id FROM recipient_profiles p JOIN user u ON u.id=p.user_id WHERE p.created_by_email=${own} AND u.email<>${own} AND u.role<>'admin' ${all ? "" : "AND p.account_type='candidate'"}`;
-  const runs = `SELECT id FROM workflow_runs WHERE owner_email=${own} ${history ? "AND status IN ('completed','failed','rejected','stopped') AND json_extract(context_json,'$.userId') IS NULL AND NOT EXISTS(SELECT 1 FROM telegram_deliveries d WHERE d.run_id=workflow_runs.id) AND NOT EXISTS(SELECT 1 FROM interview_processes p WHERE p.run_id=workflow_runs.id)" : ""}`;
+  const runs = `SELECT id FROM workflow_runs WHERE owner_email=${own} ${history ? "AND status IN ('completed','failed','rejected','stopped') AND json_extract(context_json,'$.userId') IS NULL AND NOT EXISTS(SELECT 1 FROM telegram_deliveries d WHERE d.run_id=workflow_runs.id) AND NOT EXISTS(SELECT 1 FROM interview_processes p WHERE p.run_id=workflow_runs.id) AND NOT EXISTS(SELECT 1 FROM hiring_preparations hp WHERE hp.run_id=workflow_runs.id) AND NOT EXISTS(SELECT 1 FROM hiring_applications ha WHERE json_extract(ha.evidence_json,'$.runId')=workflow_runs.id)" : ""}`;
   const links = `SELECT l.id FROM recipient_links l JOIN templates t ON t.id=l.template_id WHERE t.owner_email=${own} ${choice.scope === "candidates" ? `AND l.assigned_user_id IN (${users})` : ""}`;
   const subs = `SELECT id FROM submissions WHERE recipient_link_id IN (${links})`;
   const resumes = `SELECT id FROM resumes WHERE owner_email=${own}`;
@@ -27,7 +27,8 @@ export function resetTables(choice: ResetChoice): ResetTable[] {
     // Definitions survive ordinary candidate/form resets.
     add("hiring_events", `owner_email=${own}`, "Application history & pending automation");
     add("hiring_receipts", `owner_email=${own}`, "Application request receipts");
-    add("hiring_applications", `owner_email=${own}`, "Hiring applications");
+    add("hiring_application_forms", `application_id IN (SELECT id FROM hiring_applications WHERE owner_email=${own})`, "Application document references");
+    add("hiring_preparations", `owner_email=${own}`, "Application preparation references");
     const processes = `SELECT id FROM interview_processes WHERE owner_email=${own}`;
     const rounds = `SELECT id FROM interview_rounds WHERE process_id IN (${processes})`;
     add("interview_documents", `process_id IN (${processes})`, "Interview accepted documents");
@@ -56,6 +57,9 @@ export function resetTables(choice: ResetChoice): ResetTable[] {
       `recipient_link_id IN (${links})`,
       "Form assignments",
     );
+    // Delete application assignments before their parent; SET NULL would collide
+    // with the legacy account/template/role uniqueness while those forms remain.
+    add("hiring_applications", `owner_email=${own}`, "Hiring applications");
     add("recipient_links", `id IN (${links})`, "Form access links");
     add("telegram_deliveries", `owner_email=${own}`, "Telegram invitations");
     add(

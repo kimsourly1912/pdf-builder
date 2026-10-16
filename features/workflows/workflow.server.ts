@@ -16,7 +16,7 @@ import {
   gte,
   sql,
 } from "drizzle-orm";
-import { getDb } from "@/db";
+import { getDb, getDatabaseBinding } from "@/db";
 import {
   auditEvents,
   candidates,
@@ -315,6 +315,7 @@ export async function uploadWorkflowStatements(
   event: WorkflowTrigger = "staff_upload",
   context: RunContext = { steps: {} },
 ) {
+  if(event === "resume_verified" && await getDatabaseBinding().prepare("SELECT id FROM hiring_applications WHERE owner_email=? AND resume_id=? AND outcome IS NULL AND json_extract(evidence_json,'$.preparationMode')='application' LIMIT 1").bind(ownerEmail,resumeId).first()) return [];
   const rows = await getDb()
     .select()
     .from(workflows)
@@ -416,10 +417,12 @@ export async function startWorkflow(
         eq(workflowRuns.workflowId, workflowId),
         eq(workflowRuns.resumeId, resumeId),
         isNull(workflowRuns.eventId),
+        isNull(workflowRuns.applicationId),
         eq(workflowRuns.ownerEmail, ownerEmail),
       ),
     )
     .limit(1);
+  if(!run)fail("Preparation for this CV is owned by its hiring application. Open CV & documents in Hiring pipeline.",409);
   return run.id;
 }
 

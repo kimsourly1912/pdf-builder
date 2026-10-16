@@ -44,14 +44,11 @@ type AppShellProps = {
 const navigationItems = [
   { href: "/", label: "Home", icon: Home, children: [] },
   {
-    href: "/candidates",
-    label: "Candidates",
+    href: "/hiring",
+    label: "Hiring",
     icon: UsersRound,
     children: [
       { href: "/hiring", label: "Hiring pipeline" },
-      { href: "/candidates", label: "Candidate Preparation" },
-      { href: "/interviews", label: "Interview Progress" },
-      { href: "/needs-attention", label: "Needs attention" },
       { href: "/intake", label: "Incoming candidates" },
       { href: "/resumes", label: "CV library" },
     ],
@@ -82,6 +79,7 @@ const navigationItems = [
     children: [
       { href: "/administration", label: "Settings & integrations" },
       { href: "/hiring/pipelines", label: "Hiring models & jobs" },
+      { href: "/hiring/legacy", label: "Legacy hiring records" },
       { href: "/setup", label: "Workspace setup" },
       { href: "/accounts", label: "Account access" },
       { href: "/analyses", label: "AI history" },
@@ -99,15 +97,20 @@ function matches(pathname: string, href: string) {
 
 function AppShell(props: AppShellProps) {
   const pathname = usePathname();
+  const matched = navigationItems
+    .flatMap((item) => [
+      { item, href: item.href, label: item.label },
+      ...item.children.map((child) => ({
+        item,
+        href: child.href,
+        label: child.label,
+      })),
+    ])
+    .filter((entry) => matches(pathname, entry.href))
+    .sort((a, b) => b.href.length - a.href.length)[0];
   const currentItem =
-    navigationItems.find(
-      (item) =>
-        matches(pathname, item.href) ||
-        item.children.some((child) => matches(pathname, child.href)),
-    ) ?? navigationItems[0];
-  const currentLabel =
-    currentItem.children.find((child) => matches(pathname, child.href))
-      ?.label ?? currentItem.label;
+    matched?.item ?? navigationItems.find((item) => item.href === "/hiring")!;
+  const currentLabel = matched?.label ?? currentItem.label;
 
   return (
     <SidebarProvider>

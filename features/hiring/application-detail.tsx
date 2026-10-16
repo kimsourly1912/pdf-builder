@@ -1,6 +1,11 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
+import { ApplicationDocuments } from "./application-documents";
+import { InterviewDetail } from "@/features/interviews/interview-detail";
+import { applicationTask } from "./tasks";
+import { DISCARD_EDITS } from "@/features/resumes/use-unsaved-changes";
 import { AppShell } from "@/components/patterns/app-shell";
 import { PageHeader } from "@/components/patterns/page-header";
 import {
@@ -33,7 +38,9 @@ import { useHiringConfiguration } from "./client";
 import { MoveApplication } from "./hiring-board";
 type Detail = {
   application: HiringApplication;
-  facts: Record<keyof typeof REQUIREMENTS, boolean>;
+  facts: Record<keyof typeof REQUIREMENTS, boolean> & {
+    documentCounts: { required: number; submitted: number; accepted: number };
+  };
   events: (ApplicationEvent & {
     labels: {
       stageLabel?: string;
@@ -49,6 +56,7 @@ type Detail = {
     workflowId: string;
     name: string;
     status: string;
+    archived: number;
     error: string | null;
     createdAt: string;
   }[];
@@ -71,6 +79,21 @@ export function ApplicationDetail({
   displayName: string;
   id: string;
 }) {
+  const router = useRouter(),
+    search = useSearchParams();
+  const dirty = useRef(false);
+  const rawTab = search.get("tab") ?? "overview";
+  const tab = ["documents", "interviews", "offer", "activity"].includes(rawTab)
+    ? rawTab
+    : ["history", "automation"].includes(rawTab)
+      ? "activity"
+      : "overview";
+  function changeTab(value: string) {
+    if (value === tab) return;
+    if (dirty.current && !window.confirm(DISCARD_EDITS)) return;
+    dirty.current = false;
+    router.push(`/hiring/${id}?tab=${value}`, { scroll: false });
+  }
   const { config, error: configError } = useHiringConfiguration(),
     [data, setData] = useState<Detail | null>(null),
     [error, setError] = useState(""),
@@ -96,8 +119,12 @@ export function ApplicationDetail({
     }
   }, [id]);
   useEffect(() => {
-    const timer = setTimeout(() => void reload(), 0);
-    return () => clearTimeout(timer);
+    const timer = setTimeout(() => void reload(), 0),
+      interval = setInterval(() => void reload(), 15000);
+    return () => {
+      clearTimeout(timer);
+      clearInterval(interval);
+    };
   }, [reload]);
   const app = data?.application,
     version = config?.versions.find((v) => v.id === app?.pipelineVersionId),
@@ -105,6 +132,21 @@ export function ApplicationDetail({
     jobVersion = config?.versions.find(
       (v) => v.id === config.jobs.find((j) => j.id === job)?.pipelineVersionId,
     );
+  const task =
+    app && data
+      ? applicationTask(
+          app,
+          stage,
+          data.facts,
+          data.executions.some((r) => r.status === "failed" && !r.archived),
+        )
+      : null;
+  function primaryTask() {
+    if (!task) return;
+    if (task.action === "move") setMoving(true);
+    else if (task.action) void openAction(task.action);
+    else changeTab(task.tab);
+  }
   async function openAction(value: Action) {
     setAction(value);
     setReason("");
@@ -183,7 +225,8 @@ export function ApplicationDetail({
           }),
         },
       );
-      window.location.assign(`/interviews/${result.process.id}`);
+      await reload();
+      if (result.process.id) changeTab("interviews");
     } catch (e) {
       setError(errorText(e));
     } finally {
@@ -240,38 +283,19 @@ export function ApplicationDetail({
             <div className="flex flex-wrap gap-2">
               {!app.outcome && !app.hold && (
                 <>
-                  <Button onClick={() => setMoving(true)}>Move to…</Button>
+                  <Button onClick={primaryTask}>
+                    {task?.label ?? "Review application"}
+                  </Button>
+                  <Button variant="outline" onClick={() => setMoving(true)}>
+                    Move to…
+                  </Button>
                   <Button
                     variant="outline"
                     onClick={() => void openAction("assign_job")}
                   >
                     Assign job
                   </Button>
-                  {stage?.activity === "interview" && !app.interviewId && (
-                    <Button
-                      variant="outline"
-                      disabled={busy}
-                      onClick={() => void startInterviews()}
-                    >
-                      Start application interviews
-                    </Button>
-                  )}
-                  {stage?.activity === "offer" && (
-                    <Button
-                      variant="outline"
-                      onClick={() => void openAction("offer")}
-                    >
-                      Record offer
-                    </Button>
-                  )}
                 </>
-              )}
-              {app.interviewId && (
-                <Button variant="outline" asChild>
-                  <Link href={`/interviews/${app.interviewId}`}>
-                    View application interviews
-                  </Link>
-                </Button>
               )}
               {app.outcome ? (
                 <Button
@@ -306,18 +330,37 @@ export function ApplicationDetail({
               hiring decision.
             </p>
           </section>
-          <Tabs defaultValue="overview">
-            <TabsList className="flex h-auto flex-wrap gap-2">
-              <TabsTrigger value="overview">
-                Overview & requirements
+          <p className="text-sm text-muted-foreground">
+            {task?.description} · Selected CV: {app.fileName}
+          </p>
+          <Tabs value={tab} onValueChange={changeTab}>
+            <TabsList className="flex w-full flex-wrap justify-start gap-2 group-data-[orientation=horizontal]/tabs:h-auto sm:w-fit">
+              <TabsTrigger className="h-9 flex-none" value="overview">
+                Overview
               </TabsTrigger>
-              <TabsTrigger value="history">History</TabsTrigger>
-              <TabsTrigger value="automation">Automation</TabsTrigger>
+              <TabsTrigger className="h-9 flex-none" value="documents">
+                CV & documents
+              </TabsTrigger>
+              <TabsTrigger className="h-9 flex-none" value="interviews">
+                Interviews
+              </TabsTrigger>
+              <TabsTrigger className="h-9 flex-none" value="offer">
+                Offer & outcome
+              </TabsTrigger>
+              <TabsTrigger className="h-9 flex-none" value="activity">
+                Activity
+              </TabsTrigger>
             </TabsList>
             <TabsContent value="overview" className="space-y-5">
               <section className="space-y-4 rounded-xl border p-5">
                 <h2 className="font-semibold">Application evidence</h2>
                 <p className="text-sm">CV: {app.fileName}</p>
+                <p className="text-sm">
+                  Required documents: {data.facts.documentCounts.submitted}/
+                  {data.facts.documentCounts.required} submitted ·{" "}
+                  {data.facts.documentCounts.accepted}/
+                  {data.facts.documentCounts.required} accepted
+                </p>
                 <div className="flex flex-wrap gap-2">
                   <Button
                     variant="outline"
@@ -326,16 +369,13 @@ export function ApplicationDetail({
                   >
                     Use another approved CV
                   </Button>
-                  <Button variant="outline" asChild>
-                    <Link href={`/resumes/${app.resumeId}`}>
-                      Review this CV
-                    </Link>
+                  <Button
+                    variant="outline"
+                    onClick={() => changeTab("documents")}
+                  >
+                    Review this CV
                   </Button>
-                  <Button variant="outline" asChild>
-                    <Link href={`/candidates/${app.candidateId}`}>
-                      Open candidate preparation
-                    </Link>
-                  </Button>
+
                   <Button
                     variant="outline"
                     disabled={!!app.outcome || !!app.hold}
@@ -392,7 +432,88 @@ export function ApplicationDetail({
                 )}
               </section>
             </TabsContent>
-            <TabsContent value="history">
+            <TabsContent value="documents" className="space-y-5">
+              <ApplicationDocuments
+                app={app}
+                displayName={displayName}
+                approved={data.facts.cv_approved}
+                onChanged={() => void reload()}
+                onDirtyChange={(value) => {
+                  dirty.current = value;
+                }}
+              />
+            </TabsContent>
+            <TabsContent value="interviews" className="space-y-5">
+              {app.interviewId ? (
+                <InterviewDetail
+                  processId={app.interviewId}
+                  displayName={displayName}
+                  embedded
+                  readOnly={!!app.hold || !!app.outcome}
+                  onChanged={() => void reload()}
+                />
+              ) : (
+                <section className="space-y-4 rounded-xl border p-5">
+                  <h2 className="font-semibold">Application interviews</h2>
+                  <p className="text-sm">
+                    Start interviews from an interview activity stage after
+                    approving the current CV and satisfying its entry
+                    requirements.
+                  </p>
+                  <Button
+                    disabled={
+                      busy ||
+                      !!app.hold ||
+                      !!app.outcome ||
+                      !data.facts.cv_approved ||
+                      stage?.activity !== "interview"
+                    }
+                    onClick={() => void startInterviews()}
+                  >
+                    Start application interviews
+                  </Button>
+                </section>
+              )}
+            </TabsContent>
+            <TabsContent value="offer" className="space-y-5">
+              <section className="space-y-4 rounded-xl border p-5">
+                <h2 className="font-semibold">Offer & hiring outcome</h2>
+                <p className="text-sm">
+                  Offer: {app.offer} · Outcome:{" "}
+                  {app.outcome ?? "No hiring decision recorded"}
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  Record offer progress and the explicit hiring decision
+                  separately. Interview passed and accepted documents remain
+                  supporting evidence.
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {!app.outcome && !app.hold && (
+                    <>
+                      <Button onClick={() => void openAction("offer")}>
+                        Record offer progress
+                      </Button>
+                      <Button
+                        variant="outline"
+                        onClick={() => void openAction("close")}
+                      >
+                        Record hiring decision
+                      </Button>
+                    </>
+                  )}
+                  {app.outcome && (
+                    <Button
+                      variant="outline"
+                      onClick={() => void openAction("reopen")}
+                    >
+                      Reopen application
+                    </Button>
+                  )}
+                </div>
+              </section>
+            </TabsContent>
+            <TabsContent value="activity" className="space-y-5">
+              <h2 className="font-semibold">Application history</h2>
               <div className="space-y-3">
                 {data.events.map((e) => (
                   <article
@@ -436,8 +557,7 @@ export function ApplicationDetail({
                   </p>
                 )}
               </div>
-            </TabsContent>
-            <TabsContent value="automation" className="space-y-4">
+              <h2 className="font-semibold">Automation executions</h2>
               <Button variant="outline" asChild>
                 <Link href="/workflows">Manage automation</Link>
               </Button>
@@ -448,6 +568,7 @@ export function ApplicationDetail({
                 >
                   <p className="font-medium">
                     {r.name} · {r.status}
+                    {r.archived ? " · Archived" : ""}
                   </p>
                   <p>{runDate(r.createdAt)}</p>
                   {r.error && <p className="text-destructive">{r.error}</p>}
@@ -589,6 +710,13 @@ export function ApplicationDetail({
                 {action === "close" && (
                   <div className="space-y-2">
                     <Label htmlFor="close-outcome">Hiring outcome</Label>
+                    {app.nextAppointment && (
+                      <p className="text-sm text-muted-foreground">
+                        Resolve the recorded interview appointment in Interviews
+                        before closing. Closing preserves the interview process
+                        and its history.
+                      </p>
+                    )}
                     <SelectField
                       id="close-outcome"
                       value={outcome}

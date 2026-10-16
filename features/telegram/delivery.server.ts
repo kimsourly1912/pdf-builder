@@ -216,7 +216,7 @@ export async function deliverWorkflowInvitation(
   const assignments = await db
     .select({ id: formAssignments.id })
     .from(formAssignments)
-    .where(eq(formAssignments.userId, context.userId));
+    .where(and(eq(formAssignments.userId, context.userId), run.applicationId ? eq(formAssignments.applicationId, run.applicationId) : sql`${formAssignments.applicationId} IS NULL`));
   const text = invitationText(
     config.message ?? DEFAULT_TELEGRAM_MESSAGE,
     context.reviewedName ?? recipient.account.name,

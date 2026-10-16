@@ -17,7 +17,7 @@ export const workflowRuns = sqliteTable("workflow_runs", {
   errorMessage: text("error_message"), passwordHash: text("password_hash"),
   lockToken: text("lock_token"), lockedUntil: text("locked_until"),
   createdAt: text("created_at").notNull(), updatedAt: text("updated_at").notNull(),
-}, t => [uniqueIndex("workflow_runs_workflow_resume_unique").on(t.workflowId, t.resumeId).where(sql`${t.eventId} IS NULL`), uniqueIndex("workflow_runs_event_unique").on(t.workflowId, t.version, t.eventId), index("workflow_runs_owner_created_idx").on(t.ownerEmail, t.createdAt), index("workflow_runs_status_lock_idx").on(t.status, t.lockedUntil)]);
+}, t => [uniqueIndex("workflow_runs_workflow_resume_unique").on(t.workflowId, t.resumeId).where(sql`${t.eventId} IS NULL AND ${t.applicationId} IS NULL`), uniqueIndex("workflow_runs_application_preparation_unique").on(t.workflowId, t.applicationId, t.resumeId).where(sql`${t.eventId} IS NULL AND ${t.applicationId} IS NOT NULL`), uniqueIndex("workflow_runs_event_unique").on(t.workflowId, t.version, t.eventId), index("workflow_runs_owner_created_idx").on(t.ownerEmail, t.createdAt), index("workflow_runs_status_lock_idx").on(t.status, t.lockedUntil)]);
 
 export const workflowReviewDecisions = sqliteTable("workflow_review_decisions", {
   id: text("id").primaryKey(), runId: text("run_id").notNull().references(() => workflowRuns.id), ownerEmail: text("owner_email").notNull(), candidateId: text("candidate_id").notNull(), runLockToken: text("run_lock_token").notNull(), resumeRevision: text("resume_revision").notNull(), candidateRevision: text("candidate_revision").notNull(), action: text("action").notNull(), createdAt: text("created_at").notNull(),

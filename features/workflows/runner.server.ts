@@ -393,6 +393,7 @@ export async function processWorkflowRun(id: string): Promise<void> {
                 eq(formAssignments.userId, context.userId),
                 eq(formAssignments.templateVersionId, target.versionId),
                 eq(formAssignments.roleId, target.roleId),
+                row.applicationId ? eq(formAssignments.applicationId, row.applicationId) : isNull(formAssignments.applicationId),
               ),
             )
             .limit(1);
@@ -505,6 +506,7 @@ export async function processWorkflowRun(id: string): Promise<void> {
               .insert(formAssignments)
               .values({
                 id: assignmentId,
+                applicationId: row.applicationId,
                 userId: context.userId,
                 templateId: target.templateId,
                 templateVersionId: target.versionId,

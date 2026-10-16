@@ -34,6 +34,7 @@ import {
 } from "@/features/templates/date-time";
 
 type PortalAssignment = {
+  applicationJob?: string | null;
   id: string;
   templateName: string;
   description: string;
@@ -260,6 +261,7 @@ function AssignmentCard(props: {
           <div className="min-w-0 flex-1">
             <h3 className="break-words text-base font-semibold">
               {assignment.templateName}
+              {assignment.applicationJob&&<span className="mt-1 block text-sm font-normal text-muted-foreground">{assignment.applicationJob}</span>}
             </h3>
             {assignment.templateKind !== "form" && (
               <p className="mt-1 text-xs text-muted-foreground">

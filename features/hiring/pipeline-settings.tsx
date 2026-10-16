@@ -133,7 +133,7 @@ export function PipelineSettings({ displayName }: { displayName: string }) {
       stages[index + delta],
       stages[index],
     ];
-    setDraft({ stages });
+    setDraft({ ...draft, stages });
   }
   return (
     <AppShell displayName={displayName}>
@@ -212,6 +212,35 @@ export function PipelineSettings({ displayName }: { displayName: string }) {
                     onChange={(e) => setName(e.target.value)}
                   />
                 </div>
+                <div className="space-y-2">
+                  <Label htmlFor="pipeline-preparation-mode">
+                    Preparation automation for new applications
+                  </Label>
+                  <SelectField
+                    id="pipeline-preparation-mode"
+                    value={draft.preparationMode ?? "legacy"}
+                    disabled={busy || selected.archived}
+                    onValueChange={(value) =>
+                      setDraft({
+                        ...draft,
+                        preparationMode: value as "legacy" | "application",
+                      })
+                    }
+                  >
+                    <SelectFieldOption value="application">
+                      Application workflows · independent requirements per job
+                    </SelectFieldOption>
+                    <SelectFieldOption value="legacy">
+                      Legacy CV approval workflows
+                    </SelectFieldOption>
+                  </SelectField>
+                  <p className="text-xs text-muted-foreground">
+                    Publishing sets the default for future applications.
+                    Application workflows keep HR account/contact review and
+                    suppress new legacy CV-approval preparation for their CV.
+                    Existing applications retain their preparation choice.
+                  </p>
+                </div>
                 <div className="flex flex-wrap items-center gap-2">
                   <Badge variant="outline">
                     {selected.publishedVersion
@@ -261,6 +290,7 @@ export function PipelineSettings({ displayName }: { displayName: string }) {
                             disabled={draft.stages.length === 1}
                             onClick={() =>
                               setDraft({
+                                ...draft,
                                 stages: draft.stages.filter(
                                   (_, i) => i !== index,
                                 ),
@@ -339,6 +369,35 @@ export function PipelineSettings({ displayName }: { displayName: string }) {
                           }
                         />
                       </div>
+                      {stage.activity === "interview" && (
+                        <div className="space-y-2">
+                          <Label htmlFor={`interview-scope-${stage.id}`}>
+                            Interview completion requirement
+                          </Label>
+                          <SelectField
+                            id={`interview-scope-${stage.id}`}
+                            value={stage.interviewScope ?? "process"}
+                            onValueChange={(value) =>
+                              patchStage(index, {
+                                interviewScope: value as "process" | "stage",
+                              })
+                            }
+                          >
+                            <SelectFieldOption value="process">
+                              All rounds in the application process
+                            </SelectFieldOption>
+                            <SelectFieldOption value="stage">
+                              Only rounds mapped to this stage
+                            </SelectFieldOption>
+                          </SelectField>
+                          <p className="text-xs text-muted-foreground">
+                            Add the interview-completed requirement to entry or
+                            exit. Stage-specific completion requires a mapped
+                            completed round and every required submitted
+                            scorecard.
+                          </p>
+                        </div>
+                      )}
                       <details>
                         <summary className="cursor-pointer text-sm font-medium">
                           Requirements ·{" "}
@@ -394,6 +453,7 @@ export function PipelineSettings({ displayName }: { displayName: string }) {
                     disabled={draft.stages.length >= 30}
                     onClick={() =>
                       setDraft({
+                        ...draft,
                         stages: [
                           ...draft.stages,
                           {

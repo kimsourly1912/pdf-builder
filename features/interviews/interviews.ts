@@ -56,6 +56,7 @@ export type InterviewFeedback = {
   updatedAt: string;
 };
 export type InterviewRound = {
+  stageId?: string | null;
   id: string;
   name: string;
   interviewers: string[];
@@ -76,6 +77,8 @@ export type PreparationSnapshot = {
   acceptedAt: string;
 };
 export type InterviewProcess = {
+  applicationStage?: { id: string; name: string };
+  stageOptions?: { id: string; name: string }[];
   applicationId?: string | null;
   id: string;
   candidateId: string;

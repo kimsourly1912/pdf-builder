@@ -1,8 +1,10 @@
 # Candidate Preparation
 
+Daily application work now lives in [Hiring pipeline](hiring-pipelines.md#unified-application-workspace). This document describes the retained original preparation view at `/candidates` and shared candidate records. Access it through Legacy records or Shared candidate profile & CV updates; it is no longer a separate sidebar workflow.
+
 Configurable company hiring stages are available separately in [Hiring pipelines](hiring-pipelines.md). This preparation view continues to show operational CV/document evidence. It excludes application-routing runs and application-specific interviews so they cannot replace the selected preparation or legacy interview handoff.
 
-Open **Candidates → Candidate Preparation** to follow CV review, candidate preparation and form completion. Telegram intake is available under **Candidates → New submissions**. Progress groups active CVs by candidate; receiving another CV does not create another card for an existing candidate.
+Open the retained `/candidates` view through **Legacy records** when working with original preparation. Telegram intake remains a supporting tool under **New submissions**. This view groups active CVs by candidate; receiving another CV does not create another card for an existing candidate.
 
 The Kanban and List views show the same data. The view preference is saved for each HR account in the current browser. Search supports name, email, Telegram username and CV filename. Stage and Needs attention filters apply to both views. Pages contain up to 50 candidates; column totals cover all matching candidates. A partial column shows its visible count and a shortcut to that stage’s candidates. Search, stage, attention, sorting and page filters are stored in the URL and remembered per HR account for the browser session, including after returning from detail. Clear filters resets the saved selection. Data refreshes every 15 seconds and when the window regains focus.
 

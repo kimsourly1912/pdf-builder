@@ -1,6 +1,7 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { RoundStageMapping } from "./round-stage-mapping";
 import { AppShell } from "@/components/patterns/app-shell";
 import { PageHeader } from "@/components/patterns/page-header";
 import { FeedbackAlert } from "@/components/patterns/feedback-alert";
@@ -36,13 +37,11 @@ import {
   InterviewOperationDialog,
   type InterviewOperation,
 } from "./interview-forms";
-export function InterviewDetail({
-  displayName,
-  processId,
-}: {
-  displayName: string;
-  processId: string;
-}) {
+export function InterviewDetail(props: { displayName: string; processId: string; embedded?: boolean; readOnly?: boolean; onChanged?: () => void }) {
+  const content = <InterviewContent {...props} />;
+  return props.embedded ? content : <AppShell displayName={props.displayName}>{content}</AppShell>;
+}
+function InterviewContent({ processId, embedded = false, readOnly = false, onChanged }: { processId: string; embedded?: boolean; readOnly?: boolean; onChanged?: () => void }) {
   const [process, setProcess] = useState<InterviewProcess | null>(null),
     [loading, setLoading] = useState(true),
     [error, setError] = useState(""),
@@ -182,6 +181,7 @@ export function InterviewDetail({
       if (e instanceof InterviewApiError && e.status === 409) {
         receipt.current = null;
         await load();
+      onChanged?.();
       }
     } finally {
       locked.current = false;
@@ -193,7 +193,7 @@ export function InterviewDetail({
     return () => clearInterval(timer);
   }, []);
   const guidance = process ? interviewDetailGuidance(process, now) : null;
-  const editable = !!process && !process.outcome && !process.hold;
+  const editable = !!process && !process.outcome && !process.hold && !readOnly;
   function primary() {
     if (!guidance) return;
     if (
@@ -221,7 +221,8 @@ export function InterviewDetail({
       );
   }
   return (
-    <AppShell displayName={displayName}>
+    <>
+      {!embedded && <>
       <Link
         href="/interviews"
         className="text-sm text-muted-foreground underline"
@@ -249,6 +250,7 @@ export function InterviewDetail({
           </>
         }
       />
+      </>}
       {error && (
         <FeedbackAlert
           tone="error"
@@ -371,7 +373,7 @@ export function InterviewDetail({
                 <Button
                   id="interview-next-action"
                   onClick={primary}
-                  disabled={busy || loading}
+                  disabled={busy || loading || readOnly}
                 >
                   {guidance.label}
                   <ArrowRight className="size-4" aria-hidden="true" />
@@ -380,7 +382,7 @@ export function InterviewDetail({
               {editable && guidance?.action === "finish_rounds" && (
                 <Button
                   variant="outline"
-                  disabled={busy || loading}
+                  disabled={busy || loading || readOnly}
                   onClick={() => open("schedule", "Schedule another round")}
                 >
                   Schedule another round
@@ -393,7 +395,7 @@ export function InterviewDetail({
               </Button>
               <InterviewStatusActions
                 process={process}
-                disabled={busy || loading}
+                disabled={busy || loading || readOnly}
                 onChoose={(action, title) =>
                   open(action, title, undefined, undefined, "process-actions")
                 }
@@ -419,7 +421,7 @@ export function InterviewDetail({
             <TabsContent value="interviews" className="space-y-6">
               <FinalDecision
                 process={process}
-                busy={busy || loading}
+                busy={busy || loading || readOnly}
                 onAction={open}
               />
               <section id="interview-rounds" className="space-y-4">
@@ -474,6 +476,7 @@ export function InterviewDetail({
                         }
                       />
                     </div>
+                    <RoundStageMapping process={process} round={r} disabled={!editable} onChanged={()=>{void load();onChanged?.();}}/>
                     <RoundAppointment round={r} />
                     {r.status === "scheduled" && editable && (
                       <AppointmentMessage process={process} round={r} />
@@ -612,6 +615,6 @@ export function InterviewDetail({
           onSave={save}
         />
       )}
-    </AppShell>
+    </>
   );
 }

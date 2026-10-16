@@ -90,13 +90,11 @@ export function AnswerSummary({ answers }: { answers: Review["answers"] }) {
     </dl>
   );
 }
-export function SubmissionReview({
-  id,
-  displayName,
-}: {
-  id: string;
-  displayName: string;
-}) {
+export function SubmissionReview(props: { id: string; displayName: string; embedded?: boolean; onChanged?: () => void }) {
+  const content = <SubmissionContent {...props} />;
+  return props.embedded ? content : <AppShell displayName={props.displayName}>{content}</AppShell>;
+}
+function SubmissionContent({ id, embedded = false, onChanged }: { id: string; embedded?: boolean; onChanged?: () => void }) {
   const [review, setReview] = useState<Review | null>(null),
     [error, setError] = useState(""),
     [busy, setBusy] = useState(false),
@@ -138,6 +136,7 @@ export function SubmissionReview({
         }),
       });
       setReview(data.review);
+      onChanged?.();
       setAssignmentUrl(data.assignmentUrl);
       setDialog(null);
       setReason("");
@@ -199,8 +198,8 @@ export function SubmissionReview({
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
   return (
-    <AppShell displayName={displayName}>
-      <div className="flex flex-wrap gap-3 text-sm text-primary">
+    <>
+      {!embedded && <div className="flex flex-wrap gap-3 text-sm text-primary">
         {review?.candidate && (
           <Link
             className="underline"
@@ -221,7 +220,7 @@ export function SubmissionReview({
         >
           All responses
         </Link>
-      </div>
+      </div>}
       <PageHeader
         title={review?.templateName ?? "Review submitted form"}
         description={
@@ -411,6 +410,6 @@ export function SubmissionReview({
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </AppShell>
+    </>
   );
 }
