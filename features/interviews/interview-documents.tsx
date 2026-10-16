@@ -48,9 +48,9 @@ export function InterviewDocuments({ process }: { process: InterviewProcess }) {
   return (
     <section className="space-y-4 rounded-lg border bg-card p-4 sm:p-6">
       <div className="space-y-2">
-        <h2 className="font-semibold">Accepted preparation & documents</h2>
+        <h2 className="font-semibold">{process.snapshot.contextKind === "approved_cv" ? "Original interview CV & documents" : "Accepted preparation & documents"}</h2>
         <p className="text-sm text-muted-foreground">
-          Accepted on{" "}
+          {process.snapshot.contextKind === "approved_cv" ? "Captured on " : "Accepted on "}
           {new Date(process.snapshot.acceptedAt).toLocaleString("en-US", {
             dateStyle: "medium",
             timeStyle: "short",
@@ -62,7 +62,7 @@ export function InterviewDocuments({ process }: { process: InterviewProcess }) {
       <div className="grid gap-3 sm:grid-cols-2">
         <DocumentRow
           title={process.snapshot.cv.fileName}
-          label="Accepted CV"
+          label={process.snapshot.contextKind === "approved_cv" ? "HR-approved CV" : "Accepted CV"}
           icon={<FileText className="size-5" aria-hidden="true" />}
           onOpen={() =>
             openPreview({ kind: "cv", title: process.snapshot.cv.fileName })
@@ -107,7 +107,7 @@ export function InterviewDocuments({ process }: { process: InterviewProcess }) {
           ))
         ) : (
           <p className="text-sm text-muted-foreground">
-            No accepted forms were required for this preparation.
+            {process.snapshot.contextKind === "approved_cv" ? "This hiring model allows interviews before document collection. No accepted forms were linked at the start." : "No accepted forms were required for this preparation."}
           </p>
         )}
       </div>

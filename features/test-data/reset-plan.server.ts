@@ -23,6 +23,11 @@ export function resetTables(choice: ResetChoice): ResetTable[] {
   const add = (table: string, where: string, label: string, mode?: "update") =>
     out.push({ table, where, label, mode });
   if (!history) {
+    // Clear application links before preparation, CV and interview evidence.
+    // Definitions survive ordinary candidate/form resets.
+    add("hiring_events", `owner_email=${own}`, "Application history & pending automation");
+    add("hiring_receipts", `owner_email=${own}`, "Application request receipts");
+    add("hiring_applications", `owner_email=${own}`, "Hiring applications");
     const processes = `SELECT id FROM interview_processes WHERE owner_email=${own}`;
     const rounds = `SELECT id FROM interview_rounds WHERE process_id IN (${processes})`;
     add("interview_documents", `process_id IN (${processes})`, "Interview accepted documents");
@@ -117,6 +122,9 @@ export function resetTables(choice: ResetChoice): ResetTable[] {
   if (all) {
     add("ai_field_detection_runs", `owner_email=${own}`, "AI history");
     if (!choice.keepDefinitions) {
+      add("hiring_jobs", `owner_email=${own}`, "Job openings");
+      add("hiring_pipeline_versions", `owner_email=${own}`, "Published hiring models");
+      add("hiring_pipelines", `owner_email=${own}`, "Hiring model drafts");
       add(
         "template_versions",
         `template_id IN (SELECT id FROM templates WHERE owner_email=${own})`,

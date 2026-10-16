@@ -237,6 +237,8 @@ export function InterviewDetail({
             : "Loading interview process…"
         }
         actions={
+          <>
+          {process?.applicationId&&<Button variant="outline" asChild><Link href={`/hiring/${process.applicationId}`}>Back to application</Link></Button>}
           <Button
             variant="outline"
             disabled={loading || busy}
@@ -244,6 +246,7 @@ export function InterviewDetail({
           >
             Refresh
           </Button>
+          </>
         }
       />
       {error && (

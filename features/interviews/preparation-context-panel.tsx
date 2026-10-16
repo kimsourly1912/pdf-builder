@@ -8,6 +8,7 @@ import type { CandidateProgress } from "@/features/candidate-progress/progress";
 import { interviewApi } from "./client";
 import { preparationChanges } from "./preparation-context";
 import type { InterviewProcess } from "./interviews";
+import type { HiringApplication } from "@/features/hiring/hiring";
 export function PreparationContextPanel({
   process,
 }: {
@@ -18,6 +19,17 @@ export function PreparationContextPanel({
     [retry, setRetry] = useState(0);
   useEffect(() => {
     let cancelled = false;
+    if(process.applicationId){
+      interviewApi<{application:HiringApplication;facts:{cv_approved:boolean}}>(`/api/hiring/applications/${process.applicationId}`).then(({application,facts})=>{
+        if(cancelled)return;
+        const notes:string[]=[];
+        if(application.resumeId!==process.snapshot.cv.id)notes.push("The application's CV has changed.");
+        if(!facts.cv_approved)notes.push("Current CV approval needs review; the original interview context is retained.");
+        if((application.evidence.runId??null)!==process.snapshot.runId)notes.push("Application preparation was linked after the original interview context was captured.");
+        setChanges(notes);setFailed(false);
+      }).catch(()=>{if(!cancelled)setFailed(true);});
+      return()=>{cancelled=true;};
+    }
     interviewApi<{ candidate: CandidateProgress }>(
       `/api/candidates/${process.candidateId}`,
     )
@@ -33,16 +45,16 @@ export function PreparationContextPanel({
     return () => {
       cancelled = true;
     };
-  }, [process.candidateId, process.snapshot, retry]);
+  }, [process.applicationId, process.candidateId, process.snapshot, retry]);
   return (
     <div className="space-y-3 rounded-lg bg-muted/40 p-4">
       <div className="flex flex-wrap gap-2">
-        <Badge variant="secondary">Accepted interview context</Badge>
+        <Badge variant="secondary">{process.snapshot.contextKind === "approved_cv" ? "Original application context" : "Accepted interview context"}</Badge>
         {changes && (
           <Badge variant="outline">
             {changes.length
               ? "Later changes detected"
-              : "Current preparation matches"}
+              : process.applicationId ? "Application context matches" : "Current preparation matches"}
           </Badge>
         )}
       </div>

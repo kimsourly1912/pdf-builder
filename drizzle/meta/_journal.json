@@ -64,6 +64,20 @@
       "when": 1791518156849,
       "tag": "0030_interview_progress",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1792114702535,
+      "tag": "0031_dynamic_hiring_pipelines",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1792115337645,
+      "tag": "0032_application_interviews",
+      "breakpoints": true
     }
   ]
 }

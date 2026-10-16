@@ -14,6 +14,8 @@ Use the root [agent guide](../AGENTS.md) for a short working checklist. Read the
 
 ## Feature guides
 
+- [Hiring pipelines](hiring-pipelines.md): configurable hiring models, job applications, stage automation, connected interviews and explicit offer/outcome records.
+
 - [HR workspace](hr-workspace.md): Home tasks, candidate profile tabs and audited submission acceptance/correction attempts.
 
 - [Web form builder](form-builder.md): visual form layout, separate PDF mapping, whole-form account assignments and recoverable JSON/PDF responses.

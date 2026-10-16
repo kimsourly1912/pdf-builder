@@ -1,4 +1,5 @@
 import { index, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
+import { sql } from "drizzle-orm";
 
 export const workflows = sqliteTable("workflows", {
   id: text("id").primaryKey(), ownerEmail: text("owner_email").notNull(), name: text("name").notNull(),
@@ -8,6 +9,7 @@ export const workflows = sqliteTable("workflows", {
 }, t => [index("workflows_owner_updated_idx").on(t.ownerEmail, t.updatedAt)]);
 
 export const workflowRuns = sqliteTable("workflow_runs", {
+  eventId: text("event_id"), applicationId: text("application_id"),
   id: text("id").primaryKey(), workflowId: text("workflow_id").notNull().references(() => workflows.id, { onDelete: "restrict" }),
   ownerEmail: text("owner_email").notNull(), workflowName: text("workflow_name").notNull(), version: integer("version").notNull(),
   resumeId: text("resume_id").notNull(), graphJson: text("graph_json").notNull(), contextJson: text("context_json").notNull().default('{"steps":{}}'),
@@ -15,7 +17,7 @@ export const workflowRuns = sqliteTable("workflow_runs", {
   errorMessage: text("error_message"), passwordHash: text("password_hash"),
   lockToken: text("lock_token"), lockedUntil: text("locked_until"),
   createdAt: text("created_at").notNull(), updatedAt: text("updated_at").notNull(),
-}, t => [uniqueIndex("workflow_runs_workflow_resume_unique").on(t.workflowId, t.resumeId), index("workflow_runs_owner_created_idx").on(t.ownerEmail, t.createdAt), index("workflow_runs_status_lock_idx").on(t.status, t.lockedUntil)]);
+}, t => [uniqueIndex("workflow_runs_workflow_resume_unique").on(t.workflowId, t.resumeId).where(sql`${t.eventId} IS NULL`), uniqueIndex("workflow_runs_event_unique").on(t.workflowId, t.version, t.eventId), index("workflow_runs_owner_created_idx").on(t.ownerEmail, t.createdAt), index("workflow_runs_status_lock_idx").on(t.status, t.lockedUntil)]);
 
 export const workflowReviewDecisions = sqliteTable("workflow_review_decisions", {
   id: text("id").primaryKey(), runId: text("run_id").notNull().references(() => workflowRuns.id), ownerEmail: text("owner_email").notNull(), candidateId: text("candidate_id").notNull(), runLockToken: text("run_lock_token").notNull(), resumeRevision: text("resume_revision").notNull(), candidateRevision: text("candidate_revision").notNull(), action: text("action").notNull(), createdAt: text("created_at").notNull(),

@@ -1,5 +1,7 @@
 # Candidate preparation workflows
 
+For application-received, job-assigned, stage-entry/exit and application-CV-approval routing, see [Hiring pipelines](hiring-pipelines.md#application-automation). The same editor offers dynamic stage/job conditions and Move application; legacy preparation workflows retain the approval, account, assignment and delivery gates below.
+
 The Workflows page automates candidate preparation from staff uploads, Telegram submissions, HR verification, or a manual start. The starting event is chosen when creating a workflow and can be edited in its starting step. AI extraction is optional; workflows reuse stored data and never make a paid extraction request.
 
 ## Configure and run

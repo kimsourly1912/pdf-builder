@@ -1,5 +1,16 @@
 # Decision log
 
+## 2026-10-16: Configurable hiring pipelines and application identity
+
+- A candidate can have independent job applications, each pinned to a published hiring model and stage. Draft stage edits and job configuration changes do not rewrite existing application or workflow versions.
+- Custom stage labels remain separate from CV, account, form and interview evidence. Manual and automated moves call the same revision/evidence-guarded service. Required evidence remains owner- and application-scoped; assignment reuse is explicit.
+- Application-specific interviews require current CV approval and configured stage requirements. This supersedes the universal accepted-documents-before-interview rule only for application pipelines; legacy Candidate Preparation handoff retains its gate and snapshot contract.
+- Existing owner authorization remains unchanged. Configuring multiple models does not introduce multi-company tenancy or team access.
+- Application event automation extends the existing engine. Event identity, published graph snapshots, leases, mutation receipts and causal limits protect repeated delivery and cross-workflow loops. Legacy preparation runs retain their existing uniqueness and provider guards.
+- Offer status and Hired are explicit owner records. Interview passed, a stage move and offer acceptance are separate from the final hiring decision. Provider sending/signatures are separate scope.
+
+See [Hiring pipelines](hiring-pipelines.md) for the delivered scope and remaining automation/activity extensions.
+
 These accepted decisions describe the current product and technical contracts as of 2026-10-03. This is a maintained summary, not a reconstruction of when each decision was originally made. Change a decision explicitly when requirements change and update the affected implementation and feature guide.
 
 | ID | Accepted decision | Reason and consequence |

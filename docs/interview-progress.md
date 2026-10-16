@@ -1,5 +1,7 @@
 # Interview Progress
 
+[Hiring pipelines](hiring-pipelines.md#connected-interviews-and-offers) additionally creates application-specific interview processes from an interview stage. These require a current approved CV and the configured stage requirements, allowing interviews before document collection. Each job application has its own process and pinned original context. The legacy Candidate Preparation handoff described below keeps its accepted-document requirement.
+
 **Candidates → Candidate Preparation** remains at `/candidates`, with the existing candidate profile URLs. Its stages remain New → Reviewing CV → CV approved → Awaiting forms → Forms to review → Documents accepted. Documents accepted means HR accepted the required documents, independently of interview results.
 
 **Candidates → Interview Progress** opens `/interviews`. From an actually accepted preparation, choose **Move to interviews**, enter a position/title and optionally name the responsible person. The owner defaults as responsible. This explicit action creates one persistent interview process per candidate. Repeated, concurrent or retried handoffs return that same process; migration and page reads never enrol existing candidates. Closed processes are continued through explicit reopening, rather than duplicate handoff.

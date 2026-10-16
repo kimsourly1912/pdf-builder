@@ -71,6 +71,7 @@ function ExecutionBody({ run }: { run: WorkflowRun }) {
         submitted.
       </p>
       <div className="flex flex-wrap gap-2">
+        {run.context.applicationEvent&&<Button variant="outline" size="sm" asChild><Link href={`/hiring/${run.context.applicationEvent.applicationId}`}>Open application</Link></Button>}
         <Button
           variant="outline"
           size="sm"

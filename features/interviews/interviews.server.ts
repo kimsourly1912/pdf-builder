@@ -28,6 +28,7 @@ import {
   type InterviewOutcome,
 } from "./interviews";
 type ProcessRow = {
+  application_id: string | null;
   id: string;
   owner_email: string;
   candidate_id: string;
@@ -80,6 +81,7 @@ function processDto(
   rounds: InterviewRound[],
 ): InterviewProcess {
   return {
+    applicationId: row.application_id,
     id: row.id,
     candidateId: row.candidate_id,
     position: row.position,
@@ -308,7 +310,7 @@ export async function handoffInterview(
   const db = getDatabaseBinding();
   const existing = await db
     .prepare(
-      "SELECT id FROM interview_processes WHERE candidate_id=? AND owner_email=?",
+      "SELECT id FROM interview_processes WHERE candidate_id=? AND owner_email=? AND application_id IS NULL",
     )
     .bind(candidateId, owner)
     .first<{ id: string }>();
@@ -421,7 +423,7 @@ export async function handoffInterview(
   } catch (error) {
     const winner = await db
       .prepare(
-        "SELECT id FROM interview_processes WHERE candidate_id=? AND owner_email=?",
+        "SELECT id FROM interview_processes WHERE candidate_id=? AND owner_email=? AND application_id IS NULL",
       )
       .bind(candidateId, owner)
       .first<{ id: string }>();

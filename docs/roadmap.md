@@ -1,5 +1,11 @@
 # Roadmap and current status
 
+## 2026-10-16 implementation: hiring pipelines
+
+Configurable published hiring models, job openings, independent applications, a dynamic board/list, guarded entry/exit requirements, application event routing, connected application interviews and explicit offer/outcome records are implemented. Existing preparation remains available, with explicit legacy import and protected evidence. See [Hiring pipelines](hiring-pipelines.md) for setup and exact scope. Publication/deployment status remains separate from this implementation record.
+
+Follow-up work includes application-scoped account/form preparation actions in application graphs, automatic form/feedback event triggers, round-specific stage requirements and scorecards, job-specific public intake links, offer generation/signing, and company/team authentication. Existing guarded preparation automation remains available.
+
 As of 2026-10-03. This page focuses on the recent candidate intake, workflow, archive, and progress work. Git history and GitHub Actions remain the source of truth for publication and deployment; this page is not a deployment log.
 
 ## Shipped capability

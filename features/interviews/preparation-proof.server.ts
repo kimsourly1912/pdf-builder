@@ -5,6 +5,9 @@ import "server-only";
 const owner = "(SELECT owner FROM interview_scope)",
   candidate = "(SELECT candidate FROM interview_scope)";
 const sources = [
+  ["interview_processes", `owner_email=${owner} AND candidate_id=${candidate}`, "id,version,rounds_complete,outcome,hold_json"],
+  ["interview_rounds", `process_id IN (SELECT id FROM interview_processes WHERE owner_email=${owner} AND candidate_id=${candidate})`, "id,status,interviewers_json,updated_at"],
+  ["interview_feedback", `round_id IN (SELECT r.id FROM interview_rounds r JOIN interview_processes p ON p.id=r.process_id WHERE p.owner_email=${owner} AND p.candidate_id=${candidate})`, "id,round_id,interviewer,status,updated_at"],
   [
     "candidates",
     `owner_email=${owner} AND id=${candidate}`,

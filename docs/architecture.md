@@ -75,4 +75,6 @@ Waiting clocks use CV receipt, update receipt, assignment and submission timesta
 
 ## Interview management
 
+`features/hiring` adds versioned hiring models, jobs and application-scoped stages at `/hiring`, retaining the preparation and interview screens as activity tools. Application transitions, audit history and pending automation events share guarded D1 batches. Existing workflow runs support event/workflow/version identities for application routing while legacy runs retain workflow/CV uniqueness. Intake triggers create only default-inbox applications; explicit legacy import suppresses automation. Application interview processes reuse existing services with separate uniqueness per application. See [Hiring pipelines](hiring-pipelines.md).
+
 `features/interviews` provides validated owner-scoped services, client screens and DTOs behind thin `/api/interviews` adapters. Explicit handoff from accepted preparation creates one candidate-linked process at `/interviews/:id`; `/interviews` is the Active/Closed management page. Separate round, feedback, accepted-document and immutable-event records preserve the original CV/profile/account/preparation context. Process versions and request receipts protect atomic lifecycle/audit batches. Preparation evidence remains authoritative and separate from interview outcomes. See [Interview Progress](interview-progress.md).

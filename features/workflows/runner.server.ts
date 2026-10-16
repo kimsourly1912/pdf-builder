@@ -3,8 +3,9 @@ import { approveResumeEditorRun } from "./verified-resume.server";
 import { deliverWorkflowInvitation } from "@/features/telegram/delivery.server";
 import { TelegramSendError } from "@/features/telegram/bot.server";
 import "server-only";
+import { processApplicationRouting } from "@/features/hiring/automation.server";
 
-import { and, desc, eq, isNull, lt, or } from "drizzle-orm";
+import { and, desc, eq, isNull, isNotNull, lt, or } from "drizzle-orm";
 import { getDb } from "@/db";
 import {
   account,
@@ -63,6 +64,7 @@ export async function processWorkflowRun(id: string): Promise<void> {
   if (!claim) return;
   let row = claim.row;
   const token = claim.token;
+  if (row.eventId) return processApplicationRouting(row, token);
   const graph = JSON.parse(row.graphJson) as WorkflowGraph;
   const context = JSON.parse(row.contextJson) as RunContext;
   let nodeId = row.currentNodeId;
@@ -621,7 +623,7 @@ async function checkpoint(
     );
 }
 
-export async function processPendingWorkflowRuns() {
+export async function processPendingWorkflowRuns(options: { applicationOnly?: boolean } = {}) {
   const now = new Date().toISOString();
   const pending = await getDb()
     .select({ id: workflowRuns.id })
@@ -634,6 +636,7 @@ export async function processPendingWorkflowRuns() {
         ),
         notArchived("workflow_run", workflowRuns.id),
         notArchived("resume", workflowRuns.resumeId),
+        options.applicationOnly ? isNotNull(workflowRuns.eventId) : undefined,
         or(isNull(workflowRuns.lockedUntil), lt(workflowRuns.lockedUntil, now)),
       ),
     )

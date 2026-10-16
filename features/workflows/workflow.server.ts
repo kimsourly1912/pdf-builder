@@ -29,6 +29,7 @@ import { jsonError } from "@/features/templates/template.server";
 import { workflowVersions, workflowRuns, workflows } from "./schema";
 import {
   defaultGraph,
+  applicationGraph,
   graphIssues,
   parseGraph,
   parseDraftGraph,
@@ -40,6 +41,8 @@ import {
   type WorkflowTrigger,
   workflowTrigger,
 } from "./workflow";
+import { isApplicationTrigger } from "@/features/hiring/hiring";
+import { validateApplicationGraph } from "@/features/hiring/automation.server";
 
 export function fail(message: string, status = 400): never {
   throw jsonError(message, status);
@@ -144,7 +147,7 @@ export async function createWorkflow(
     fail("You can create up to 50 workflows.");
   const id = crypto.randomUUID();
   const now = new Date().toISOString();
-  const graph = preset ? presetGraph(preset) : defaultGraph();
+  const graph = preset ? presetGraph(preset) : isApplicationTrigger(trigger) ? applicationGraph(trigger) : defaultGraph();
   graph.nodes.find((n) => n.kind === "resume_uploaded")!.config.trigger =
     trigger;
   await getDb().batch([
@@ -233,6 +236,7 @@ export async function saveWorkflow(
   if (!publishing && body.action !== "save")
     fail("Choose save, publish, or pause.");
   if (publishing) {
+    await validateApplicationGraph(ownerEmail, graph);
     const issues = graphIssues(graph);
     if (issues.length) fail(issues.join(" "), 422);
     // Published runs pin template versions and roles, independently of later edits.
@@ -380,6 +384,7 @@ export async function startWorkflow(
   if (!w?.publishedJson || !r)
     fail("Choose a published workflow and an existing resume.", 422);
   const graph = JSON.parse(w.publishedJson) as WorkflowGraph;
+  if (isApplicationTrigger(workflowTrigger(graph))) fail("Application workflows start from application events. Add or move an application on the hiring board.", 422);
   const now = new Date().toISOString();
   if (
     context.resumeEditorApproval &&
@@ -410,6 +415,7 @@ export async function startWorkflow(
       and(
         eq(workflowRuns.workflowId, workflowId),
         eq(workflowRuns.resumeId, resumeId),
+        isNull(workflowRuns.eventId),
         eq(workflowRuns.ownerEmail, ownerEmail),
       ),
     )

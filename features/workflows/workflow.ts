@@ -1,4 +1,9 @@
 import type { ResumeCandidateSummary } from "@/features/resumes/resume.types";
+export const APPLICATION_TRIGGERS = ["application_received", "job_assigned", "stage_entered", "stage_left", "application_cv_approved"] as const;
+export type ApplicationTrigger = (typeof APPLICATION_TRIGGERS)[number];
+export function isApplicationTrigger(value: string): value is ApplicationTrigger {
+  return (APPLICATION_TRIGGERS as readonly string[]).includes(value);
+}
 
 export const STEP_KINDS = [
   "resume_uploaded",
@@ -9,6 +14,7 @@ export const STEP_KINDS = [
   "assign_forms",
   "send_telegram",
   "condition",
+  "move_stage",
   "complete",
   "stop",
 ] as const;
@@ -24,6 +30,7 @@ export const WORKFLOW_TRIGGERS = [
   "telegram_submission",
   "resume_verified",
   "manual",
+  ...APPLICATION_TRIGGERS,
 ] as const;
 export type WorkflowTrigger = (typeof WORKFLOW_TRIGGERS)[number];
 export const TRIGGER_LABELS: Record<WorkflowTrigger, string> = {
@@ -31,6 +38,11 @@ export const TRIGGER_LABELS: Record<WorkflowTrigger, string> = {
   telegram_submission: "Telegram candidate submits a CV",
   resume_verified: "HR approves a CV",
   manual: "HR starts manually",
+  application_received: "Application received",
+  job_assigned: "Application job assigned",
+  stage_entered: "Application enters a stage",
+  stage_left: "Application leaves a stage",
+  application_cv_approved: "Application CV approved by HR",
 };
 export type ResumeEditorApproval = {
   resumeRevision: string;
@@ -48,7 +60,14 @@ export type StepConfig = {
   trigger?: WorkflowTrigger;
   forms?: FormTarget[];
   skipExisting?: boolean;
-  field?: "source" | "appliedPosition";
+  field?: "source" | "appliedPosition" | "stageId" | "jobId";
+  pipelineVersionId?: string;
+  stageId?: string;
+  fromStageId?: string;
+  operator?: "is" | "is_not";
+  valueLabel?: string;
+  stageLabel?: string;
+  fromStageLabel?: string;
   value?: string;
   message?: string;
 };
@@ -83,6 +102,7 @@ export type StepResult = {
   outcome?: WorkflowEdge["outcome"];
 };
 export type RunContext = {
+  applicationEvent?: { id: string; applicationId: string; pipelineVersionId: string; stageId: string; fromStageId: string | null; jobId: string | null; applicationRevision: number; chain: string[] };
   reviewStartedAt?: string;
   preparationCompletedAt?: string;
   steps: Record<string, StepResult>;
@@ -152,6 +172,7 @@ export const STEP_LABELS: Record<StepKind, string> = {
   assign_forms: "Assign forms",
   send_telegram: "Send Telegram invitation",
   condition: "Condition",
+  move_stage: "Move application",
   complete: "Complete",
   stop: "Stop",
 };
@@ -163,7 +184,8 @@ export const STEP_DESCRIPTIONS: Record<StepKind, string> = {
   link_resume: "Attach the approved resume",
   assign_forms: "Choose forms the candidate needs to complete",
   send_telegram: "Send account access to a confirmed Telegram contact",
-  condition: "Branch by source or applied position",
+  condition: "Branch by source, position, job or application stage",
+  move_stage: "Move an application after checking the stage requirements",
   complete: "Finish preparation; form submissions are tracked separately",
   stop: "End this path",
 };
@@ -230,6 +252,17 @@ export function defaultGraph(): WorkflowGraph {
       { id: "link-assign", source: "link", target: "assign", outcome: "next" },
       { id: "assign-done", source: "assign", target: "done", outcome: "next" },
     ],
+  };
+}
+
+export function applicationGraph(trigger: WorkflowTrigger): WorkflowGraph {
+  return {
+    nodes: [
+      { id: "start", kind: "resume_uploaded", position: { x: 0, y: 0 }, config: { trigger } },
+      { id: "move", kind: "move_stage", position: { x: 300, y: 0 }, config: {} },
+      { id: "done", kind: "complete", position: { x: 600, y: 0 }, config: {} },
+    ],
+    edges: [ { id: "start-move", source: "start", target: "move", outcome: "next" }, { id: "move-done", source: "move", target: "done", outcome: "next" } ],
   };
 }
 
@@ -312,12 +345,26 @@ export function parseGraph(
           : undefined;
     }
     if (n.kind === "condition") {
-      if (n.config.field !== "source" && n.config.field !== "appliedPosition")
+      if (!["source", "appliedPosition", "stageId", "jobId"].includes(String(n.config.field)))
         return null;
       if (typeof n.config.value !== "string" || n.config.value.length > 160)
         return null;
-      config.field = n.config.field;
+      config.field = n.config.field as StepConfig["field"];
       config.value = n.config.value.trim();
+      if (n.config.operator !== undefined && !["is", "is_not"].includes(String(n.config.operator))) return null;
+      if (n.config.operator !== undefined) config.operator = n.config.operator === "is_not" ? "is_not" : "is";
+    }
+    for (const key of ["pipelineVersionId", "stageId", "fromStageId"] as const) {
+      if (n.config[key] !== undefined) {
+        if (n.config[key] !== "" && !validId(n.config[key])) return null;
+        config[key] = n.config[key] as string;
+      }
+    }
+    for (const key of ["valueLabel", "stageLabel", "fromStageLabel"] as const) {
+      if (n.config[key] !== undefined) {
+        if (typeof n.config[key] !== "string" || n.config[key].length > 200) return null;
+        config[key] = n.config[key].trim();
+      }
     }
     if (
       (n.label !== undefined &&
@@ -365,6 +412,7 @@ export function graphIssues(graph: WorkflowGraph): string[] {
   const issues = new Set<string>();
   const nodeMap = new Map(graph.nodes.map((n) => [n.id, n]));
   const starts = graph.nodes.filter((n) => n.kind === "resume_uploaded");
+  const application = isApplicationTrigger(workflowTrigger(graph));
   if (starts.length !== 1)
     issues.add("Add exactly one workflow starting event.");
   for (const kind of [
@@ -372,7 +420,7 @@ export function graphIssues(graph: WorkflowGraph): string[] {
     "review_resume",
     "complete",
   ] as StepKind[]) {
-    if (!graph.nodes.some((n) => n.kind === kind))
+    if ((!application || kind === "complete") && !graph.nodes.some((n) => n.kind === kind))
       issues.add(`Add a ${STEP_LABELS[kind]} step.`);
   }
   for (const e of graph.edges) {
@@ -382,6 +430,16 @@ export function graphIssues(graph: WorkflowGraph): string[] {
       issues.add("The starting event cannot have incoming connections.");
   }
   for (const n of graph.nodes) {
+    if (application && !["resume_uploaded", "condition", "move_stage", "complete", "stop"].includes(n.kind))
+      issues.add("Application routing supports conditions, Move application, Complete and Stop. Use the existing CV-approval workflow for account and form preparation.");
+    if (!application && (n.kind === "move_stage" || ["stageId", "jobId"].includes(n.config.field ?? "")))
+      issues.add("Choose an application starting event before using application stages or jobs.");
+    if (application && n.kind === "resume_uploaded" && !n.config.pipelineVersionId)
+      issues.add("Choose a published hiring pipeline for this application event.");
+    if (application && n.kind === "resume_uploaded" && ["stage_entered", "stage_left"].includes(n.config.trigger ?? "") && !n.config.stageId)
+      issues.add("Choose the stage that starts this workflow.");
+    if (n.kind === "move_stage" && (!n.config.stageId || !n.config.fromStageId))
+      issues.add("Choose both the expected source stage and destination for Move application.");
     const outgoing = graph.edges.filter((e) => e.source === n.id);
     const expected =
       n.kind === "review_resume"
@@ -475,6 +533,7 @@ export function graphIssues(graph: WorkflowGraph): string[] {
         "link_resume",
         "assign_forms",
         "send_telegram",
+        "move_stage",
       ].includes(n.kind)
     )
       issues.add("Use each candidate preparation action only once per path.");
@@ -507,10 +566,12 @@ export function conditionMatches(
   config: StepConfig,
   resume: { source: string; appliedPosition: string },
 ): boolean {
-  return (
+  if (config.field === "stageId" || config.field === "jobId") return false;
+  const matches = (
     (resume[config.field ?? "source"] ?? "").trim().toLowerCase() ===
     (config.value ?? "").trim().toLowerCase()
   );
+  return config.operator === "is_not" ? !matches : matches;
 }
 
 export function parseDraftGraph(value: unknown) {

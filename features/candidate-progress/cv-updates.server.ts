@@ -38,6 +38,7 @@ export async function cvIsProtected(owner: string, resumeId: string) {
     OR EXISTS(SELECT 1 FROM candidate_cv_reviews h WHERE h.resume_id=r.id)
     OR EXISTS(SELECT 1 FROM candidate_progress p WHERE p.selected_resume_id=r.id AND p.manual_stage='reviewing')
     OR EXISTS(SELECT 1 FROM workflow_runs w WHERE w.resume_id=r.id AND w.owner_email=r.owner_email)
+    OR EXISTS(SELECT 1 FROM hiring_applications a WHERE a.resume_id=r.id AND a.owner_email=r.owner_email)
     OR EXISTS(SELECT 1 FROM candidate_profile_versions v WHERE v.resume_id=r.id)
     OR EXISTS(SELECT 1 FROM candidates c WHERE c.id=r.candidate_id AND c.user_id IS NOT NULL)
     OR EXISTS(SELECT 1 FROM archive_records a WHERE a.entity_type='resume' AND a.entity_id=r.id)

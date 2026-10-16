@@ -110,7 +110,7 @@ async function load(owner: string, resumeId?: string) {
       ),
       rows<Meta>("SELECT * FROM candidate_progress WHERE owner_email=?", owner),
       rows<RunRow>(
-        "SELECT w.id,w.workflow_id,w.workflow_name,w.resume_id,w.context_json,w.graph_json,w.status,w.created_at,w.updated_at,w.error_message,EXISTS(SELECT 1 FROM archive_records a WHERE a.entity_type='workflow_run' AND a.entity_id=w.id) archived FROM workflow_runs w WHERE w.owner_email=? ORDER BY w.created_at DESC,w.id DESC",
+        "SELECT w.id,w.workflow_id,w.workflow_name,w.resume_id,w.context_json,w.graph_json,w.status,w.created_at,w.updated_at,w.error_message,EXISTS(SELECT 1 FROM archive_records a WHERE a.entity_type='workflow_run' AND a.entity_id=w.id) archived FROM workflow_runs w WHERE w.owner_email=? AND w.event_id IS NULL ORDER BY w.created_at DESC,w.id DESC",
         owner,
       ),
       rows<FormRow>(
@@ -130,7 +130,7 @@ async function load(owner: string, resumeId?: string) {
         owner,
       ),
       rows<{resumeId: string; candidateId: string; baseResumeId: string; fileName: string; status: string; createdAt: string; updatedAt: string; reason: string | null}>("SELECT u.resume_id resumeId,u.candidate_id candidateId,u.base_resume_id baseResumeId,r.file_name fileName,u.status,u.created_at createdAt,u.updated_at updatedAt,u.reason FROM candidate_cv_updates u JOIN resumes r ON r.id=u.resume_id WHERE u.owner_email=? AND u.status NOT IN ('awaiting_confirmation','cancelled','replaced') AND NOT EXISTS(SELECT 1 FROM archive_records a WHERE a.entity_type='resume' AND a.entity_id=r.id) ORDER BY u.created_at DESC", owner),
-      rows<{ id: string; candidate_id: string; position: string; outcome: string | null }>("SELECT id,candidate_id,position,outcome FROM interview_processes WHERE owner_email=?", owner),
+      rows<{ id: string; candidate_id: string; position: string; outcome: string | null }>("SELECT id,candidate_id,position,outcome FROM interview_processes WHERE owner_email=? AND application_id IS NULL", owner),
     ]);
   const groups = new Map<string, CvRow[]>();
   for (const r of cvs) {

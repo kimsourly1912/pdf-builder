@@ -48,6 +48,7 @@ const navigationItems = [
     label: "Candidates",
     icon: UsersRound,
     children: [
+      { href: "/hiring", label: "Hiring pipeline" },
       { href: "/candidates", label: "Candidate Preparation" },
       { href: "/interviews", label: "Interview Progress" },
       { href: "/needs-attention", label: "Needs attention" },
@@ -80,6 +81,7 @@ const navigationItems = [
     icon: Archive,
     children: [
       { href: "/administration", label: "Settings & integrations" },
+      { href: "/hiring/pipelines", label: "Hiring models & jobs" },
       { href: "/setup", label: "Workspace setup" },
       { href: "/accounts", label: "Account access" },
       { href: "/analyses", label: "AI history" },

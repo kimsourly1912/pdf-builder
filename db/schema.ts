@@ -9,6 +9,56 @@ import {
 import { sql } from "drizzle-orm";
 import { workflowRuns } from "../features/workflows/schema";
 
+export const hiringPipelines = sqliteTable("hiring_pipelines", {
+  id: text("id").primaryKey(), ownerEmail: text("owner_email").notNull(), name: text("name").notNull(),
+  draftJson: text("draft_json").notNull(), revision: integer("revision").notNull().default(1),
+  publishedVersion: integer("published_version").notNull().default(0), currentVersionId: text("current_version_id"),
+  isDefault: integer("is_default").notNull().default(0), archived: integer("archived").notNull().default(0),
+  createdAt: text("created_at").notNull(), updatedAt: text("updated_at").notNull(),
+}, t => [index("hiring_pipelines_owner_idx").on(t.ownerEmail), uniqueIndex("hiring_pipeline_default_unique").on(t.ownerEmail).where(sql`${t.isDefault}=1 AND ${t.archived}=0`)]);
+export const hiringPipelineVersions = sqliteTable("hiring_pipeline_versions", {
+  id: text("id").primaryKey(), pipelineId: text("pipeline_id").notNull().references(() => hiringPipelines.id, { onDelete: "restrict" }),
+  ownerEmail: text("owner_email").notNull(), name: text("name").notNull(), version: integer("version").notNull(),
+  definitionJson: text("definition_json").notNull(), publishedAt: text("published_at").notNull(),
+}, t => [uniqueIndex("hiring_pipeline_version_unique").on(t.pipelineId, t.version)]);
+export const hiringJobs = sqliteTable("hiring_jobs", {
+  id: text("id").primaryKey(), ownerEmail: text("owner_email").notNull(), title: text("title").notNull(),
+  pipelineVersionId: text("pipeline_version_id").notNull().references(() => hiringPipelineVersions.id, { onDelete: "restrict" }),
+  revision: integer("revision").notNull().default(1), archived: integer("archived").notNull().default(0), createdAt: text("created_at").notNull(),
+}, t => [index("hiring_jobs_owner_idx").on(t.ownerEmail)]);
+
+export const hiringApplications = sqliteTable("hiring_applications", {
+  id: text("id").primaryKey(), ownerEmail: text("owner_email").notNull(),
+  candidateId: text("candidate_id").notNull().references(() => candidates.id, { onDelete: "restrict" }),
+  resumeId: text("resume_id").notNull().references(() => resumes.id, { onDelete: "restrict" }),
+  jobId: text("job_id").references(() => hiringJobs.id, { onDelete: "restrict" }),
+  pipelineVersionId: text("pipeline_version_id").notNull().references(() => hiringPipelineVersions.id, { onDelete: "restrict" }),
+  stageId: text("stage_id").notNull(), revision: integer("revision").notNull().default(1),
+  intake: integer("intake").notNull().default(0), evidenceJson: text("evidence_json").notNull().default("{}"),
+  outcome: text("outcome"), hold: text("hold"), offer: text("offer").notNull().default("none"),
+  interviewId: text("interview_id"), stageEnteredAt: text("stage_entered_at"),
+  createdAt: text("created_at").notNull(), updatedAt: text("updated_at").notNull(),
+}, t => [
+  index("hiring_applications_owner_idx").on(t.ownerEmail, t.updatedAt),
+  uniqueIndex("hiring_application_intake_unique").on(t.candidateId).where(sql`${t.intake}=1`),
+  uniqueIndex("hiring_application_job_unique").on(t.candidateId, t.jobId).where(sql`${t.outcome} IS NULL AND ${t.jobId} IS NOT NULL`),
+  check("hiring_application_outcome_check", sql`${t.outcome} IN ('hired','rejected','withdrawn')`),
+  check("hiring_application_offer_check", sql`${t.offer} IN ('none','draft','sent','accepted','declined')`),
+]);
+export const hiringEvents = sqliteTable("hiring_events", {
+  id: text("id").primaryKey(), applicationId: text("application_id").notNull().references(() => hiringApplications.id, { onDelete: "cascade" }),
+  ownerEmail: text("owner_email").notNull(), kind: text("kind").notNull(), fromStage: text("from_stage"), toStage: text("to_stage").notNull(),
+  actor: text("actor").notNull(), reason: text("reason").notNull().default(""), contextJson: text("context_json").notNull(),
+  status: text("status").notNull().default("pending"), createdAt: text("created_at").notNull(),
+}, t => [index("hiring_events_pending_idx").on(t.status, t.createdAt), index("hiring_events_application_idx").on(t.applicationId, t.createdAt)]);
+export const hiringReceipts = sqliteTable("hiring_receipts", {
+  id: text("id").primaryKey(), ownerEmail: text("owner_email").notNull(), requestHash: text("request_hash").notNull(),
+  applicationId: text("application_id").notNull().references(() => hiringApplications.id, { onDelete: "cascade" }),
+}, t => [index("hiring_receipts_application_idx").on(t.applicationId)]);
+export const hiringGuards = sqliteTable("hiring_guards", {
+  id: text("id").primaryKey(), checkPassed: integer("check_passed").notNull(),
+}, t => [check("hiring_checked", sql`${t.checkPassed}=1`)]);
+
 export { archiveRecords } from "../features/archive/schema";
 export {
   workflows,
@@ -702,6 +752,7 @@ export const testDataResetTargets = sqliteTable("test_data_reset_targets", {
 export const interviewProcesses = sqliteTable(
   "interview_processes",
   {
+    applicationId: text("application_id"),
     id: text("id").primaryKey(),
     ownerEmail: text("owner_email").notNull(),
     candidateId: text("candidate_id")
@@ -734,7 +785,8 @@ export const interviewProcesses = sqliteTable(
     updatedAt: text("updated_at").notNull(),
   },
   (t) => [
-    uniqueIndex("interview_candidate_unique").on(t.candidateId),
+    uniqueIndex("interview_candidate_unique").on(t.candidateId).where(sql`${t.applicationId} IS NULL`),
+    uniqueIndex("interview_application_unique").on(t.applicationId),
     index("interview_owner_updated_idx").on(t.ownerEmail, t.updatedAt),
     check(
       "interview_outcome_check",

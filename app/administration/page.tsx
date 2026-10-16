@@ -15,6 +15,7 @@ export default async function Page() {
       />
       <div className="grid gap-5 sm:grid-cols-2">
         {[
+          { title: "Hiring models & jobs", description: "Configure your hiring stages, publish pipelines, and choose a model for each job opening.", href: "/hiring/pipelines" },
           {
             title: "Workspace setup",
             description:

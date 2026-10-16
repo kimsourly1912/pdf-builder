@@ -62,6 +62,7 @@ export const STEP_ICONS = {
   assign_forms: Files,
   send_telegram: Send,
   condition: GitBranch,
+  move_stage: GitBranch,
   complete: CheckCircle2,
   stop: CircleStop,
 };
@@ -152,7 +153,9 @@ function StepCard({ id, data, selected }: NodeProps<FlowNode>) {
               <p className="mt-1 break-words text-xs text-muted-foreground">
                 {data.summary ||
                   (data.kind === "condition"
-                    ? `${data.config.field} equals ${data.config.value || "…"}`
+                    ? `${data.config.field === "stageId" ? "Stage" : data.config.field === "jobId" ? "Job" : data.config.field} ${data.config.operator === "is_not" ? "is not" : "is"} ${data.config.valueLabel || data.config.value || "…"}`
+                    : data.kind === "move_stage"
+                      ? `${data.config.fromStageLabel || "Choose source"} → ${data.config.stageLabel || "Choose destination"}`
                     : data.kind === "assign_forms"
                       ? `${data.config.forms?.length ?? 0} forms selected`
                       : STEP_DESCRIPTIONS[data.kind])}

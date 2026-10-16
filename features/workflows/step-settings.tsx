@@ -15,8 +15,11 @@ import {
   type TemplateOption,
 } from "./workflow";
 import { DEFAULT_INVITATION } from "./editor-tools";
+import { WorkflowStageSettings } from "@/features/hiring/workflow-stage-settings";
+import { isApplicationTrigger } from "@/features/hiring/hiring";
 export function StepSettings(props: {
   node: WorkflowNode;
+  pipelineVersionId?: string;
   options: TemplateOption[];
   disabled?: boolean;
   onChange: (config: StepConfig) => void;
@@ -219,31 +222,37 @@ export function StepSettings(props: {
       )}
       {node.kind === "condition" && (
         <div className="space-y-3">
-          <Label htmlFor="condition-field">Compare CV field</Label>
+          <Label htmlFor="condition-field">Compare field</Label>
           <SelectField
             id="condition-field"
             value={config.field ?? "source"}
             className="h-10 w-full rounded border bg-background px-2 text-sm"
             onValueChange={(value) =>
-              patch({ field: value as "source" | "appliedPosition" })
+              patch({ field: value as StepConfig["field"], value: "" })
             }
           >
             <SelectFieldOption value="source">Source</SelectFieldOption>
             <SelectFieldOption value="appliedPosition">Applied position</SelectFieldOption>
+            <SelectFieldOption value="stageId">Application stage</SelectFieldOption>
+            <SelectFieldOption value="jobId">Job opening</SelectFieldOption>
           </SelectField>
-          <Label htmlFor="condition-value">Equals</Label>
+          <div className="space-y-2"><Label htmlFor="condition-operator">Comparison</Label><SelectField id="condition-operator" value={config.operator??"is"} onValueChange={v=>patch({operator:v as "is"|"is_not"})}><SelectFieldOption value="is">Is</SelectFieldOption><SelectFieldOption value="is_not">Is not</SelectFieldOption></SelectField></div>
+          {!["stageId", "jobId"].includes(config.field??"")&&<div className="space-y-2"><Label htmlFor="condition-value">Value</Label>
           <Input
             id="condition-value"
             maxLength={160}
             value={config.value ?? ""}
             onChange={(e) => patch({ value: e.target.value })}
           />
+          </div>}
+          {["stageId", "jobId"].includes(config.field??"")&&<WorkflowStageSettings node={node} pipelineVersionId={props.pipelineVersionId} onChange={props.onChange}/>}
           <p className="text-xs text-muted-foreground">
             Compares ignoring letter case and surrounding spaces. Connect both
             Yes and No.
           </p>
         </div>
       )}
+      {((node.kind==="resume_uploaded"&&isApplicationTrigger(config.trigger??""))||node.kind==="move_stage")&&<WorkflowStageSettings node={node} pipelineVersionId={props.pipelineVersionId} onChange={props.onChange}/>}
       {node.kind === "review_resume" && (
         <p className="text-sm text-muted-foreground">
           Uses the current saved CV approval; otherwise waits for HR review.

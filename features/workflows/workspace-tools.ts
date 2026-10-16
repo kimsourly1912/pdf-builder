@@ -65,9 +65,11 @@ export const STEP_GROUPS = [
   },
   { name: "Forms", kinds: ["assign_forms"] },
   { name: "Communication", kinds: ["send_telegram"] },
-  { name: "Logic", kinds: ["condition", "complete", "stop"] },
+  { name: "Logic", kinds: ["condition", "move_stage", "complete", "stop"] },
 ] as const;
 export type SampleInput = {
+  stageId?: string;
+  jobId?: string;
   name: string;
   email: string;
   source: string;
@@ -138,11 +140,18 @@ export function previewWorkflow(
         break;
       case "condition":
         outcome =
-          sample[node.config.field ?? "source"].trim().toLowerCase() ===
+          ((sample[node.config.field ?? "source"]??"").trim().toLowerCase() ===
           (node.config.value ?? "").trim().toLowerCase()
+          ) !== (node.config.operator === "is_not")
             ? "yes"
             : "no";
         step.result = `Condition would follow ${outcome}`;
+        break;
+      case "move_stage":
+        step.result = "Would request the configured stage move. Live evidence and concurrent changes must be checked during execution.";
+        if (sample.stageId !== node.config.fromStageId) {
+          step.state = "blocked"; step.result = "Sample application is not in the expected source stage."; stop = true;
+        }
         break;
       case "create_account":
         step.result = sample.existingAccount
@@ -218,7 +227,7 @@ export function stepEvidence(
         ? [["Approved candidate", run.context.reviewedName]]
         : []),
       ...(node.kind === "condition"
-        ? [["Comparison", `${node.config.field} equals ${node.config.value}`]]
+        ? [["Comparison", `${node.config.field === "stageId" ? "Stage" : node.config.field === "jobId" ? "Job" : node.config.field} ${node.config.operator === "is_not" ? "is not" : "is"} ${node.config.valueLabel || node.config.value}`]]
         : []),
       ...(node.kind === "assign_forms"
         ? [

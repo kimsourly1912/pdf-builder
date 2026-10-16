@@ -120,6 +120,7 @@ import {
   TRIGGER_LABELS,
   STEP_KINDS,
   workflowTrigger,
+  isApplicationTrigger,
   graphIssues,
   parseGraph,
   parseDraftGraph,
@@ -863,6 +864,7 @@ function EditorBody({
         </TabsContent>
         <TabsContent value="parameters">
           <StepSettings
+            pipelineVersionId={graph.nodes.find(n=>n.kind==="resume_uploaded")?.config.pipelineVersionId}
             node={selectedNode}
             options={options}
             disabled={!editable}
@@ -1238,7 +1240,7 @@ function EditorBody({
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem
-                disabled={!workflow.version || busy || workflow.archived}
+                disabled={!workflow.version || busy || workflow.archived || isApplicationTrigger(workflowTrigger(workflow.published??graph))}
                 onSelect={() => setStartOpen(true)}
               >
                 <Play />

@@ -1,4 +1,5 @@
 import { env } from "cloudflare:workers";
+import { dispatchApplicationEvents } from "../features/hiring/automation.server";
 import { processPendingFormPdfs } from "../features/forms/submission.server";
 import { processTelegramUpdates } from "../features/telegram/intake.server";
 import handler from "vinext/server/app-router-entry";
@@ -54,6 +55,9 @@ const worker = {
         }
       }
       const durationMs = requestDurationMs(startedAt);
+      if (context && response.ok && request.method !== "GET" && (/^\/api\/hiring\/applications(?:\/[^/]+)?$/.test(path) || /^\/api\/resumes\/[^/]+$/.test(path))) {
+        context.waitUntil((async () => { await dispatchApplicationEvents(); await processPendingWorkflowRuns({ applicationOnly: true }); })().catch(() => console.error("Application routing processing unavailable")));
+      }
       console.info("Request completed", {
         requestId,
         method: request.method,
@@ -111,6 +115,7 @@ const worker = {
   },
   async scheduled(): Promise<void> {
     await processTelegramUpdates();
+    await dispatchApplicationEvents();
     await processPendingWorkflowRuns();
     const origin = (env as unknown as { BETTER_AUTH_URL?: string }).BETTER_AUTH_URL;
     if (origin) await processPendingFormPdfs(origin);

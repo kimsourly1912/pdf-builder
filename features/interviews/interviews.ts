@@ -64,6 +64,7 @@ export type InterviewRound = {
   feedback: InterviewFeedback[];
 };
 export type PreparationSnapshot = {
+  contextKind?: "approved_cv";
   name: string;
   email: string;
   telegram: string;
@@ -75,6 +76,7 @@ export type PreparationSnapshot = {
   acceptedAt: string;
 };
 export type InterviewProcess = {
+  applicationId?: string | null;
   id: string;
   candidateId: string;
   position: string;

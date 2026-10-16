@@ -186,6 +186,7 @@ export function nodeIssues(graph: WorkflowGraph, node: WorkflowNode): string[] {
   return issues;
 }
 export const DATA_HELP: Record<StepKind, { input: string; output: string }> = {
+  move_stage: { input: "Application, expected source stage and current evidence.", output: "A guarded stage transition and its recorded event." },
   resume_uploaded: {
     input: "The selected starting event and its CV.",
     output: "Candidate and CV references for this run.",
