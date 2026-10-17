@@ -1,5 +1,7 @@
 # Hiring pipelines
 
+Hiring board cards, list rows and application details provide separate Archive and Delete permanently actions. Archive preserves application progress and documents and can be restored from Archive. Permanent deletion requires a reviewed confirmation and is limited to unused applications without recorded progress or linked preparation/form/interview evidence; candidate profiles and CVs stay available. Pipeline settings retain Archive/Restore and add Delete permanently for unused, non-default pipelines. See [Archive and retention](archive.md) for eligibility, concurrency and file-cleanup rules.
+
 The Hiring pipeline page at `/hiring` follows job applications across configurable stages. Pipeline configuration does not introduce company accounts, interviewer logins or additional management permissions; the existing workspace owner remains authoritative.
 
 ## Unified application workspace

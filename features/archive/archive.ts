@@ -8,6 +8,8 @@ export const ARCHIVE_TYPES = [
   "workflow_run",
   "submission",
   "ai_run",
+  "hiring_application",
+  "hiring_pipeline",
 ] as const;
 export type ArchiveType = (typeof ARCHIVE_TYPES)[number];
 export const ARCHIVE_LABELS: Record<ArchiveType, string> = {
@@ -19,6 +21,8 @@ export const ARCHIVE_LABELS: Record<ArchiveType, string> = {
   workflow_run: "Workflow runs",
   submission: "Submissions",
   ai_run: "AI analyses",
+  hiring_application: "Hiring applications",
+  hiring_pipeline: "Hiring pipelines",
 };
 export function isArchiveType(value: string): value is ArchiveType {
   return ARCHIVE_TYPES.includes(value as ArchiveType);

@@ -28,6 +28,7 @@ import {
   type WorkflowSummary,
 } from "./workflow";
 import { ArchiveButton } from "@/features/archive/archive-button";
+import { DeleteButton } from "@/features/archive/delete-button";
 import {
   Dialog,
   DialogContent,
@@ -337,13 +338,14 @@ export function WorkflowList(props: {
                         Duplicate as draft
                       </Button>
                     </div>
-                    <div className="mt-3">
+                    <div className="mt-3 flex flex-wrap gap-2">
                       <ArchiveButton
                         type="workflow"
                         id={w.id}
                         label={w.name}
                         onArchived={() => void load()}
                       />
+                      <DeleteButton type="workflow" id={w.id} label={w.name} onDeleted={() => void load()} />
                     </div>
                   </CardContent>
                 </Card>

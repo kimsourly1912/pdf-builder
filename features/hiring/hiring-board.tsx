@@ -1,4 +1,6 @@
 "use client";
+import { ArchiveButton } from "@/features/archive/archive-button";
+import { DeleteButton } from "@/features/archive/delete-button";
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Columns3, List, Plus, RefreshCw } from "lucide-react";
@@ -437,6 +439,7 @@ export function HiringBoard({
                           >
                             Move to…
                           </Button>
+                          <ApplicationRemoval app={app} onChanged={() => void reload()} />
                         </div>
                       </article>
                     ))}
@@ -508,13 +511,14 @@ export function HiringBoard({
                         )}
                       </TableCell>
                       <TableCell>
-                        <Button variant="link" asChild>
-                          <Link
-                            href={`/hiring/${app.id}?tab=${app.nextTask?.tab ?? "overview"}`}
-                          >
-                            {app.nextTask?.label ?? "Open"}
-                          </Link>
-                        </Button>
+                        <div className="flex flex-wrap gap-2">
+                          <Button variant="link" asChild>
+                            <Link href={`/hiring/${app.id}?tab=${app.nextTask?.tab ?? "overview"}`}>
+                              {app.nextTask?.label ?? "Open"}
+                            </Link>
+                          </Button>
+                          <ApplicationRemoval app={app} onChanged={() => void reload()} />
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))}
@@ -575,6 +579,13 @@ export function HiringBoard({
       )}
     </AppShell>
   );
+}
+function ApplicationRemoval({ app, onChanged }: { app: HiringApplication; onChanged: () => void }) {
+  const label = `${app.name || "Unnamed candidate"} — ${app.jobTitle}`;
+  return <>
+    <ArchiveButton type="hiring_application" id={app.id} label={label} onArchived={onChanged} />
+    <DeleteButton type="hiring_application" id={app.id} label={label} onDeleted={onChanged} />
+  </>;
 }
 export function MoveApplication({
   app,

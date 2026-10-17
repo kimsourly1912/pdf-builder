@@ -1,4 +1,6 @@
 "use client";
+import { ArchiveButton } from "@/features/archive/archive-button";
+import { DeleteButton } from "@/features/archive/delete-button";
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { Copy, RefreshCw } from "lucide-react";
@@ -288,13 +290,25 @@ export function IntakeDashboard({
                       {item.accountCreated ? "Created / linked" : "Not created"}
                     </TableCell>
                     <TableCell>
-                      <Button asChild variant="outline" size="sm">
-                        <Link
-                          href={`/candidates/${item.candidateId}?tab=documents`}
-                        >
-                          Review candidate
-                        </Link>
-                      </Button>
+                      <div className="flex flex-wrap gap-2">
+                        <Button asChild variant="outline" size="sm">
+                          <Link href={`/candidates/${item.candidateId}?tab=documents`}>
+                            Review candidate
+                          </Link>
+                        </Button>
+                        <ArchiveButton
+                          type="intake"
+                          id={item.id}
+                          label={`${item.fullName} — ${item.fileName}`}
+                          onArchived={() => void load()}
+                        />
+                        <DeleteButton
+                          type="intake"
+                          id={item.id}
+                          label={`${item.fullName} — ${item.fileName}`}
+                          onDeleted={() => void load()}
+                        />
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}

@@ -1,4 +1,5 @@
 "use client";
+import { DeleteButton } from "@/features/archive/delete-button";
 import { useState } from "react";
 import { useUnsavedChanges } from "@/features/resumes/use-unsaved-changes";
 import Link from "next/link";
@@ -520,6 +521,9 @@ export function PipelineSettings({ displayName }: { displayName: string }) {
                   >
                     {selected.archived ? "Restore" : "Archive pipeline"}
                   </Button>
+                  <DeleteButton type="hiring_pipeline" id={selected.id} label={selected.name}
+                    disabled={busy || dirty}
+                    onDeleted={() => { setSelected(null); void reload(); }} />
                 </div>
               </section>
             ) : (

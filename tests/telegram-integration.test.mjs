@@ -944,6 +944,28 @@ test("workflow starting events route submissions by purpose and Telegram receipt
   assert.equal(none.length, 1); // The manual workflow only starts when explicitly requested, not from upload events.
 });
 
+test("direct deletion previews and removes a linked incoming intake and CV in one confirmed action", async () => {
+  const row = await submit(99001, "direct-delete@example.test");
+  // This fixture has enabled upload workflows; make this CV eligible without running them.
+  d1.sqlite.prepare("UPDATE workflow_runs SET status='failed' WHERE resume_id=?").run(row.resume_id);
+  const cv = d1.sqlite.prepare("SELECT file_key,candidate_id FROM resumes WHERE id=?").get(row.resume_id);
+  const path = `/api/archive/intake/${row.id}`;
+  const context = { params: Promise.resolve({ type: "intake", id: row.id }) };
+  let response = await archiveRoute.GET(ownerRequest(`${path}?preview=delete`, null, "GET"), context);
+  assert.equal(response.status, 200, await response.clone().text());
+  const preview = await response.json();
+  assert.equal(preview.members.length, 2);
+  assert(preview.members.every((m) => m.reason === null));
+  assert.equal(await archiveService.isArchived("intake", row.id), false);
+  assert(storage.has(cv.file_key));
+  response = await archiveAction("intake", row.id, { action: "delete_permanently", confirm: true, expectedState: preview.state });
+  assert.equal(response.status, 200, await response.clone().text());
+  assert.equal(d1.sqlite.prepare("SELECT id FROM resumes WHERE id=?").get(row.resume_id), undefined);
+  assert.equal(d1.sqlite.prepare("SELECT id FROM telegram_intakes WHERE id=?").get(row.id), undefined);
+  assert(d1.sqlite.prepare("SELECT id FROM candidates WHERE id=?").get(cv.candidate_id));
+  assert.equal(storage.has(cv.file_key), false);
+});
+
 test("archive groups CV and intake, preserves files, restores safely, and rejects stale or cross-owner permanent deletion", async () => {
   const row = await submit(70004, "archive@example.com"),
     key = d1.sqlite

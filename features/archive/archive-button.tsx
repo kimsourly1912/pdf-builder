@@ -82,6 +82,10 @@ export function ArchiveButton({
                       ? " This run stops processing. Restore and retry it explicitly to continue."
                       : type === "template"
                         ? " Existing assigned forms remain available. New assignments and shared links are disabled."
+                        : type === "hiring_application"
+                          ? " Only this application is hidden. Its progress and documents are preserved; the candidate profile and CV remain available. Active application workflows stop and require an explicit retry after restoration."
+                          : type === "hiring_pipeline"
+                            ? " New applications cannot select this pipeline. Existing applications retain their published version."
                         : ""}
             </DialogDescription>
           </DialogHeader>

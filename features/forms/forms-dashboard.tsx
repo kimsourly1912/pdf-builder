@@ -11,6 +11,7 @@ import { PageHeader } from "@/components/patterns/page-header";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ArchiveButton } from "@/features/archive/archive-button";
+import { DeleteButton } from "@/features/archive/delete-button";
 import { formApi } from "./client";
 type Item = {
   id: string;
@@ -181,6 +182,7 @@ export function FormsDashboard(props: { displayName: string }) {
                     void load();
                   }}
                 />
+                <DeleteButton type="template" id={item.id} label={item.name} onDeleted={() => void load()} />
               </div>
             </article>
           ))}

@@ -1,5 +1,9 @@
 # Decision log
 
+## 2026-10-17: Confirmed deletion is available beside archive
+
+Management lists may offer permanent deletion directly after an owner-authorized preview and typed confirmation. Eligible active records are archived and deleted atomically, preserving the archive-before-delete rule and durable file cleanup. Application deletion may remove only an unused application's initial receipt event; later hiring progress and linked preparation, forms and interviews remain protected. Pipeline deletion preserves job, application and workflow references. Archiving remains independently available and reversible.
+
 ## 2026-10-16: Unified application workspace and preparation scope
 
 - Hiring applications are the primary workspace for CV review, document preparation/review, interviews and offers. Legacy progress/list routes remain compatibility and shared-person tools, with explicit application selection for multiple jobs.

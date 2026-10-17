@@ -109,6 +109,142 @@ async function mutate(f, app, values) {
     ...values,
   });
 }
+
+test("permanent deletion previews without mutation and deletes an unused application while retaining its candidate and CV", async (t) => {
+  const f = fixture(t), p = await pipeline(f), app = await application(f, p);
+  const preview = await archive.previewDeletion(f.owner, "hiring_application", app.id);
+  assert.equal(preview.members.length, 1);
+  assert.equal(preview.members[0].reason, null);
+  assert.equal(await archive.isArchived("hiring_application", app.id), false);
+  await rejects(archive.previewDeletion("foreign@owner.test", "hiring_application", app.id), 404);
+  await archive.deleteEntity(f.owner, "hiring_application", app.id, preview.state);
+  assert.equal(f.db.prepare("SELECT id FROM hiring_applications WHERE id=?").get(app.id), undefined);
+  assert.equal(f.db.prepare("SELECT id FROM hiring_events WHERE application_id=?").get(app.id), undefined);
+  assert(f.db.prepare("SELECT id FROM candidates WHERE id=?").get(f.candidateId));
+  assert(f.db.prepare("SELECT id FROM resumes WHERE id=?").get(f.resumeId));
+  assert.equal(f.db.prepare("SELECT count(*) n FROM hiring_guards").get().n, 0);
+  assert.equal(f.db.prepare("SELECT count(*) n FROM audit_events WHERE target_id=? AND action IN ('record.archived','record.deleted_permanently')").get(app.id).n, 2);
+});
+
+test("progressed applications remain protected and archive/restore does not replay pending automation", async (t) => {
+  const f = fixture(t), p = await pipeline(f), app = await application(f, p);
+  const held = await mutate(f, app, { action: "hold", reason: "Awaiting candidate" });
+  const preview = await archive.previewDeletion(f.owner, "hiring_application", app.id);
+  assert.match(preview.members[0].reason, /hiring progress/);
+  await rejects(archive.deleteEntity(f.owner, "hiring_application", app.id, preview.state), 409);
+  assert.equal(await archive.isArchived("hiring_application", app.id), false);
+  const receipt = await archive.archiveEntity(f.owner, "hiring_application", app.id);
+  assert.equal((await service.listApplications(f.owner, new URLSearchParams())).total, 0);
+  await rejects(service.getApplication(f.owner, app.id), 404);
+  await rejects(mutate(f, held, { action: "resume", reason: "Resume review" }), 404);
+  assert.equal(f.db.prepare("SELECT count(*) n FROM hiring_events WHERE application_id=? AND status='pending'").get(app.id).n, 0);
+  await archive.restoreEntity(f.owner, "hiring_application", app.id, receipt.archivedAt);
+  assert.equal((await service.getApplication(f.owner, app.id)).hold, "Awaiting candidate");
+  assert.equal(f.db.prepare("SELECT count(*) n FROM hiring_events WHERE application_id=? AND status='pending'").get(app.id).n, 0);
+});
+
+test("unused pipeline versions delete together; pipeline archives stay synchronized with Archive", async (t) => {
+  const f = fixture(t), p = await pipeline(f);
+  const archivedConfig = await service.savePipeline(f.owner, p.id, { action: "archive", expectedRevision: p.revision });
+  assert.equal(await archive.isArchived("hiring_pipeline", p.id), true);
+  const record = await archive.archivedGroup(f.owner, "hiring_pipeline", p.id);
+  await archive.restoreEntity(f.owner, "hiring_pipeline", p.id, record.record.archived_at);
+  const restored = (await service.hiringConfiguration(f.owner)).pipelines.find((v) => v.id === p.id);
+  assert.equal(restored.archived, false);
+  assert(restored.revision > archivedConfig.pipelines.find((v) => v.id === p.id).revision);
+  const preview = await archive.previewDeletion(f.owner, "hiring_pipeline", p.id);
+  assert.equal(preview.members[0].reason, null);
+  await archive.deleteEntity(f.owner, "hiring_pipeline", p.id, preview.state);
+  assert.equal(f.db.prepare("SELECT id FROM hiring_pipelines WHERE id=?").get(p.id), undefined);
+  assert.equal(f.db.prepare("SELECT id FROM hiring_pipeline_versions WHERE pipeline_id=?").get(p.id), undefined);
+});
+
+test("linked pipelines and changed deletion previews cannot remove active records", async (t) => {
+  const f = fixture(t), p = await pipeline(f);
+  const preview = await archive.previewDeletion(f.owner, "hiring_pipeline", p.id);
+  const app = await application(f, p);
+  await rejects(archive.deleteEntity(f.owner, "hiring_pipeline", p.id, preview.state), 409);
+  assert.equal(await archive.isArchived("hiring_pipeline", p.id), false);
+  const protectedPreview = await archive.previewDeletion(f.owner, "hiring_pipeline", p.id);
+  assert.match(protectedPreview.members[0].reason, /used by jobs, applications/);
+  const applicationPreview = await archive.previewDeletion(f.owner, "hiring_application", app.id);
+  const originalBatch = runtime.DB.batch;
+  runtime.DB.batch = async (statements) => {
+    runtime.DB.batch = originalBatch;
+    f.db.prepare("UPDATE hiring_applications SET revision=revision+1 WHERE id=?").run(app.id);
+    return originalBatch(statements);
+  };
+  await rejects(archive.deleteEntity(f.owner, "hiring_application", app.id, applicationPreview.state), 409);
+  assert.equal(await archive.isArchived("hiring_application", app.id), false);
+  assert(f.db.prepare("SELECT id FROM hiring_applications WHERE id=?").get(app.id));
+  assert.equal(f.db.prepare("SELECT count(*) n FROM hiring_guards").get().n, 0);
+});
+
+test("direct deletion API enforces owner access, same-origin confirmation and a fresh preview", async (t) => {
+  const f = fixture(t), p = await pipeline(f);
+  const apiVite = await createServer({
+    appType: "custom", configFile: false, root,
+    resolve: { alias: { "@": root, "server-only": root + "/tests/helpers/server-only.mjs", "cloudflare:workers": root + "/tests/helpers/cloud-runtime.mjs" } },
+    server: { middlewareMode: true, hmr: false, ws: false },
+  });
+  t.after(() => apiVite.close());
+  const route = await apiVite.ssrLoadModule("/app/api/archive/[type]/[id]/route.ts");
+  const context = { params: Promise.resolve({ type: "hiring_pipeline", id: p.id }) };
+  const path = `http://localhost:5173/api/archive/hiring_pipeline/${p.id}`;
+  assert.equal((await route.GET(new Request(`${path}?preview=delete`, { headers: { "x-owner-email": f.owner } }), context)).status, 401);
+  const cookie = await ownerCookie(f, apiVite);
+  const previewResponse = await route.GET(new Request(`${path}?preview=delete`, { headers: { cookie } }), context);
+  assert.equal(previewResponse.status, 200);
+  const preview = await previewResponse.json();
+  const remove = (body, origin = "http://localhost:5173") => route.POST(new Request(path, {
+    method: "POST", headers: { cookie, origin, "content-type": "application/json" }, body: JSON.stringify(body),
+  }), context);
+  assert.equal((await remove({ action: "delete_permanently", confirm: true, expectedState: preview.state }, "https://other.invalid")).status, 403);
+  assert.equal((await remove({ action: "delete_permanently", confirm: false, expectedState: preview.state })).status, 409);
+  assert.equal((await remove({ action: "delete_permanently", confirm: true, expectedState: "stale" })).status, 409);
+  assert.equal(await archive.isArchived("hiring_pipeline", p.id), false);
+  assert.equal((await remove({ action: "delete_permanently", confirm: true, expectedState: preview.state })).status, 200);
+  assert.equal(f.db.prepare("SELECT id FROM hiring_pipelines WHERE id=?").get(p.id), undefined);
+});
+
+test("a concurrent pipeline dependency rolls back the entire archive-and-delete batch", async (t) => {
+  const f = fixture(t), p = await pipeline(f);
+  const preview = await archive.previewDeletion(f.owner, "hiring_pipeline", p.id);
+  const originalBatch = runtime.DB.batch;
+  runtime.DB.batch = async (statements) => {
+    runtime.DB.batch = originalBatch;
+    insertFixture(f.db, "hiring_jobs", { id: "concurrent-job", owner_email: f.owner, title: "New job", pipeline_version_id: p.currentVersionId });
+    return originalBatch(statements);
+  };
+  await rejects(archive.deleteEntity(f.owner, "hiring_pipeline", p.id, preview.state), 409);
+  assert.equal(await archive.isArchived("hiring_pipeline", p.id), false);
+  assert.equal(f.db.prepare("SELECT archived FROM hiring_pipelines WHERE id=?").get(p.id).archived, 0);
+  assert(f.db.prepare("SELECT id FROM hiring_pipeline_versions WHERE id=?").get(p.currentVersionId));
+  assert.equal(f.db.prepare("SELECT count(*) n FROM audit_events WHERE target_id=? AND action='record.archived'").get(p.id).n, 0);
+});
+
+test("direct deletion removes eligible workflows and forms and keeps file cleanup durable on storage failure", async (t) => {
+  const f = fixture(t), w = await workflow.createWorkflow(f.owner, "manual");
+  insertFixture(f.db, "templates", { id: "unused-form", owner_email: f.owner, name: "Unused form", kind: "form", file_key: "forms/unused.pdf", file_name: "unused.pdf", annotations_json: "[]", page_order_json: "[]" });
+  const deletedKeys = [], originalFiles = runtime.FILES;
+  runtime.FILES = { async delete(key) { deletedKeys.push(key); throw new Error("Mock storage unavailable"); } };
+  try {
+    for (const [type, id] of [["workflow", w.id], ["template", "unused-form"]]) {
+      const preview = await archive.previewDeletion(f.owner, type, id);
+      assert.equal(preview.members[0].reason, null);
+      await archive.deleteEntity(f.owner, type, id, preview.state);
+      assert.equal(await archive.isArchived(type, id), false);
+    }
+  } finally { runtime.FILES = originalFiles; }
+  assert.equal(f.db.prepare("SELECT id FROM workflows WHERE id=?").get(w.id), undefined);
+  assert.equal(f.db.prepare("SELECT id FROM templates WHERE id='unused-form'").get(), undefined);
+  assert(deletedKeys.includes("forms/unused.pdf"));
+  assert(f.db.prepare("SELECT id FROM storage_cleanup_jobs WHERE object_key='forms/unused.pdf'").get());
+  const protectedForm = await archive.previewDeletion(f.owner, "template", f.templateId);
+  assert.match(protectedForm.members[0].reason, /assignments or submitted forms/);
+  await rejects(archive.deleteEntity(f.owner, "template", f.templateId, protectedForm.state), 409);
+  assert.equal(await archive.isArchived("template", f.templateId), false);
+});
 async function routing(
   f,
   p,

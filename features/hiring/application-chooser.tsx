@@ -11,7 +11,7 @@ export async function candidateApplications(
   return (
     await getDatabaseBinding()
       .prepare(
-        "SELECT a.id,c.full_name name,COALESCE(j.title,'Legacy / unassigned job') jobTitle,a.outcome,a.stage_id stageId FROM hiring_applications a JOIN candidates c ON c.id=a.candidate_id AND c.owner_email=a.owner_email LEFT JOIN hiring_jobs j ON j.id=a.job_id AND j.owner_email=a.owner_email WHERE a.owner_email=? AND a.candidate_id=? ORDER BY a.created_at DESC,a.id",
+        "SELECT a.id,c.full_name name,COALESCE(j.title,'Legacy / unassigned job') jobTitle,a.outcome,a.stage_id stageId FROM hiring_applications a JOIN candidates c ON c.id=a.candidate_id AND c.owner_email=a.owner_email LEFT JOIN hiring_jobs j ON j.id=a.job_id AND j.owner_email=a.owner_email WHERE a.owner_email=? AND a.candidate_id=? AND NOT EXISTS(SELECT 1 FROM archive_records ar WHERE ar.entity_type='hiring_application' AND ar.entity_id=a.id) ORDER BY a.created_at DESC,a.id",
       )
       .bind(owner, candidateId)
       .all<{

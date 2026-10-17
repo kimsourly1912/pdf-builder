@@ -1,4 +1,6 @@
 "use client";
+import { ArchiveButton } from "@/features/archive/archive-button";
+import { DeleteButton } from "@/features/archive/delete-button";
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -322,6 +324,8 @@ export function ApplicationDetail({
                   </Button>
                 </>
               )}
+              <ArchiveButton type="hiring_application" id={app.id} label={`${app.name} — ${app.jobTitle}`} disabled={busy} onArchived={() => window.location.assign("/hiring")} />
+              <DeleteButton type="hiring_application" id={app.id} label={`${app.name} — ${app.jobTitle}`} disabled={busy} onDeleted={() => window.location.assign("/hiring")} />
             </div>
             <p className="text-xs text-muted-foreground">
               Stage entry:{" "}

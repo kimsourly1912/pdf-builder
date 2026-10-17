@@ -1,5 +1,8 @@
 "use client";
 
+import { ArchiveButton } from "@/features/archive/archive-button";
+import { DeleteButton } from "@/features/archive/delete-button";
+
 import {
   AlertTriangle,
   CheckCircle2,
@@ -703,17 +706,33 @@ function ResumeLibrary(props: { displayName: string; initialUpload?: boolean }) 
                           />
                         </TableCell>
                         <TableCell className="py-2.5 pr-4 text-right">
-                          <Button asChild variant="outline" size="sm">
-                            <Link
-                              href={
-                                item.candidate
-                                  ? `/candidates/${item.candidate.id}?tab=documents&cv=${encodeURIComponent(item.id)}`
-                                  : `/resumes/${item.id}`
-                              }
-                            >
-                              <FileSearch /> Review
-                            </Link>
-                          </Button>
+                          <div className="flex flex-wrap justify-end gap-2">
+                            <Button asChild variant="outline" size="sm">
+                              <Link
+                                href={
+                                  item.candidate
+                                    ? `/candidates/${item.candidate.id}?tab=documents&cv=${encodeURIComponent(item.id)}`
+                                    : `/resumes/${item.id}`
+                                }
+                              >
+                                <FileSearch /> Review
+                              </Link>
+                            </Button>
+                            <ArchiveButton
+                              type="resume"
+                              id={item.id}
+                              label={item.fileName}
+                              disabled={busy}
+                              onArchived={() => void loadResumes()}
+                            />
+                            <DeleteButton
+                              type="resume"
+                              id={item.id}
+                              label={item.fileName}
+                              disabled={busy}
+                              onDeleted={() => void loadResumes()}
+                            />
+                          </div>
                         </TableCell>
                       </TableRow>
                     );

@@ -12,6 +12,8 @@ import {
   deletionBlocker,
   deleteArchivedEntity,
   restoreEntity,
+  previewDeletion,
+  deleteEntity,
 } from "@/features/archive/archive.server";
 type Context = { params: Promise<{ type: string; id: string }> };
 export async function GET(request: Request, context: Context) {
@@ -19,6 +21,8 @@ export async function GET(request: Request, context: Context) {
     const owner = await requireRequestOwner(request),
       { type, id } = await context.params;
     if (!isArchiveType(type)) fail("Unknown archive type.", 404);
+    if (new URL(request.url).searchParams.get("preview") === "delete")
+      return previewDeletion(owner, type, id);
     const group = await archivedGroup(owner, type, id);
     const record = await ownedArchiveEntity(owner, type, id);
     const fields = [
@@ -52,11 +56,16 @@ export async function GET(request: Request, context: Context) {
 }
 export async function POST(request: Request, context: Context) {
   return workflowResponse(async () => {
+    const origin = request.headers.get("origin");
+    if (origin && origin !== new URL(request.url).origin)
+      fail("Use the same site to archive or delete records.", 403);
     const owner = await requireRequestOwner(request),
       { type, id } = await context.params,
       body = await workflowBody(request);
     if (!isArchiveType(type)) fail("Unknown archive type.", 404);
     if (body.action === "archive") return archiveEntity(owner, type, id);
+    if (body.action === "delete_permanently" && body.confirm === true && typeof body.expectedState === "string")
+      return deleteEntity(owner, type, id, body.expectedState);
     if (typeof body.expectedArchivedAt !== "string")
       fail("Refresh this archive record first.", 409);
     if (body.action === "restore")

@@ -8,6 +8,7 @@ import {
 } from "./work.server";
 import { applicationTask } from "./tasks";
 import "server-only";
+import { archiveStatements, archivedGroup, restoreEntity } from "@/features/archive/archive.server";
 import { z } from "zod";
 import { getDatabaseBinding, type DatabaseStatement } from "@/db";
 import { jsonError, isResponse } from "@/features/templates/template.server";
@@ -240,13 +241,12 @@ export async function savePipeline(
   if (body.action === "archive" || body.action === "restore") {
     if (p.isDefault && body.action === "archive")
       hiringFail("Choose another default pipeline before archiving this one.");
-    statements.push(
-      db
-        .prepare(
-          "UPDATE hiring_pipelines SET archived=?,revision=revision+1,updated_at=? WHERE id=? AND owner_email=?",
-        )
-        .bind(body.action === "archive" ? 1 : 0, at, id, owner),
-    );
+    if (body.action === "restore") {
+      const { record } = await archivedGroup(owner, "hiring_pipeline", id);
+      await restoreEntity(owner, "hiring_pipeline", id, record.archived_at);
+      return hiringConfiguration(owner);
+    }
+    statements.push(...await archiveStatements(owner, "hiring_pipeline", id, at));
   } else if (body.action === "default") {
     if (p.archived || !p.currentVersionId)
       hiringFail(
@@ -400,7 +400,7 @@ export async function applicationCandidates(
       }>()
   ).results;
 }
-const applicationSelect = `SELECT a.*,${failedSql} failed,${nextAppointmentSql} next_appointment,${nextAppointmentZoneSql} next_appointment_timezone,c.full_name name,c.email,r.file_name,j.title job_title FROM hiring_applications a JOIN candidates c ON c.id=a.candidate_id AND c.owner_email=a.owner_email JOIN resumes r ON r.id=a.resume_id AND r.owner_email=a.owner_email AND r.candidate_id=a.candidate_id LEFT JOIN hiring_jobs j ON j.id=a.job_id AND j.owner_email=a.owner_email WHERE a.owner_email=?`;
+const applicationSelect = `SELECT a.*,${failedSql} failed,${nextAppointmentSql} next_appointment,${nextAppointmentZoneSql} next_appointment_timezone,c.full_name name,c.email,r.file_name,j.title job_title FROM hiring_applications a JOIN candidates c ON c.id=a.candidate_id AND c.owner_email=a.owner_email JOIN resumes r ON r.id=a.resume_id AND r.owner_email=a.owner_email AND r.candidate_id=a.candidate_id LEFT JOIN hiring_jobs j ON j.id=a.job_id AND j.owner_email=a.owner_email WHERE a.owner_email=? AND NOT EXISTS(SELECT 1 FROM archive_records ar WHERE ar.entity_type='hiring_application' AND ar.entity_id=a.id)`;
 type ApplicationRow = {
   failed: number;
   next_appointment: string | null;

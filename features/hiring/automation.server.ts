@@ -131,7 +131,7 @@ export async function dispatchApplicationEvents(limit = 50) {
     events = (
       await db
         .prepare(
-          "SELECT e.*,a.resume_id FROM hiring_events e JOIN hiring_applications a ON a.id=e.application_id AND a.owner_email=e.owner_email WHERE e.status='pending' ORDER BY e.created_at,e.rowid LIMIT ?",
+          "SELECT e.*,a.resume_id FROM hiring_events e JOIN hiring_applications a ON a.id=e.application_id AND a.owner_email=e.owner_email WHERE e.status='pending' AND NOT EXISTS(SELECT 1 FROM archive_records ar WHERE ar.entity_type='hiring_application' AND ar.entity_id=a.id) ORDER BY e.created_at,e.rowid LIMIT ?",
         )
         .bind(limit)
         .all<EventRow>()
@@ -152,7 +152,7 @@ export async function dispatchApplicationEvents(limit = 50) {
         }>()
     ).results;
     const [guard, cleanup] = hiringGuard(
-      "EXISTS(SELECT 1 FROM hiring_events WHERE id=? AND status='pending')",
+      "EXISTS(SELECT 1 FROM hiring_events e WHERE id=? AND status='pending' AND NOT EXISTS(SELECT 1 FROM archive_records ar WHERE ar.entity_type='hiring_application' AND ar.entity_id=e.application_id))",
       [event.id],
     );
     const statements = [guard];
