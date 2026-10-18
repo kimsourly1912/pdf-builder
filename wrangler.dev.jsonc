@@ -2,7 +2,8 @@
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "pdf-builder-dev",
   "main": "worker/index.ts",
-  "compatibility_date": "2026-08-01",
+  // Match the newest date supported by the locked local Workers runtime.
+  "compatibility_date": "2026-05-22",
   "compatibility_flags": ["nodejs_compat"],
   "vars": {
     "TELEGRAM_BOT_USERNAME": "anghr_bot",

@@ -3,7 +3,14 @@ import { ArchiveButton } from "@/features/archive/archive-button";
 import { DeleteButton } from "@/features/archive/delete-button";
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { Columns3, List, Plus, RefreshCw } from "lucide-react";
+import {
+  Columns3,
+  List,
+  Plus,
+  RefreshCw,
+  GripVertical,
+  MoveRight,
+} from "lucide-react";
 import { AppShell } from "@/components/patterns/app-shell";
 import { PageHeader } from "@/components/patterns/page-header";
 import {
@@ -34,6 +41,7 @@ import {
 import { useUrlFilters } from "@/features/candidate-progress/use-url-filters";
 import { workflowApi, errorText } from "@/features/workflows/client";
 import type { HiringApplication } from "./hiring";
+import { startBoardAutoScroll, type DragPoint } from "./board-auto-scroll";
 import {
   useHiringConfiguration,
   stageTone,
@@ -87,12 +95,27 @@ export function HiringBoard({
     [error, setError] = useState(""),
     [loading, setLoading] = useState(false),
     [adding, setAdding] = useState(false),
+    [draggingApp, setDraggingApp] = useState<HiringApplication | null>(null),
+    [overStage, setOverStage] = useState<string | null>(null),
+    [recentMove, setRecentMove] = useState<{
+      id: string;
+      stage: string;
+    } | null>(null),
     [move, setMove] = useState<{
       app: HiringApplication;
       target: string;
     } | null>(null);
   const drag = useRef<HiringApplication | null>(null),
+    dragPoint = useRef<DragPoint | null>(null),
+    board = useRef<HTMLDivElement>(null),
     loadNumber = useRef(0);
+  const draggingId = draggingApp?.id ?? null;
+  const endDrag = useCallback(() => {
+    drag.current = null;
+    dragPoint.current = null;
+    setDraggingApp(null);
+    setOverStage(null);
+  }, []);
   const versionId =
     filters.pipeline === "all"
       ? ""
@@ -132,13 +155,83 @@ export function HiringBoard({
   }, []);
   useEffect(() => {
     const timer = setTimeout(() => void reload(), 0),
-      interval = setInterval(() => void reload(), 15000);
+      interval = setInterval(() => {
+        if (!drag.current) void reload();
+      }, 15000);
     return () => {
       clearTimeout(timer);
       clearInterval(interval);
       cancelRequests();
     };
   }, [reload, cancelRequests]);
+  useEffect(() => {
+    if (!draggingId || !board.current) return;
+    const scroller = startBoardAutoScroll(
+      board.current,
+      () => dragPoint.current,
+      setOverStage,
+    );
+    function track(event: DragEvent) {
+      dragPoint.current = { x: event.clientX, y: event.clientY };
+      scroller.update(performance.now());
+    }
+    function leave(event: DragEvent) {
+      if (
+        event.clientX <= 0 ||
+        event.clientY <= 0 ||
+        event.clientX >= window.innerWidth ||
+        event.clientY >= window.innerHeight
+      ) {
+        dragPoint.current = null;
+        setOverStage(null);
+      }
+    }
+    function visibility() {
+      if (document.hidden) endDrag();
+    }
+    document.addEventListener("dragover", track);
+    document.addEventListener("dragleave", leave);
+    document.addEventListener("drop", endDrag);
+    document.addEventListener("dragend", endDrag);
+    document.addEventListener("visibilitychange", visibility);
+    window.addEventListener("blur", endDrag);
+    return () => {
+      scroller.stop();
+      document.removeEventListener("dragover", track);
+      document.removeEventListener("dragleave", leave);
+      document.removeEventListener("drop", endDrag);
+      document.removeEventListener("dragend", endDrag);
+      document.removeEventListener("visibilitychange", visibility);
+      window.removeEventListener("blur", endDrag);
+    };
+  }, [draggingId, endDrag]);
+  useEffect(() => {
+    if (!recentMove) return;
+    const timer = setTimeout(() => setRecentMove(null), 1500);
+    return () => clearTimeout(timer);
+  }, [recentMove]);
+  useEffect(() => {
+    if (!recentMove || move || view !== "kanban" || !data) return;
+    const frame = requestAnimationFrame(() => {
+      const container = board.current;
+      const card = container?.querySelector(
+        `[data-hiring-stage="${CSS.escape(recentMove.stage)}"] [data-application-id="${CSS.escape(recentMove.id)}"]`,
+      );
+      const column = container?.querySelector(
+        `[data-hiring-stage="${CSS.escape(recentMove.stage)}"]`,
+      );
+      (card ?? column)?.scrollIntoView({
+        block: "nearest",
+        inline: "center",
+        behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches
+          ? "instant"
+          : "smooth",
+      });
+    });
+    return () => {
+      cancelAnimationFrame(frame);
+    };
+  }, [recentMove, move, view, data]);
   const stageName = (app: HiringApplication) =>
     config?.versions
       .find((v) => v.id === app.pipelineVersionId)
@@ -344,124 +437,203 @@ export function HiringBoard({
           {!data ? (
             <p role="status">Loading applications…</p>
           ) : view === "kanban" && version ? (
-            <div className="flex min-h-80 gap-4 overflow-x-auto pb-4">
-              {version.definition.stages.map((stage) => {
-                const items = data.items.filter((a) => a.stageId === stage.id);
-                return (
-                  <section
-                    key={stage.id}
-                    aria-label={`${stage.name} stage`}
-                    className={`w-80 shrink-0 space-y-4 rounded-xl border border-t-4 bg-muted/30 p-4 ${stageTone[stage.color]}`}
-                    onDragOver={(e) => {
-                      if (drag.current?.pipelineVersionId === version.id)
-                        e.preventDefault();
-                    }}
-                    onDrop={(e) => {
-                      e.preventDefault();
-                      const app = drag.current;
-                      drag.current = null;
-                      if (
-                        app &&
-                        app.pipelineVersionId === version.id &&
-                        app.stageId !== stage.id
-                      )
-                        setMove({ app, target: stage.id });
-                    }}
-                  >
-                    <div className="flex items-center justify-between gap-2">
-                      <h2 className="font-semibold">{stage.name}</h2>
-                      <Badge variant="secondary">
-                        {data.stats[stage.id] ?? 0}
-                      </Badge>
-                    </div>
-                    {stage.description && (
-                      <p className="text-xs leading-5 text-muted-foreground">
-                        {stage.description}
-                      </p>
-                    )}
-                    {items.map((app) => (
-                      <article
-                        key={app.id}
-                        draggable={!app.hold}
-                        onDragStart={() => {
-                          drag.current = app;
-                        }}
-                        onDragEnd={() => {
-                          drag.current = null;
-                        }}
-                        className="space-y-3 rounded-lg border bg-card p-4 shadow-xs"
-                      >
-                        <Link
-                          href={`/hiring/${app.id}`}
-                          className="block font-semibold hover:underline"
-                        >
-                          {app.name || "Unnamed candidate"}
-                        </Link>
-                        <p className="break-words text-xs text-muted-foreground">
-                          {app.email}
-                          <br />
-                          {app.jobTitle}
-                        </p>
-                        <div className="flex flex-wrap gap-2">
-                          {app.hold && <Badge variant="outline">On hold</Badge>}
-                          {app.offer !== "none" && (
-                            <Badge variant="secondary">Offer {app.offer}</Badge>
-                          )}
-                          {app.interviewId && (
-                            <Badge variant="outline">Interview linked</Badge>
-                          )}
-                        </div>
-                        {app.documentCounts &&
-                          app.documentCounts.required > 0 && (
-                            <Badge variant="outline">
-                              {app.documentCounts.accepted}/
-                              {app.documentCounts.required} documents accepted
-                            </Badge>
-                          )}
-                        <p className="text-xs text-muted-foreground">
-                          {app.stageEnteredAt
-                            ? `${Math.max(0, Math.floor((Date.now() - Date.parse(app.stageEnteredAt)) / 86400000))} days in stage`
-                            : "Stage start unknown"}
-                        </p>
-                        <div className="flex flex-wrap gap-2">
-                          <Button variant="outline" size="sm" asChild>
-                            <Link
-                              href={`/hiring/${app.id}?tab=${app.nextTask?.tab ?? "overview"}`}
-                            >
-                              {app.nextTask?.label ?? "Open application"}
-                            </Link>
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            disabled={!!app.hold}
-                            onClick={() => setMove({ app, target: "" })}
-                          >
-                            Move to…
-                          </Button>
-                          <ApplicationRemoval app={app} onChanged={() => void reload()} />
-                        </div>
-                      </article>
-                    ))}
-                    {!items.length && (
-                      <p className="py-6 text-center text-xs text-muted-foreground">
-                        No applications on this page.
-                      </p>
-                    )}
-                    {(data.stats[stage.id] ?? 0) > items.length && (
-                      <Button
-                        variant="link"
-                        size="sm"
-                        onClick={() =>
-                          setFilters({ stage: stage.id, page: "1" })
+            <div className="min-w-0 space-y-2">
+              <p
+                id="hiring-drag-help"
+                className="text-xs text-muted-foreground"
+              >
+                Drag a card to another stage, or use Move to. Hold near the
+                board edges to scroll. Dropping opens a review before moving.
+              </p>
+              <p role="status" aria-live="polite" className="sr-only">
+                {draggingId
+                  ? overStage && overStage !== draggingApp?.stageId
+                    ? `Release to review a move to ${version.definition.stages.find((stage) => stage.id === overStage)?.name ?? "this stage"}.`
+                    : "Dragging application. Hold near the board edges to scroll."
+                  : recentMove
+                    ? "Application moved. Destination brought into view."
+                    : ""}
+              </p>
+              <div
+                ref={board}
+                aria-label="Hiring stages"
+                aria-describedby="hiring-drag-help"
+                className="flex min-h-80 gap-4 overflow-x-auto scroll-auto p-1 pb-4"
+              >
+                {version.definition.stages.map((stage) => {
+                  const items = data.items.filter(
+                    (a) => a.stageId === stage.id,
+                  );
+                  const isOver =
+                    !!draggingId &&
+                    overStage === stage.id &&
+                    draggingApp?.stageId !== stage.id &&
+                    draggingApp?.pipelineVersionId === version.id;
+                  return (
+                    <section
+                      key={stage.id}
+                      data-hiring-stage={stage.id}
+                      data-drag-over={isOver || undefined}
+                      aria-label={`${stage.name} stage`}
+                      className={`w-80 shrink-0 space-y-4 rounded-xl border border-t-4 p-4 transition-[background-color,box-shadow] duration-200 motion-reduce:transition-none ${stageTone[stage.color]} ${isOver ? "bg-primary/10 ring-2 ring-primary shadow-md" : "bg-muted/30"}`}
+                      onDragOver={(e) => {
+                        if (drag.current?.pipelineVersionId === version.id) {
+                          e.preventDefault();
+                          e.dataTransfer.dropEffect =
+                            drag.current.stageId === stage.id ? "none" : "move";
+                          setOverStage(stage.id);
                         }
-                      >
-                        View all {data.stats[stage.id]} in this stage
-                      </Button>
-                    )}
-                  </section>
-                );
-              })}
+                      }}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        const app = drag.current;
+                        endDrag();
+                        if (
+                          app &&
+                          app.pipelineVersionId === version.id &&
+                          app.stageId !== stage.id
+                        )
+                          setMove({ app, target: stage.id });
+                      }}
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <h2 className="font-semibold">{stage.name}</h2>
+                        <Badge variant="secondary">
+                          {data.stats[stage.id] ?? 0}
+                        </Badge>
+                      </div>
+                      {draggingId && draggingApp?.stageId !== stage.id && (
+                        <div
+                          aria-hidden="true"
+                          className={`flex min-h-12 items-center justify-center gap-2 rounded-lg border-2 border-dashed px-3 py-2 text-center text-xs transition-colors duration-200 motion-reduce:transition-none ${isOver ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground"}`}
+                        >
+                          <MoveRight className="size-4 shrink-0" />
+                          {isOver
+                            ? "Drop to review move"
+                            : "Drag here to review a move"}
+                        </div>
+                      )}
+                      {stage.description && (
+                        <p className="text-xs leading-5 text-muted-foreground">
+                          {stage.description}
+                        </p>
+                      )}
+                      {items.map((app) => (
+                        <article
+                          key={app.id}
+                          data-application-id={app.id}
+                          data-dragging={draggingId === app.id || undefined}
+                          draggable={!app.hold}
+                          onDragStart={(event) => {
+                            if (
+                              app.hold ||
+                              (event.target as HTMLElement).closest(
+                                "a, button, input, textarea, select",
+                              )
+                            ) {
+                              event.preventDefault();
+                              return;
+                            }
+                            event.dataTransfer.effectAllowed = "move";
+                            event.dataTransfer.setData("text/plain", app.id);
+                            drag.current = app;
+                            dragPoint.current = {
+                              x: event.clientX,
+                              y: event.clientY,
+                            };
+                            setDraggingApp(app);
+                            setOverStage(app.stageId);
+                          }}
+                          onDragEnd={endDrag}
+                          className={`space-y-3 rounded-lg border bg-card p-4 shadow-xs transition-[opacity,box-shadow,background-color] duration-200 motion-reduce:transition-none ${!app.hold ? "cursor-grab active:cursor-grabbing" : ""} ${draggingId === app.id ? "opacity-40 ring-2 ring-primary/40" : ""} ${recentMove?.id === app.id && recentMove.stage === app.stageId ? "bg-primary/10 ring-2 ring-primary motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-left-2 motion-safe:duration-300" : ""}`}
+                        >
+                          <div className="flex items-start gap-2">
+                            {!app.hold && (
+                              <GripVertical
+                                aria-hidden="true"
+                                className="pointer-events-none mt-0.5 size-4 shrink-0 text-muted-foreground"
+                              />
+                            )}
+                            <Link
+                              href={`/hiring/${app.id}`}
+                              className="block font-semibold hover:underline"
+                            >
+                              {app.name || "Unnamed candidate"}
+                            </Link>
+                          </div>
+                          <p className="break-words text-xs text-muted-foreground">
+                            {app.email}
+                            <br />
+                            {app.jobTitle}
+                          </p>
+                          <div className="flex flex-wrap gap-2">
+                            {app.hold && (
+                              <Badge variant="outline">On hold</Badge>
+                            )}
+                            {app.offer !== "none" && (
+                              <Badge variant="secondary">
+                                Offer {app.offer}
+                              </Badge>
+                            )}
+                            {app.interviewId && (
+                              <Badge variant="outline">Interview linked</Badge>
+                            )}
+                          </div>
+                          {app.documentCounts &&
+                            app.documentCounts.required > 0 && (
+                              <Badge variant="outline">
+                                {app.documentCounts.accepted}/
+                                {app.documentCounts.required} documents accepted
+                              </Badge>
+                            )}
+                          <p className="text-xs text-muted-foreground">
+                            {app.stageEnteredAt
+                              ? `${Math.max(0, Math.floor((Date.now() - Date.parse(app.stageEnteredAt)) / 86400000))} days in stage`
+                              : "Stage start unknown"}
+                          </p>
+                          <div className="flex flex-wrap gap-2">
+                            <Button variant="outline" size="sm" asChild>
+                              <Link
+                                href={`/hiring/${app.id}?tab=${app.nextTask?.tab ?? "overview"}`}
+                              >
+                                {app.nextTask?.label ?? "Open application"}
+                              </Link>
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              disabled={!!app.hold}
+                              onClick={() => setMove({ app, target: "" })}
+                            >
+                              Move to…
+                            </Button>
+                            <ApplicationRemoval
+                              app={app}
+                              onChanged={() => void reload()}
+                            />
+                          </div>
+                        </article>
+                      ))}
+                      {!items.length && (
+                        <p className="py-6 text-center text-xs text-muted-foreground">
+                          No applications on this page.
+                        </p>
+                      )}
+                      {(data.stats[stage.id] ?? 0) > items.length && (
+                        <Button
+                          variant="link"
+                          size="sm"
+                          onClick={() =>
+                            setFilters({ stage: stage.id, page: "1" })
+                          }
+                        >
+                          View all {data.stats[stage.id]} in this stage
+                        </Button>
+                      )}
+                    </section>
+                  );
+                })}
+              </div>
             </div>
           ) : (
             <div className="overflow-x-auto rounded-xl border">
@@ -513,11 +685,16 @@ export function HiringBoard({
                       <TableCell>
                         <div className="flex flex-wrap gap-2">
                           <Button variant="link" asChild>
-                            <Link href={`/hiring/${app.id}?tab=${app.nextTask?.tab ?? "overview"}`}>
+                            <Link
+                              href={`/hiring/${app.id}?tab=${app.nextTask?.tab ?? "overview"}`}
+                            >
                               {app.nextTask?.label ?? "Open"}
                             </Link>
                           </Button>
-                          <ApplicationRemoval app={app} onChanged={() => void reload()} />
+                          <ApplicationRemoval
+                            app={app}
+                            onChanged={() => void reload()}
+                          />
                         </div>
                       </TableCell>
                     </TableRow>
@@ -574,18 +751,39 @@ export function HiringBoard({
           initialTarget={move.target}
           config={config}
           close={() => setMove(null)}
-          onDone={reload}
+          onDone={async (stage) => {
+            await reload();
+            setRecentMove({ id: move.app.id, stage });
+          }}
         />
       )}
     </AppShell>
   );
 }
-function ApplicationRemoval({ app, onChanged }: { app: HiringApplication; onChanged: () => void }) {
+function ApplicationRemoval({
+  app,
+  onChanged,
+}: {
+  app: HiringApplication;
+  onChanged: () => void;
+}) {
   const label = `${app.name || "Unnamed candidate"} — ${app.jobTitle}`;
-  return <>
-    <ArchiveButton type="hiring_application" id={app.id} label={label} onArchived={onChanged} />
-    <DeleteButton type="hiring_application" id={app.id} label={label} onDeleted={onChanged} />
-  </>;
+  return (
+    <>
+      <ArchiveButton
+        type="hiring_application"
+        id={app.id}
+        label={label}
+        onArchived={onChanged}
+      />
+      <DeleteButton
+        type="hiring_application"
+        id={app.id}
+        label={label}
+        onDeleted={onChanged}
+      />
+    </>
+  );
 }
 export function MoveApplication({
   app,
@@ -598,7 +796,7 @@ export function MoveApplication({
   initialTarget: string;
   config: HiringConfiguration;
   close: () => void;
-  onDone: () => Promise<unknown>;
+  onDone: (stage: string) => Promise<unknown>;
 }) {
   const [target, setTarget] = useState(initialTarget),
     [reason, setReason] = useState(""),
@@ -621,7 +819,7 @@ export function MoveApplication({
           mutationId: crypto.randomUUID(),
         }),
       });
-      await onDone();
+      await onDone(target);
       close();
     } catch (e) {
       setError(errorText(e));

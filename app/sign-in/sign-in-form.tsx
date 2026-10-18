@@ -56,6 +56,7 @@ export function SignInForm(props: {
           type="email"
           autoComplete="username"
           required
+          autoFocus
           value={email}
           onChange={(event) => setEmail(event.target.value)}
         />
@@ -69,7 +70,6 @@ export function SignInForm(props: {
           autoComplete="current-password"
           minLength={8}
           required
-          autoFocus
           value={password}
           onChange={(event) => setPassword(event.target.value)}
         />

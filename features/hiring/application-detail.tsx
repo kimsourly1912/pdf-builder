@@ -2,11 +2,13 @@
 import { ArchiveButton } from "@/features/archive/archive-button";
 import { DeleteButton } from "@/features/archive/delete-button";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { ArrowRight, MoreHorizontal } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ApplicationDocuments } from "./application-documents";
 import { InterviewDetail } from "@/features/interviews/interview-detail";
 import { applicationTask } from "./tasks";
+import { ApplicationChecklist } from "./application-checklist";
 import { DISCARD_EDITS } from "@/features/resumes/use-unsaved-changes";
 import { AppShell } from "@/components/patterns/app-shell";
 import { PageHeader } from "@/components/patterns/page-header";
@@ -19,6 +21,14 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuLabel,
+} from "@/components/ui/dropdown-menu";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
   Dialog,
@@ -70,7 +80,7 @@ const actionTitles = {
   close: "Close application",
   reopen: "Reopen application",
   offer: "Record offer progress",
-  link_preparation: "Link existing preparation",
+  link_preparation: "Reuse existing account & forms",
   change_cv: "Use another approved CV",
 };
 type Action = keyof typeof actionTitles;
@@ -101,6 +111,7 @@ export function ApplicationDetail({
     [error, setError] = useState(""),
     [busy, setBusy] = useState(false),
     [moving, setMoving] = useState(false),
+    [managingRecords, setManagingRecords] = useState(false),
     [action, setAction] = useState<Action | null>(null),
     [job, setJob] = useState(""),
     [stageId, setStageId] = useState(""),
@@ -241,7 +252,7 @@ export function ApplicationDetail({
         title={app?.name ?? "Application"}
         description={
           app
-            ? `${app.jobTitle} · ${app.email} · ${version?.name ?? "Hiring pipeline"}`
+            ? `${app.jobTitle} · ${app.email}`
             : "Review this application's stage, documents and hiring progress."
         }
         actions={
@@ -265,78 +276,130 @@ export function ApplicationDetail({
         </Alert>
       )}
       {!app || !config || !data ? (
-        <p role="status">Loading application…</p>
+        <p
+          role={error || configError ? undefined : "status"}
+          className="text-sm text-muted-foreground"
+        >
+          {error || configError
+            ? "Unable to load this application. Refresh to try again, or return to the hiring board."
+            : "Loading application…"}
+        </p>
       ) : (
         <>
-          <section className="space-y-4 rounded-xl border bg-card p-5">
-            <div className="flex flex-wrap items-center gap-2">
-              <Badge>{stage?.name ?? app.stageId}</Badge>
-              <Badge variant="outline">
-                {app.outcome ?? (app.hold ? "On hold" : "Active")}
-              </Badge>
-              <Badge variant="outline">
-                Pipeline version {version?.version}
-              </Badge>
-              {app.offer !== "none" && (
-                <Badge variant="secondary">Offer {app.offer}</Badge>
-              )}
-            </div>
-            {app.hold && <p className="text-sm">On hold: {app.hold}</p>}
-            <div className="flex flex-wrap gap-2">
-              {!app.outcome && !app.hold && (
-                <>
-                  <Button onClick={primaryTask}>
-                    {task?.label ?? "Review application"}
-                  </Button>
-                  <Button variant="outline" onClick={() => setMoving(true)}>
-                    Move to…
-                  </Button>
+          <section
+            className="space-y-4 rounded-xl border bg-card p-4 sm:p-5"
+            aria-label="Application status and next action"
+          >
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex min-w-0 flex-wrap items-center gap-2">
+                <span className="text-sm text-muted-foreground">
+                  Current stage
+                </span>
+                <Badge>{stage?.name ?? "Stage unavailable"}</Badge>
+                <Badge variant="outline">
+                  {app.outcome === "rejected"
+                    ? "Not selected"
+                    : app.outcome === "hired"
+                      ? "Hired"
+                      : app.outcome === "withdrawn"
+                        ? "Withdrawn"
+                        : app.hold
+                          ? "On hold"
+                          : "Active"}
+                </Badge>
+                {app.offer !== "none" && (
+                  <Badge variant="secondary">Offer {app.offer}</Badge>
+                )}
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                {!app.outcome && !app.hold && task?.action !== "move" && (
                   <Button
                     variant="outline"
-                    onClick={() => void openAction("assign_job")}
+                    size="sm"
+                    disabled={busy}
+                    onClick={() => setMoving(true)}
                   >
-                    Assign job
+                    Move stage
                   </Button>
-                </>
-              )}
-              {app.outcome ? (
-                <Button
-                  variant="outline"
-                  onClick={() => void openAction("reopen")}
-                >
-                  Reopen
-                </Button>
-              ) : (
-                <>
-                  <Button
-                    variant="ghost"
-                    onClick={() =>
-                      void openAction(app.hold ? "resume" : "hold")
-                    }
-                  >
-                    {app.hold ? "Resume" : "Put on hold"}
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    onClick={() => void openAction("close")}
-                  >
-                    Close application
-                  </Button>
-                </>
-              )}
-              <ArchiveButton type="hiring_application" id={app.id} label={`${app.name} — ${app.jobTitle}`} disabled={busy} onArchived={() => window.location.assign("/hiring")} />
-              <DeleteButton type="hiring_application" id={app.id} label={`${app.name} — ${app.jobTitle}`} disabled={busy} onDeleted={() => window.location.assign("/hiring")} />
+                )}
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="outline" size="sm" disabled={busy}>
+                      <MoreHorizontal aria-hidden="true" />
+                      More actions
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-64">
+                    <DropdownMenuLabel>Manage application</DropdownMenuLabel>
+                    {!app.outcome &&
+                      !app.hold &&
+                      task?.action !== "assign_job" && (
+                        <DropdownMenuItem
+                          onSelect={() => void openAction("assign_job")}
+                        >
+                          {app.jobId ? "Change job" : "Assign job"}
+                        </DropdownMenuItem>
+                      )}
+                    {app.outcome ? (
+                      <DropdownMenuItem
+                        onSelect={() => void openAction("reopen")}
+                      >
+                        Reopen application
+                      </DropdownMenuItem>
+                    ) : (
+                      <>
+                        {task?.action !== "resume" && (
+                          <DropdownMenuItem
+                            onSelect={() =>
+                              void openAction(app.hold ? "resume" : "hold")
+                            }
+                          >
+                            {app.hold
+                              ? "Resume application"
+                              : "Put application on hold"}
+                          </DropdownMenuItem>
+                        )}
+                        <DropdownMenuItem
+                          onSelect={() => void openAction("close")}
+                        >
+                          Record hiring decision / close
+                        </DropdownMenuItem>
+                      </>
+                    )}
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem onSelect={() => setManagingRecords(true)}>
+                      Archive or delete application…
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
             </div>
-            <p className="text-xs text-muted-foreground">
-              Stage entry:{" "}
-              {app.stageEnteredAt ? runDate(app.stageEnteredAt) : "unknown"}.
-              Moving stages does not approve documents, send messages or make a
-              hiring decision.
-            </p>
+            <div className="flex flex-col gap-4 rounded-lg bg-primary/5 p-4 sm:flex-row sm:items-center sm:justify-between">
+              <div className="min-w-0 space-y-1">
+                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  {app.outcome
+                    ? "Application closed"
+                    : app.hold
+                      ? "Application on hold"
+                      : "Next action"}
+                </p>
+                <h2 className="font-semibold">
+                  {task?.label ?? "Review application"}
+                </h2>
+                <p className="text-sm leading-6 text-muted-foreground">
+                  {task?.description}
+                </p>
+              </div>
+              <Button
+                className="w-full shrink-0 sm:w-auto"
+                disabled={busy || !task}
+                onClick={primaryTask}
+              >
+                {task?.label ?? "Review application"}
+                <ArrowRight aria-hidden="true" />
+              </Button>
+            </div>
           </section>
-          <p className="text-sm text-muted-foreground">
-            {task?.description} · Selected CV: {app.fileName}
-          </p>
           <Tabs value={tab} onValueChange={changeTab}>
             <TabsList className="flex w-full flex-wrap justify-start gap-2 group-data-[orientation=horizontal]/tabs:h-auto sm:w-fit">
               <TabsTrigger className="h-9 flex-none" value="overview">
@@ -356,85 +419,97 @@ export function ApplicationDetail({
               </TabsTrigger>
             </TabsList>
             <TabsContent value="overview" className="space-y-5">
-              <section className="space-y-4 rounded-xl border p-5">
-                <h2 className="font-semibold">Application evidence</h2>
-                <p className="text-sm">CV: {app.fileName}</p>
-                <p className="text-sm">
-                  Required documents: {data.facts.documentCounts.submitted}/
-                  {data.facts.documentCounts.required} submitted ·{" "}
-                  {data.facts.documentCounts.accepted}/
-                  {data.facts.documentCounts.required} accepted
-                </p>
-                <div className="flex flex-wrap gap-2">
+              <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
+                <ApplicationChecklist
+                  app={app}
+                  stage={stage}
+                  facts={data.facts}
+                  onTab={changeTab}
+                  onAssign={() => void openAction("assign_job")}
+                />
+                <section
+                  className="min-w-0 space-y-4 rounded-xl border bg-card p-5"
+                  aria-labelledby="application-details-title"
+                >
+                  <h2 id="application-details-title" className="font-semibold">
+                    Application details
+                  </h2>
+                  <dl className="space-y-4 text-sm">
+                    <div className="space-y-1">
+                      <dt className="text-muted-foreground">Selected CV</dt>
+                      <dd className="break-words [overflow-wrap:anywhere]">
+                        {app.fileName}
+                      </dd>
+                    </div>
+                    <div className="space-y-1">
+                      <dt className="text-muted-foreground">
+                        Required documents
+                      </dt>
+                      <dd>
+                        {data.facts.documentCounts.required
+                          ? `${data.facts.documentCounts.submitted} of ${data.facts.documentCounts.required} submitted · ${data.facts.documentCounts.accepted} accepted`
+                          : "No required forms linked"}
+                      </dd>
+                    </div>
+                    <div className="space-y-1">
+                      <dt className="text-muted-foreground">
+                        Entered current stage
+                      </dt>
+                      <dd>
+                        {app.stageEnteredAt
+                          ? runDate(app.stageEnteredAt)
+                          : "Not recorded"}
+                      </dd>
+                    </div>
+                  </dl>
                   <Button
                     variant="outline"
-                    disabled={!!app.outcome || !!app.hold}
-                    onClick={() => void openAction("change_cv")}
-                  >
-                    Use another approved CV
-                  </Button>
-                  <Button
-                    variant="outline"
+                    className="w-full"
                     onClick={() => changeTab("documents")}
                   >
-                    Review this CV
+                    View CV & documents
                   </Button>
-
-                  <Button
-                    variant="outline"
-                    disabled={!!app.outcome || !!app.hold}
-                    onClick={() => void openAction("link_preparation")}
-                  >
-                    Link existing preparation
-                  </Button>
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  Form requirements use assignments explicitly linked to this
-                  application. Another job application&apos;s forms and
-                  interview results do not satisfy them automatically.
-                </p>
-                <ul className="space-y-3 text-sm">
-                  {Object.entries(REQUIREMENTS).map(([key, label]) => (
-                    <li
-                      key={key}
-                      className="flex flex-wrap justify-between gap-2"
-                    >
-                      <span>{label}</span>
-                      <Badge
-                        variant={
-                          data.facts[key as keyof typeof REQUIREMENTS]
-                            ? "secondary"
-                            : "outline"
-                        }
-                      >
-                        {data.facts[key as keyof typeof REQUIREMENTS]
-                          ? "Recorded"
-                          : "Pending / not linked"}
-                      </Badge>
-                    </li>
-                  ))}
-                </ul>
-              </section>
-              <section className="space-y-3 rounded-xl border p-5">
-                <h2 className="font-semibold">Current stage requirements</h2>
-                <p className="text-sm">
-                  Before entering:{" "}
-                  {stage?.entry.map((r) => REQUIREMENTS[r]).join("; ") ||
-                    "No additional requirements"}
-                </p>
-                <p className="text-sm">
-                  Before leaving:{" "}
-                  {stage?.exit.map((r) => REQUIREMENTS[r]).join("; ") ||
-                    "No additional requirements"}
-                </p>
-                {stage?.activity === "interview" && (
-                  <p className="text-xs text-muted-foreground">
-                    Starting interviews always requires a current HR-approved
-                    CV. This hiring model can add document requirements before
-                    interviews.
-                  </p>
-                )}
-              </section>
+                  <details className="rounded-lg border px-4 py-3">
+                    <summary className="cursor-pointer text-sm font-medium">
+                      Pipeline & evidence options
+                    </summary>
+                    <div className="mt-4 space-y-4">
+                      <p className="text-sm">
+                        {version?.name ?? "Pipeline unavailable"} · Version{" "}
+                        {version?.version ?? "unavailable"}
+                      </p>
+                      {stage?.description && (
+                        <p className="text-sm text-muted-foreground">
+                          {stage.description}
+                        </p>
+                      )}
+                      <div className="flex flex-wrap gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          disabled={!!app.outcome || !!app.hold || busy}
+                          onClick={() => void openAction("change_cv")}
+                        >
+                          Use another approved CV
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          disabled={!!app.outcome || !!app.hold || busy}
+                          onClick={() => void openAction("link_preparation")}
+                        >
+                          Reuse existing account & forms
+                        </Button>
+                      </div>
+                      <p className="text-xs leading-5 text-muted-foreground">
+                        Only forms explicitly linked to this application count
+                        toward its requirements. Reusing preparation shares
+                        those assignments and their review status.
+                      </p>
+                    </div>
+                  </details>
+                </section>
+              </div>
             </TabsContent>
             <TabsContent value="documents" className="space-y-5">
               <ApplicationDocuments
@@ -459,17 +534,94 @@ export function ApplicationDetail({
               ) : (
                 <section className="space-y-4 rounded-xl border p-5">
                   <h2 className="font-semibold">Application interviews</h2>
-                  <p className="text-sm">
-                    Start interviews from an interview activity stage after
-                    approving the current CV and satisfying its entry
-                    requirements.
+                  <p className="text-sm text-muted-foreground">
+                    Interviews need an assigned job, an approved CV and an
+                    interview stage with its entry requirements satisfied.
                   </p>
+                  {(app.hold || app.outcome) && (
+                    <p className="text-sm">
+                      {app.outcome ? "Reopen" : "Resume"} this application
+                      before starting interviews.
+                    </p>
+                  )}
+                  <ul
+                    className="space-y-3 text-sm"
+                    aria-label="Before starting interviews"
+                  >
+                    {!app.jobId && (
+                      <li className="flex flex-wrap items-center justify-between gap-2">
+                        <span>Assign a job to this application.</span>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          disabled={busy || !!app.hold || !!app.outcome}
+                          onClick={() => void openAction("assign_job")}
+                        >
+                          Choose job
+                        </Button>
+                      </li>
+                    )}
+                    {!data.facts.cv_approved && (
+                      <li className="flex flex-wrap items-center justify-between gap-2">
+                        <span>The selected CV needs HR approval.</span>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => changeTab("documents")}
+                        >
+                          Review CV
+                        </Button>
+                      </li>
+                    )}
+                    {stage?.activity !== "interview" && (
+                      <li className="flex flex-wrap items-center justify-between gap-2">
+                        <span>
+                          The current stage is not an interview stage.
+                        </span>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          disabled={busy || !!app.hold || !!app.outcome}
+                          onClick={() => setMoving(true)}
+                        >
+                          Choose interview stage
+                        </Button>
+                      </li>
+                    )}
+                    {stage?.entry
+                      .filter(
+                        (key) => key !== "cv_approved" && !data.facts[key],
+                      )
+                      .map((key) => (
+                        <li
+                          key={key}
+                          className="flex flex-wrap items-center justify-between gap-2"
+                        >
+                          <span>Required to enter: {REQUIREMENTS[key]}</span>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() =>
+                              changeTab(
+                                key === "interview_complete"
+                                  ? "overview"
+                                  : "documents",
+                              )
+                            }
+                          >
+                            Review requirement
+                          </Button>
+                        </li>
+                      ))}
+                  </ul>
                   <Button
                     disabled={
                       busy ||
                       !!app.hold ||
                       !!app.outcome ||
+                      !app.jobId ||
                       !data.facts.cv_approved ||
+                      !!stage?.entry.some((key) => !data.facts[key]) ||
                       stage?.activity !== "interview"
                     }
                     onClick={() => void startInterviews()}
@@ -592,6 +744,42 @@ export function ApplicationDetail({
               )}
             </TabsContent>
           </Tabs>
+          <Dialog open={managingRecords} onOpenChange={setManagingRecords}>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Archive or delete application</DialogTitle>
+                <DialogDescription>
+                  {app.name} · {app.jobTitle}. Archive preserves this
+                  application for restoration. Permanent deletion is available
+                  only when its recorded history allows it.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="flex flex-wrap gap-2">
+                <ArchiveButton
+                  type="hiring_application"
+                  id={app.id}
+                  label={`${app.name} — ${app.jobTitle}`}
+                  disabled={busy}
+                  onArchived={() => window.location.assign("/hiring")}
+                />
+                <DeleteButton
+                  type="hiring_application"
+                  id={app.id}
+                  label={`${app.name} — ${app.jobTitle}`}
+                  disabled={busy}
+                  onDeleted={() => window.location.assign("/hiring")}
+                />
+              </div>
+              <DialogFooter>
+                <Button
+                  variant="outline"
+                  onClick={() => setManagingRecords(false)}
+                >
+                  Done
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
           {moving && (
             <MoveApplication
               app={app}
@@ -800,13 +988,21 @@ export function ApplicationDetail({
                   </div>
                 )}
                 <div className="space-y-2">
-                  <Label htmlFor="application-reason">Reason</Label>
+                  <Label htmlFor="application-reason">Reason (required)</Label>
                   <Input
                     id="application-reason"
+                    aria-describedby="application-reason-help"
                     maxLength={1000}
                     value={reason}
                     onChange={(e) => setReason(e.target.value)}
                   />
+                  <p
+                    id="application-reason-help"
+                    className="text-xs text-muted-foreground"
+                  >
+                    Enter at least 3 characters. This reason is saved in the
+                    application history.
+                  </p>
                 </div>
                 {action === "offer" && (
                   <p className="text-xs text-muted-foreground">
