@@ -198,3 +198,46 @@ test('saved viewport rejects malformed, nonfinite and out-of-range storage',()=>
  assert.deepEqual(geometry.parseViewport('{"x":20,"y":-30,"zoom":0.5}'),{x:20,y:-30,zoom:0.5});
  for(const value of [null,'bad','{}','{"x":0,"y":0,"zoom":10}','{"x":"0","y":0,"zoom":1}'])assert.equal(geometry.parseViewport(value),null);
 });
+
+
+test('routing presets require real pipeline configuration and preserve both condition paths', async () => {
+ const {presetGraph, WORKFLOW_PRESETS}=await vite.ssrLoadModule('/features/workflows/presets.ts');
+ const {workflowTrigger}=await vite.ssrLoadModule('/features/workflows/workflow.ts');
+ for(const purpose of ['position_routing','job_routing','forms_routing']) {
+  const g=presetGraph(purpose);
+  assert.equal(workflowTrigger(g),WORKFLOW_PRESETS[purpose].trigger);
+  assert(parseDraftGraph(g));
+  assert.equal(guide.guidedPurpose(g),null);
+  assert(graphIssues(g).some(i=>i.includes('published hiring pipeline')));
+  assert(graphIssues(g).some(i=>i.includes('expected source stage')));
+  g.nodes.find(n=>n.id==='upload').config.pipelineVersionId='pipeline-v1';
+  Object.assign(g.nodes.find(n=>n.id==='move').config,{fromStageId:'received',stageId:'screening'});
+  const condition=g.nodes.find(n=>n.id==='condition');
+  if(purpose!=='position_routing') condition.config.value=purpose==='job_routing'?'job-frontend':'received';
+  assert.deepEqual(graphIssues(g),[]);
+  const sample={name:'TEST Dara',email:'test@example.test',source:'email',appliedPosition:' frontend dev ',stageId:'received',jobId:'job-frontend',approved:true,existingAccount:false,telegramConfirmed:false};
+  const yes=workspace.previewWorkflow(g,sample,[]);
+  assert(yes.steps.some(s=>s.id==='move'));
+  assert.equal(yes.steps.at(-1).id,'done');
+  const no=workspace.previewWorkflow(g,{...sample,[condition.config.field]:'Other'},[]);
+  assert(!no.steps.some(s=>s.id==='move'));
+  assert.equal(no.steps.at(-1).id,'stop');
+  const wrongStage=workspace.previewWorkflow(g,{...sample,stageId:'another-stage'},[]);
+  if(purpose!=='forms_routing') assert.equal(wrongStage.steps.find(s=>s.id==='move').state,'blocked');
+ }
+ const position=presetGraph('position_routing');
+ position.nodes[0].config.pipelineVersionId='pipeline-v1';
+ Object.assign(position.nodes.find(n=>n.id==='move').config,{fromStageId:'received',stageId:'screening'});
+ const differentTitle=workspace.previewWorkflow(position,{name:'TEST Dara',email:'test@example.test',source:'email',appliedPosition:'Frontend Developer',stageId:'received',approved:true,existingAccount:false,telegramConfirmed:false},[]);
+ assert.equal(differentTitle.steps.at(-1).id,'stop');
+});
+
+
+test('application routing completion points to application evidence instead of claiming preparation completed', () => {
+ const run={status:'completed',currentNodeId:'done',graph:{nodes:[{id:'start',kind:'resume_uploaded',config:{trigger:'application_received'}}],edges:[]},context:{steps:{}},updatedAt:'2026-10-21T00:00:00Z'};
+ const guidance=executionGuidance(run);
+ assert.equal(guidance.title,'Application workflow completed');
+ assert.match(guidance.action,/application.*current stage/);
+ run.graph.nodes[0].config.trigger='resume_verified';
+ assert.equal(executionGuidance(run).title,'Preparation completed');
+});

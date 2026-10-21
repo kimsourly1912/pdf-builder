@@ -1,6 +1,12 @@
 import { presetGraph, WORKFLOW_PRESETS, type WorkflowPreset } from "./presets";
 import { graphIdentity } from "./workspace-tools";
-import type { FormTarget, WorkflowGraph, TemplateOption } from "./workflow";
+import {
+  isApplicationTrigger,
+  workflowTrigger,
+  type FormTarget,
+  type WorkflowGraph,
+  type TemplateOption,
+} from "./workflow";
 
 export function guidedGraph(
   purpose: WorkflowPreset,
@@ -18,6 +24,7 @@ export function guidedGraph(
 // Only the untouched preset structure can re-enter the guide. Custom canvas edits
 // must never be silently rebuilt from a preset.
 export function guidedPurpose(graph: WorkflowGraph): WorkflowPreset | null {
+  if (isApplicationTrigger(workflowTrigger(graph))) return null;
   const plain = structuredClone(graph);
   const assign = plain.nodes.find((n) => n.kind === "assign_forms");
   if (assign) assign.config.forms = [];

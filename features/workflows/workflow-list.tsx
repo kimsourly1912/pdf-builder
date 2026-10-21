@@ -1,6 +1,5 @@
 "use client";
 import { SelectField, SelectFieldOption } from "@/components/patterns/select-field";
-import { WORKFLOW_PRESETS, type WorkflowPreset } from "./presets";
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { Plus, Workflow, LoaderCircle, Copy } from "lucide-react";
@@ -24,26 +23,10 @@ import { WorkflowRunsView } from "./workflow-runs";
 import { workflowApi, errorText, runDate } from "./client";
 import {
   TRIGGER_LABELS,
-  type WorkflowTrigger,
   type WorkflowSummary,
 } from "./workflow";
 import { ArchiveButton } from "@/features/archive/archive-button";
 import { DeleteButton } from "@/features/archive/delete-button";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-  DialogFooter,
-} from "@/components/ui/dialog";
-import {
-  Select,
-  SelectTrigger,
-  SelectValue,
-  SelectContent,
-  SelectItem,
-} from "@/components/ui/select";
 
 const FILTERS = {
   workflowSearch: "",
@@ -66,19 +49,17 @@ export function WorkflowList(props: {
     setFilters,
     ready: filtersReady,
   } = useUrlFilters(FILTERS, validFilter, props.preferenceKey);
-  const [tab, setTab] = useState(() =>
-    typeof window !== "undefined" &&
-    new URLSearchParams(window.location.search).get("tab") === "runs"
-      ? "runs"
-      : "workflows",
-  );
+  const [tab, setTab] = useState("workflows");
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      if (new URLSearchParams(window.location.search).get("tab") === "runs")
+        setTab("runs");
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, []);
   const [copying, setCopying] = useState<string | null>(null);
-  const [createOpen, setCreateOpen] = useState(false),
-    [preset, setPreset] = useState<WorkflowPreset | "custom">("approval"),
-    [trigger, setTrigger] = useState<WorkflowTrigger>("resume_verified");
   const [items, setItems] = useState<WorkflowSummary[]>([]);
   const [loading, setLoading] = useState(true);
-  const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const load = useCallback(async () => {
     try {
@@ -97,23 +78,6 @@ export function WorkflowList(props: {
     const timer = window.setTimeout(() => void load(), 0);
     return () => window.clearTimeout(timer);
   }, [load]);
-  async function create() {
-    setBusy(true);
-    setError("");
-    try {
-      const data = await workflowApi<{ workflow: WorkflowSummary }>(
-        "/api/workflows",
-        {
-          method: "POST",
-          body: JSON.stringify(preset === "custom" ? { trigger } : { preset }),
-        },
-      );
-      window.location.assign(`/workflows/${data.workflow.id}`);
-    } catch (e) {
-      setError(errorText(e));
-      setBusy(false);
-    }
-  }
   const visible = items.filter(
     (w) =>
       w.name.toLowerCase().includes(filters.workflowSearch.toLowerCase()) &&
@@ -139,7 +103,7 @@ export function WorkflowList(props: {
     }
   }
   return (
-    <AppShell displayName={props.displayName} fullWidth={tab === "runs"}>
+    <AppShell displayName={props.displayName}>
       <PageHeader
         title="Automation"
         description="Configure when candidate preparation starts and what happens next. Daily review and form work stays in the candidate profile."
@@ -150,25 +114,9 @@ export function WorkflowList(props: {
                 <Plus /> New workflow
               </Link>
             </Button>
-            <Button
-              variant="outline"
-              disabled={busy}
-              onClick={() => setCreateOpen(true)}
-            >
-              Advanced canvas setup
-            </Button>
           </div>
         }
       />
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-card p-4 text-sm">
-        <p>
-          Looking for today’s HR work? Start with candidate actions. Use
-          automation to configure preparation or investigate an execution.
-        </p>
-        <Button asChild variant="outline">
-          <Link href="/needs-attention?responsibility=hr">Your HR actions</Link>
-        </Button>
-      </div>
       {error && (
         <Alert variant="destructive">
           <AlertDescription>{error}</AlertDescription>
@@ -327,7 +275,7 @@ export function WorkflowList(props: {
                       <Button
                         size="sm"
                         variant="outline"
-                        disabled={!!copying || busy}
+                        disabled={!!copying}
                         onClick={() => void duplicate(w.id)}
                       >
                         {copying === w.id ? (
@@ -373,73 +321,6 @@ export function WorkflowList(props: {
           />
         </TabsContent>
       </Tabs>
-      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Create a workflow for a purpose</DialogTitle>
-            <DialogDescription>
-              The starting event determines when this workflow runs. AI
-              extraction remains optional.
-            </DialogDescription>
-          </DialogHeader>
-          <div
-            className="space-y-2"
-            role="group"
-            aria-label="Workflow purpose presets"
-          >
-            {Object.entries(WORKFLOW_PRESETS).map(([key, p]) => (
-              <Button
-                key={key}
-                variant={preset === key ? "default" : "outline"}
-                className="h-auto w-full justify-start whitespace-normal py-3 text-left"
-                aria-pressed={preset === key}
-                onClick={() => setPreset(key as WorkflowPreset)}
-              >
-                {p.name}
-              </Button>
-            ))}
-            <Button
-              variant={preset === "custom" ? "default" : "outline"}
-              onClick={() => setPreset("custom")}
-            >
-              Custom starting event
-            </Button>
-          </div>
-          {preset !== "custom" && (
-            <p className="text-sm text-muted-foreground">
-              {WORKFLOW_PRESETS[preset].description}
-            </p>
-          )}
-          {preset === "custom" && (
-            <Select
-              value={trigger}
-              onValueChange={(v) => setTrigger(v as WorkflowTrigger)}
-            >
-              <SelectTrigger
-                className="w-full"
-                aria-label="Workflow starting event"
-              >
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {Object.entries(TRIGGER_LABELS).map(([value, label]) => (
-                  <SelectItem key={value} value={value}>
-                    {label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          )}
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setCreateOpen(false)}>
-              Cancel
-            </Button>
-            <Button disabled={busy} onClick={() => void create()}>
-              Create workflow
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </AppShell>
   );
 }

@@ -1,5 +1,10 @@
 import { arrangeGraph } from "./editor-tools";
-import { defaultGraph, type WorkflowTrigger } from "./workflow";
+import {
+  defaultGraph,
+  isApplicationTrigger,
+  type WorkflowGraph,
+  type WorkflowTrigger,
+} from "./workflow";
 export const WORKFLOW_PRESETS = {
   approval: {
     name: "Prepare candidate after CV approval",
@@ -19,9 +24,70 @@ export const WORKFLOW_PRESETS = {
     description:
       "HR explicitly starts preparation for a reviewed CV. Prepare the account, link the CV, assign selected forms and send the invitation. Choose forms before publishing.",
   },
+  position_routing: {
+    name: "Route frontend applications by position",
+    trigger: "application_received" as WorkflowTrigger,
+    description:
+      'When an application arrives, check whether Applied position is "Frontend Dev". Yes moves it to your chosen stage; No stops. Exact text matching ignores letter case and surrounding spaces. Configure the pipeline and stages in the editor.',
+  },
+  job_routing: {
+    name: "Route applications by job opening",
+    trigger: "job_assigned" as WorkflowTrigger,
+    description:
+      "When a job is assigned, check a selected job opening and move matching applications. Matches the assigned job, so free-text position spelling does not matter. Choose the pipeline, job and stages in the editor.",
+  },
+  forms_routing: {
+    name: "Move applications after forms are accepted",
+    trigger: "application_forms_accepted" as WorkflowTrigger,
+    description:
+      "When HR accepts all required application forms, check the current stage. Yes moves the application forward; No stops. Choose the pipeline and stages in the editor; live stage requirements still apply.",
+  },
 } as const;
 export type WorkflowPreset = keyof typeof WORKFLOW_PRESETS;
 export function presetGraph(preset: WorkflowPreset) {
+  if (isApplicationTrigger(WORKFLOW_PRESETS[preset].trigger)) {
+    const position = preset === "position_routing";
+    const graph: WorkflowGraph = {
+      nodes: [
+        {
+          id: "upload",
+          kind: "resume_uploaded",
+          position: { x: 0, y: 0 },
+          config: { trigger: WORKFLOW_PRESETS[preset].trigger },
+          note: "Choose a published hiring pipeline before publishing this routing workflow.",
+        },
+        {
+          id: "condition",
+          kind: "condition",
+          position: { x: 0, y: 0 },
+          config: {
+            field: position ? "appliedPosition" : preset === "job_routing" ? "jobId" : "stageId",
+            operator: "is",
+            value: position ? "Frontend Dev" : "",
+          },
+          note: position
+            ? 'Try " frontend dev " and "Frontend Developer" in Test with sample to compare the Yes and No paths. This is an exact text check, without synonyms or fuzzy matching.'
+            : "Choose the job opening or current stage to match. Yes moves the application; No ends without moving it.",
+        },
+        {
+          id: "move",
+          kind: "move_stage",
+          position: { x: 0, y: 0 },
+          config: {},
+          note: "Choose the expected current stage and a different destination. A live move checks stage requirements and concurrent changes; it never approves a CV or sends an invitation.",
+        },
+        { id: "done", kind: "complete", position: { x: 0, y: 0 }, config: {} },
+        { id: "stop", kind: "stop", position: { x: 0, y: 0 }, config: {} },
+      ],
+      edges: [
+        { id: "start-condition", source: "upload", target: "condition", outcome: "next" },
+        { id: "condition-move", source: "condition", target: "move", outcome: "yes" },
+        { id: "condition-stop", source: "condition", target: "stop", outcome: "no" },
+        { id: "move-done", source: "move", target: "done", outcome: "next" },
+      ],
+    };
+    return arrangeGraph(graph);
+  }
   const graph = defaultGraph();
   graph.nodes[0].config.trigger = WORKFLOW_PRESETS[preset].trigger;
   if (preset === "telegram") {

@@ -42,8 +42,14 @@ test("draft graph normalization rejects invalid input and strips client version 
   graph.nodes[0].position.x = Infinity; assert.equal(parseGraph(graph), null);
   assert.equal(parseGraph({ nodes: [], edges: [{ id: "x", source: "a", target: "b", outcome: "execute_arbitrary_code" }] }), null);
 });
-test("resume conditions normalize whitespace and letter case", () => {
+test("resume conditions normalize surrounding whitespace and letter case", () => {
   assert.equal(conditionMatches({ field: "source", value: " Email " }, { source: "email", appliedPosition: "HR" }), true);
+  const position = { field: "appliedPosition", value: "Frontend Dev" };
+  for (const title of ["Frontend Dev", " frontend dev ", "FRONTEND DEV"])
+    assert.equal(conditionMatches(position, { source: "email", appliedPosition: title }), true);
+  for (const title of ["Frontend Developer", "Front-end Dev", "Frontend  Dev", ""])
+    assert.equal(conditionMatches(position, { source: "email", appliedPosition: title }), false);
+  assert.equal(conditionMatches({ ...position, operator: "is_not" }, { source: "email", appliedPosition: "Backend Dev" }), true);
   assert.equal(conditionMatches({ field: "appliedPosition", value: "Engineer" }, { source: "email", appliedPosition: "HR" }), false);
 });
 

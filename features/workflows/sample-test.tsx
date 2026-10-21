@@ -32,7 +32,9 @@ export function SampleTest({
       name: "Dara Sok",
       email: "dara@example.com",
       source: "telegram",
-      appliedPosition: "Accountant",
+      appliedPosition:
+        graph.nodes.find((n) => n.kind === "condition" && n.config.field === "appliedPosition")
+          ?.config.value || "Accountant",
       approved: true,
       existingAccount: false,
       telegramConfirmed: true,
