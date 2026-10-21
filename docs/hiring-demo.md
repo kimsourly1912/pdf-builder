@@ -35,7 +35,10 @@ The Sales model shows a different hiring order:
 
 Assign Sales Executive, review its CV, then conduct the interview before
 collecting documents. The frontend preparation rules do not match this job.
-This model intentionally leaves the later decisions with HR.
+This model intentionally leaves the later decisions with HR. The Engineering
+model becomes the default inbox after seeding, so future candidate intake starts
+at Applied. HR assigns the actual job; choosing Sales maps that application to
+the Sales model through the normal guarded job-assignment flow.
 
 ## Sample records
 

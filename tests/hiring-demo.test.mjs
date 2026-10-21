@@ -118,6 +118,8 @@ test("demo reset and seeding preserve admin credentials and exercise real applic
     assert.equal(runtime.DB.sqlite.prepare("SELECT count(*) n FROM resume_extractions").get().n,0);
     assert.equal(runtime.DB.sqlite.prepare("SELECT count(*) n FROM resume_processing_jobs WHERE status='failed'").get().n,0);
     assert.equal(externalRequests,0);
+    assert.equal(runtime.DB.sqlite.prepare("SELECT count(*) n FROM hiring_applications").get().n,3);
+    assert.equal(runtime.DB.sqlite.prepare("SELECT name FROM hiring_pipelines WHERE is_default=1").get().name,"DEMO Engineering — documents before interview");
     assert.deepEqual(runtime.DB.sqlite.prepare("SELECT id FROM user WHERE email='admin@gmail.com'").get(),userBefore);
     await authenticatedApi(origin,"admin@gmail.com",password,localFetch);
   } finally { globalThis.fetch = externalFetch; }
