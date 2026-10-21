@@ -16,6 +16,9 @@ import {
   RefreshCw,
   XCircle,
   LoaderCircle,
+  Activity,
+  Search,
+  Workflow,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -388,9 +391,18 @@ export function WorkflowRunsView({
             </Link>
           </Button>
         )}
-      <Button asChild variant="outline">
-        <Link href={`/resumes/${selected.resumeId}`}>Open resume</Link>
-      </Button>
+      <div className="flex flex-wrap gap-2">
+        {selected.context.applicationEvent?.applicationId && (
+          <Button asChild variant="outline">
+            <Link href={`/hiring/${selected.context.applicationEvent.applicationId}`}>
+              Open application
+            </Link>
+          </Button>
+        )}
+        <Button asChild variant="outline">
+          <Link href={`/resumes/${selected.resumeId}`}>Open resume</Link>
+        </Button>
+      </div>
       {selected.context.userId && (
         <Button asChild variant="outline">
           <Link href="/accounts">View accounts</Link>
@@ -399,25 +411,39 @@ export function WorkflowRunsView({
     </div>
   ) : null;
   return (
-    <div className="space-y-5">
-      <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+    <div className="min-w-0 space-y-6">
+      <div>
+        <h2 className="text-lg font-semibold">Execution overview</h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Track workflow progress and open a run to see its path and next action.
+        </p>
+      </div>
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4" aria-label="Execution totals">
         {[
-          ["Total runs", total],
-          ["Waiting for action", data?.stats.waiting_review ?? 0],
-          ["Completed", data?.stats.completed ?? 0],
-          ["Failed", data?.stats.failed ?? 0],
-        ].map(([label, value]) => (
-          <Card key={label}>
-            <CardContent className="pt-5">
-              <p className="text-sm text-muted-foreground">{label}</p>
-              <p className="mt-2 text-3xl font-semibold">{value}</p>
+          { label: "Total runs", value: total, icon: Activity, color: "text-muted-foreground" },
+          { label: "Waiting for action", value: data?.stats.waiting_review ?? 0, icon: Clock3, color: "text-amber-600 dark:text-amber-400" },
+          { label: "Completed", value: data?.stats.completed ?? 0, icon: CheckCircle2, color: "text-emerald-600 dark:text-emerald-400" },
+          { label: "Failed", value: data?.stats.failed ?? 0, icon: XCircle, color: "text-red-600 dark:text-red-400" },
+        ].map(({ label, value, icon: Icon, color }) => (
+          <Card key={label} className="gap-0 py-0 shadow-none">
+            <CardContent className="space-y-3 p-4 sm:p-5">
+              <div className="flex items-start justify-between gap-2">
+                <p className="text-sm text-muted-foreground">{label}</p>
+                <Icon className={`size-4 shrink-0 ${color}`} aria-hidden="true" />
+              </div>
+              <p className="text-2xl font-semibold tabular-nums">{data ? value : "—"}</p>
             </CardContent>
           </Card>
         ))}
       </div>
       {error && (
         <Alert variant="destructive">
-          <AlertDescription>{error}</AlertDescription>
+          <AlertDescription>
+            {error}
+            <Button variant="outline" size="sm" disabled={loading} onClick={() => void load()}>
+              Try again
+            </Button>
+          </AlertDescription>
         </Alert>
       )}
       <div
@@ -427,19 +453,24 @@ export function WorkflowRunsView({
             : "min-w-0"
         }
       >
-        <Card className="min-w-0 overflow-hidden">
+        <Card className="min-w-0 gap-0 overflow-hidden py-0">
           <CardContent className="p-0">
             <div className="space-y-4 p-5">
-              <h2 className="font-semibold">Workflow runs</h2>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h2 className="font-semibold">Workflow runs</h2>
+                <span className="text-xs text-muted-foreground" role="status">
+                  {loading ? "Updating…" : data ? `${data.total} matching runs` : "Loading executions…"}
+                </span>
+              </div>
               <div
                 className={
                   selected && !compact
-                    ? "flex flex-col gap-3"
-                    : "flex flex-wrap gap-3"
+                    ? "grid min-w-0 gap-2"
+                    : "grid min-w-0 grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_auto_auto_auto_auto]"
                 }
               >
                 <Input
-                  className="min-w-0 flex-1"
+                  className="min-w-0 w-full sm:col-span-2 xl:col-span-1"
                   placeholder="Search candidate or resume"
                   aria-label="Search runs"
                   disabled={!filtersReady}
@@ -458,7 +489,7 @@ export function WorkflowRunsView({
                   }}
                 >
                   <SelectTrigger
-                    className="w-full sm:w-48"
+                    className={selected && !compact ? "w-full min-w-0" : "w-full min-w-0 xl:w-44"}
                     aria-label="Run status"
                   >
                     <SelectValue />
@@ -481,7 +512,7 @@ export function WorkflowRunsView({
                   }}
                 >
                   <SelectTrigger
-                    className="w-full sm:w-40"
+                    className={selected && !compact ? "w-full min-w-0" : "w-full min-w-0 xl:w-36"}
                     aria-label="Date range"
                   >
                     <SelectValue />
@@ -495,12 +526,13 @@ export function WorkflowRunsView({
                 </Select>
                 <Button
                   variant="outline"
-                  size="icon"
+                  size="sm"
+                  className="h-9"
                   aria-label="Refresh runs"
                   disabled={loading}
                   onClick={() => void load()}
                 >
-                  <RefreshCw className={loading ? "animate-spin" : ""} />
+                  <RefreshCw className={loading ? "animate-spin" : ""} /> Refresh
                 </Button>
                 <Button
                   variant="ghost"
@@ -514,8 +546,30 @@ export function WorkflowRunsView({
                 </Button>
               </div>
             </div>
-            <div className="overflow-x-auto">
-              {selected && !compact ? (
+            <div className="overflow-x-auto border-t" aria-busy={loading}>
+              {!data?.items.length ? (
+                <div className="flex min-h-64 flex-col items-center justify-center gap-3 px-5 py-10 text-center" role="status">
+                  {loading || !filtersReady ? <LoaderCircle className="size-8 animate-spin text-muted-foreground" /> : <Search className="size-8 text-muted-foreground" />}
+                  <div className="max-w-md space-y-2">
+                    <h3 className="font-medium">
+                      {loading || !filtersReady ? "Loading executions…" : error ? "Executions could not be loaded" : "No executions match these filters"}
+                    </h3>
+                    <p className="text-sm text-muted-foreground">
+                      {loading || !filtersReady ? "Fetching workflow progress and recent runs." : error ? "Try refreshing to load the latest workflow progress." : "Try a wider date range or clear the filters. New runs appear here when a published workflow’s starting event occurs."}
+                    </p>
+                  </div>
+                  {!loading && filtersReady && !error && (
+                    <div className="flex flex-wrap justify-center gap-2">
+                      <Button variant="outline" onClick={() => { setFilters({ ...RUN_FILTERS, executionDays: "all" }); setPage(1); }}>
+                        Show all executions
+                      </Button>
+                      <Button variant="ghost" asChild>
+                        <Link href="/workflows/new"><Workflow /> Set up a workflow</Link>
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              ) : selected && !compact ? (
                 <div className="max-h-[65svh] space-y-2 overflow-y-auto p-3">
                   {data?.items.map((r) => (
                     <Button
@@ -548,13 +602,6 @@ export function WorkflowRunsView({
                       </span>
                     </Button>
                   ))}
-                  {!data?.items.length && (
-                    <p className="text-sm">
-                      {loading
-                        ? "Loading executions…"
-                        : "No executions match these filters."}
-                    </p>
-                  )}
                 </div>
               ) : (
                 <Table>
@@ -570,9 +617,9 @@ export function WorkflowRunsView({
                   <TableBody>
                     {data?.items.map((r) => (
                       <TableRow key={r.id}>
-                        <TableCell>
-                          <p className="font-medium">{r.candidateName}</p>
-                          <p className="max-w-60 truncate text-xs text-muted-foreground">
+                        <TableCell className="min-w-48">
+                          <p className="max-w-64 truncate font-medium" title={r.candidateName}>{r.candidateName || "Candidate"}</p>
+                          <p className="max-w-60 truncate text-xs text-muted-foreground" title={r.fileName}>
                             {r.fileName}
                           </p>
                           {!workflowId && (
@@ -603,7 +650,7 @@ export function WorkflowRunsView({
                           {runDate(r.createdAt)}
                         </TableCell>
                         <TableCell className="text-right">
-                          <div className="flex justify-end gap-2">
+                          <div className="flex flex-wrap justify-end gap-2">
                             {r.status === "waiting_review" &&
                               r.graph.nodes.find(
                                 (n) => n.id === r.currentNodeId,
@@ -625,18 +672,6 @@ export function WorkflowRunsView({
                         </TableCell>
                       </TableRow>
                     ))}
-                    {!data?.items.length && (
-                      <TableRow>
-                        <TableCell
-                          colSpan={5}
-                          className="h-36 text-center text-muted-foreground"
-                        >
-                          {loading
-                            ? "Loading runs…"
-                            : "No runs match these filters. Publish a workflow, then upload a resume or start a run with an existing CV."}
-                        </TableCell>
-                      </TableRow>
-                    )}
                   </TableBody>
                 </Table>
               )}

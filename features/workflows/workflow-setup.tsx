@@ -26,6 +26,7 @@ import { WorkflowReadiness } from "./workflow-readiness";
 import { SampleTest } from "./sample-test";
 import {
   TRIGGER_LABELS,
+  isApplicationTrigger,
   workflowTrigger,
   graphIssues,
   type FormTarget,
@@ -134,6 +135,7 @@ export function WorkflowSetup({ displayName }: { displayName: string }) {
           graphIdentity(workflow.draft) !== graphIdentity(graph)
         : step > 0 || name !== WORKFLOW_PRESETS[purpose].name);
   useUnsavedChanges(dirty);
+  const routing = isApplicationTrigger(WORKFLOW_PRESETS[purpose].trigger);
   const formIssues = guidedFormIssues(purpose, forms, options),
     validName = !!name.trim() && name.length <= 120;
   const overlaps = siblings.filter(
@@ -149,6 +151,21 @@ export function WorkflowSetup({ displayName }: { displayName: string }) {
     if (next === 4) {
       setOverlapReady(false);
       setOverlapError("");
+    }
+  }
+  async function createRoutingDraft() {
+    if (busy) return;
+    setBusy(true);
+    setError("");
+    try {
+      const response = await workflowApi<{ workflow: WorkflowDetail }>(
+        "/api/workflows",
+        { method: "POST", body: JSON.stringify({ preset: purpose }) },
+      );
+      window.location.assign(`/workflows/${response.workflow.id}`);
+    } catch (e) {
+      setError(errorText(e));
+      setBusy(false);
     }
   }
   async function refreshForms() {
@@ -307,7 +324,10 @@ export function WorkflowSetup({ displayName }: { displayName: string }) {
             aria-label="Setup steps"
             className="my-6 grid grid-cols-2 gap-2 sm:grid-cols-5"
           >
-            {STEPS.map((label, index) => (
+            {(routing
+              ? ["Purpose", "Configure routing", "Sample preview", "Review & publish"]
+              : STEPS
+            ).map((label, index) => (
               <li
                 key={label}
                 aria-current={step === index ? "step" : undefined}
@@ -358,6 +378,7 @@ export function WorkflowSetup({ displayName }: { displayName: string }) {
                         key={key}
                         variant={purpose === key ? "secondary" : "outline"}
                         aria-pressed={purpose === key}
+                        disabled={busy}
                         className="h-auto min-w-0 flex-col items-start gap-2 whitespace-normal p-4 text-left"
                         onClick={() => {
                           const next = key as WorkflowPreset;
@@ -378,9 +399,31 @@ export function WorkflowSetup({ displayName }: { displayName: string }) {
                     <strong>
                       {TRIGGER_LABELS[WORKFLOW_PRESETS[purpose].trigger]}
                     </strong>
-                    . AI extraction is optional.
+                    . {routing
+                      ? "Choose the pipeline and stages in the canvas editor."
+                      : "AI extraction is optional."}
                   </p>
-                  <Button onClick={() => move(1)}>Continue to forms</Button>
+                  {routing && (
+                    <div className="space-y-2 rounded-lg border bg-muted/40 p-4 text-sm">
+                      <p className="font-medium">
+                        Condition → Yes: Move application → Complete · No: Stop
+                      </p>
+                      <p className="text-muted-foreground">
+                        Create an inactive draft, select your published pipeline,
+                        configure the condition and both move stages, then use
+                        Test with sample to try matching and non-matching samples.
+                        Publishing requires all setup checks to pass.
+                      </p>
+                    </div>
+                  )}
+                  <Button
+                    disabled={busy}
+                    onClick={() => routing ? void createRoutingDraft() : move(1)}
+                  >
+                    {routing
+                      ? busy ? "Creating draft…" : "Create draft & configure routing"
+                      : "Continue to forms"}
+                  </Button>
                 </>
               )}
               {step === 1 && (

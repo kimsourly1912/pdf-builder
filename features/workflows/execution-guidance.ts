@@ -1,4 +1,4 @@
-import type { WorkflowRun } from "./workflow";
+import { isApplicationTrigger, workflowTrigger, type WorkflowRun } from "./workflow";
 function elapsed(since: string | undefined, now: number) {
   if (!since) return "";
   const duration = now - Date.parse(since);
@@ -15,6 +15,12 @@ function elapsed(since: string | undefined, now: number) {
 export function executionGuidance(run: WorkflowRun, now = Date.now()) {
   const step = run.graph.nodes.find((n) => n.id === run.currentNodeId);
   const started = run.context.steps[run.currentNodeId]?.startedAt;
+  if (run.status === "completed" && isApplicationTrigger(workflowTrigger(run.graph)))
+    return {
+      title: "Application workflow completed",
+      action:
+        "The routing path has finished. Open the application to check its current stage and requirements.",
+    };
   if (run.status === "completed")
     return {
       title: "Preparation completed",

@@ -222,35 +222,73 @@ export function StepSettings(props: {
         </div>
       )}
       {node.kind === "condition" && (
-        <div className="space-y-3">
-          <Label htmlFor="condition-field">Compare field</Label>
-          <SelectField
-            id="condition-field"
-            value={config.field ?? "source"}
-            className="h-10 w-full rounded border bg-background px-2 text-sm"
-            onValueChange={(value) =>
-              patch({ field: value as StepConfig["field"], value: "" })
-            }
-          >
-            <SelectFieldOption value="source">Source</SelectFieldOption>
-            <SelectFieldOption value="appliedPosition">Applied position</SelectFieldOption>
-            <SelectFieldOption value="stageId">Application stage</SelectFieldOption>
-            <SelectFieldOption value="jobId">Job opening</SelectFieldOption>
-          </SelectField>
-          <div className="space-y-2"><Label htmlFor="condition-operator">Comparison</Label><SelectField id="condition-operator" value={config.operator??"is"} onValueChange={v=>patch({operator:v as "is"|"is_not"})}><SelectFieldOption value="is">Is</SelectFieldOption><SelectFieldOption value="is_not">Is not</SelectFieldOption></SelectField></div>
-          {!["stageId", "jobId"].includes(config.field??"")&&<div className="space-y-2"><Label htmlFor="condition-value">Value</Label>
-          <Input
-            id="condition-value"
-            maxLength={160}
-            value={config.value ?? ""}
-            onChange={(e) => patch({ value: e.target.value })}
-          />
-          </div>}
-          {["stageId", "jobId"].includes(config.field??"")&&<WorkflowStageSettings node={node} pipelineVersionId={props.pipelineVersionId} onChange={props.onChange}/>}
-          <p className="text-xs text-muted-foreground">
-            Compares ignoring letter case and surrounding spaces. Connect both
-            Yes and No.
-          </p>
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="condition-field">Compare field</Label>
+            <SelectField
+              id="condition-field"
+              value={config.field ?? "source"}
+              onValueChange={(value) =>
+                patch({
+                  field: value as StepConfig["field"],
+                  value: "",
+                  valueLabel: undefined,
+                })
+              }
+            >
+              <SelectFieldOption value="source">Source</SelectFieldOption>
+              <SelectFieldOption value="appliedPosition">Applied position</SelectFieldOption>
+              <SelectFieldOption value="stageId">Application stage</SelectFieldOption>
+              <SelectFieldOption value="jobId">Job opening</SelectFieldOption>
+            </SelectField>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="condition-operator">Comparison</Label>
+            <SelectField
+              id="condition-operator"
+              value={config.operator ?? "is"}
+              onValueChange={(value) =>
+                patch({ operator: value as "is" | "is_not" })
+              }
+            >
+              <SelectFieldOption value="is">Is</SelectFieldOption>
+              <SelectFieldOption value="is_not">Is not</SelectFieldOption>
+            </SelectField>
+          </div>
+          {!["stageId", "jobId"].includes(config.field ?? "") && (
+            <div className="space-y-2">
+              <Label htmlFor="condition-value">Value</Label>
+              <Input
+                id="condition-value"
+                maxLength={160}
+                value={config.value ?? ""}
+                aria-describedby="condition-match-help"
+                onChange={(e) => patch({ value: e.target.value })}
+              />
+            </div>
+          )}
+          {["stageId", "jobId"].includes(config.field ?? "") && (
+            <WorkflowStageSettings
+              node={node}
+              pipelineVersionId={props.pipelineVersionId}
+              onChange={props.onChange}
+            />
+          )}
+          <div id="condition-match-help" className="space-y-2 rounded-lg bg-muted/50 p-3 text-xs text-muted-foreground">
+            <p>
+              {["stageId", "jobId"].includes(config.field ?? "")
+                ? "Matches the selected stage or job opening, independently of the free-text position."
+                : "Exact text comparison, ignoring letter case and spaces at the beginning or end. Spelling, punctuation and spaces between words must match."}
+            </p>
+            {config.field === "appliedPosition" && (
+              <p>
+                For example, “Frontend Dev” matches “ frontend dev ”, but
+                “Frontend Developer” and “Front-end Dev” do not. Use Job opening
+                in an application workflow to route by an assigned job instead.
+              </p>
+            )}
+            <p>Connect both Yes and No. Use Test with sample to try both paths.</p>
+          </div>
         </div>
       )}
       {node.kind === "prepare_application" && <WorkflowPreparationSettings config={config} onChange={props.onChange}/>}

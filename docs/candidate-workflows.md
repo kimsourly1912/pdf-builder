@@ -127,7 +127,7 @@ New workflow opens `/workflows/new`: Purpose → Forms → Readiness → Sample 
 
 Readiness checks cover invitation and Telegram intake bot configuration, selected forms and required versions. A sample preview is local only; HR can explore approval, rejection and missing contact without external calls. Review checks other active workflows with the same event, requires sample acknowledgement and readiness, then explicitly confirms publication. The guide rechecks readiness immediately before publishing and uses the existing owner/revision-guarded publication API. Publication pins forms and activates future events; it does not process historical CVs.
 
-Advanced canvas setup remains available. Published, archived or customized drafts continue in the editor; the guide never rebuilds custom graph edits from a preset. Draft edits require an explicit save and retain unsaved-change protection.
+New workflow is the entry point for preparation and application-routing templates. Published, archived or customized drafts continue in the editor; the guide never rebuilds custom graph edits from a preset. Draft edits require an explicit save and retain unsaved-change protection.
 
 
 ## Canvas-first editor (October 2026)
@@ -153,3 +153,18 @@ The editor opens as a dedicated workspace. More workflow actions opens Execution
 The first visit fits measured nodes without rearranging the graph. Viewport pan/zoom is stored locally per owner and workflow. Add step opens a searchable floating catalog from the toolbar, node output or connection. One selected step shows its contextual inspector (a bottom sheet on phones); Shift-click or dragging a selection rectangle selects multiple nodes. Selected nodes move together. Align uses measured edges/centers; Distribute equalizes horizontal/vertical gaps for three or more nodes. Pink guides gently snap a dragged node or group to nearby edges/centers; hold Alt/Option to bypass snapping.
 
 Undo/redo works throughout the editor with Ctrl/Cmd+Z and Ctrl/Cmd+Shift+Z (also Ctrl+Y). Text inputs and dialogs retain their own editing keys. A drag, alignment or distribution is a single history item. Select (V), Hand (H), Space-pan, zoom reset and Fit are available in the floating toolbar. Fit never changes node positions; Auto-arrange is an undoable graph edit. Execution ordering, review gates, publication snapshots, leases, and idempotency continue to use the existing server engine.
+
+
+## Application routing templates and position matching
+
+New workflow now offers three application-routing templates alongside the three preparation presets:
+
+- **Route frontend applications by position** starts on Application received and compares Applied position with `Frontend Dev`.
+- **Route applications by job opening** starts when a job is assigned and compares the selected job opening.
+- **Move applications after forms are accepted** starts when all required application forms are accepted and compares the selected current stage.
+
+Each template creates an inactive canvas draft with Start → Condition, Yes → Move application → Complete and No → Stop. Select a published pipeline in Start, configure the condition, then choose the expected current stage and a different destination in Move application. Pipeline, job and stage IDs are never invented by the template. Setup and publication checks remain required. Application routing does not create accounts, assign forms, approve CVs or send invitations.
+
+Applied position is free text. **Is** compares the entire value after trimming surrounding whitespace and ignoring capitalization: ` frontend dev ` matches `Frontend Dev`; `Frontend Developer`, `Front-end Dev` and `Frontend  Dev` do not. **Is not** reverses this comparison. There is no fuzzy matching, alias expansion or AI inference. For stable routing independent of position spelling, assign an application to a job opening and use the Job opening condition, which compares its ID. Test with sample supports sample position, stage and job inputs so both branches can be explored without running an actual move. Live moves still validate evidence, source stage, revisions and loop guards.
+
+The Automation overview uses the centered application container on both tabs. Executions includes compact status totals, responsive filters, loading/error recovery, and an empty-state action to show all dates or create a workflow. Completed application routing is labeled separately from preparation and offers Open application when the run has an application reference. The HR-actions banner and Advanced canvas setup entry have been removed.
