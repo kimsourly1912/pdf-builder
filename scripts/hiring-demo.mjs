@@ -205,6 +205,11 @@ export async function seedDemo(api, { log = console.log, candidateApiFactory } =
   await waitFor(() => api(`/api/hiring/applications/${lina.id}`), (v) => v.application.stageId === "interview", "accepted forms condition and move to Technical interview", log);
   lina.stage = "interview"; lina.next = "Schedule a technical interview. Offer and hiring decisions remain explicit.";
   for (const sample of [dara, lina, vannak]) { delete sample.password; delete sample.email; }
+  // Enable future automatic intake only after seeding, avoiding duplicate inbox
+  // applications while the explicit sample applications are being constructed.
+  await api(`/api/hiring/pipelines/${frontend.id}`, {
+    action: "default", expectedRevision: frontend.revision,
+  }, "PATCH");
   const accounts = await api("/api/accounts");
   if (accounts.totalItems !== 2) throw new Error("Expected exactly two demo recipient accounts after cleanup.");
   return { samples: [dara, lina, vannak], pipelines: 2, jobs: 2, forms: 1, workflows: 6, telegramSent: 0, paidAiCalls: 0 };
