@@ -24,3 +24,6 @@ This is a staging convenience, not a backup/restore tool. Application reset does
 ## Interview dependencies
 
 Clear candidates, Clear forms and preparation history, and Reset all test data include the owner's interview accepted-document links, evaluations, immutable interview events, rounds and processes in the atomic preview/deletion plan. Forms/history reset explicitly removes interviews because their original accepted documents/preparation are also removed; it does not leave dangling context. Clear eligible automation history excludes interview-linked preparation runs. Other owners and the administrator remain protected. Interview events can be deleted only through owner-matching checked reset membership. See [Interview Progress](interview-progress.md).
+
+
+For the administrator-preserving reset followed by a verified synthetic frontend/sales dataset, see [Clean hiring flow and demo workspace](hiring-demo.md). Telegram delivery is omitted and sample approvals are one-time owner actions; real approval rules remain unchanged.
