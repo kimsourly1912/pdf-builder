@@ -236,9 +236,11 @@ export async function POST(request: Request) {
         422,
       );
     }
+    const manualReview = formData.get("manualReview") === "true";
     const extractionText = formData.get("extraction");
     let extraction: ResumeExtractionPayload | null = null;
     if (
+      !manualReview &&
       typeof extractionText === "string" &&
       extractionText.length <= 500_000
     ) {
@@ -255,7 +257,7 @@ export async function POST(request: Request) {
       return jsonError("The extracted page count does not match the PDF.", 422);
     }
     const clientExtractionFailed = formData.get("extractionFailed") === "true";
-    if (!extraction && !clientExtractionFailed) {
+    if (!extraction && !clientExtractionFailed && !manualReview) {
       return jsonError("Resume extraction data is invalid.", 422);
     }
 
@@ -286,7 +288,7 @@ export async function POST(request: Request) {
             : "AI_PROVIDER_FAILED";
       }
     }
-    const extractionFailed = !extraction && clientExtractionFailed;
+    const extractionFailed = !extraction && clientExtractionFailed && !manualReview;
     const email = extraction?.fields.emails.value?.[0] ?? "";
     const phone = extraction?.fields.phones.value?.[0] ?? "";
     const matches: SQL[] = [];

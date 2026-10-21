@@ -10,6 +10,10 @@ on:
         description: 'Optional destructive reset: type RESET pdf-builder PRODUCTION'
         required: false
         type: string
+      demo_confirmation:
+        description: 'Optional: RESET DEMO KEEP ADMIN clears test data, preserves admin and seeds the hiring demo (no Telegram or AI)'
+        required: false
+        type: string
 
 concurrency:
   # This repository intentionally has one Cloudflare production target.
@@ -87,6 +91,12 @@ jobs:
 
       - name: Provision and deploy production
         run: node scripts/deploy-production.mjs
+
+      - name: Reset workspace and seed the hiring demo when explicitly requested
+        if: github.event_name == 'workflow_dispatch' && inputs.demo_confirmation == 'RESET DEMO KEEP ADMIN'
+        env:
+          DEMO_CONFIRMATION: ${{ inputs.demo_confirmation }}
+        run: node scripts/hiring-demo.mjs
 
       - name: Report deployment result
         if: always()
