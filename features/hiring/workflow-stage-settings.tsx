@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import type { StepConfig, WorkflowNode } from "@/features/workflows/workflow";
 import { useHiringConfiguration } from "./client";
 import { isApplicationTrigger } from "./hiring";
+import { resolvePipelineReference } from "./pipeline-references";
 export function WorkflowStageSettings({
   node,
   pipelineVersionId,
@@ -25,7 +26,7 @@ export function WorkflowStageSettings({
   const choosesPipeline =
     (node.kind === "resume_uploaded" && isApplicationTrigger(settings.trigger ?? "")) ||
     (node.kind === "move_stage" && !applicationWorkflow);
-  const versionId = choosesPipeline ? settings.pipelineVersionId : pipelineVersionId;
+  const versionId = resolvePipelineReference(config ?? {}, (choosesPipeline ? settings.pipelineVersionId : pipelineVersionId) ?? "");
   const version = config?.versions.find((v) => v.id === versionId);
   const patch = (values: Partial<StepConfig>) =>
     onChange({ ...settings, ...values });
@@ -72,17 +73,17 @@ export function WorkflowStageSettings({
               </Label>
               <SelectField
                 id="workflow-hiring-pipeline"
-                value={settings.pipelineVersionId ?? ""}
+                value={versionId}
                 onValueChange={(v) =>
                   patch({ pipelineVersionId: v, stageId: "", fromStageId: "", stageLabel: undefined, fromStageLabel: undefined })
                 }
-                placeholder="Choose pipeline version"
+                placeholder="Choose pipeline"
               >
                 {config?.versions
                   .filter((v) => !v.archived)
                   .map((v) => (
                     <SelectFieldOption key={v.id} value={v.id}>
-                      {v.name} · v{v.version}
+                      {v.name}
                     </SelectFieldOption>
                   ))}
               </SelectField>

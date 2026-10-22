@@ -6,6 +6,7 @@ export type HiringConfiguration = {
   pipelines: Pipeline[];
   versions: PipelineVersion[];
   jobs: HiringJob[];
+  pipelineReferences?: Record<string, string>;
 };
 export function useHiringConfiguration() {
   const [config, setConfig] = useState<HiringConfiguration | null>(null),

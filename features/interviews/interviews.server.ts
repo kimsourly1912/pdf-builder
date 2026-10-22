@@ -212,10 +212,11 @@ export async function detailInterview(owner: string, id: string) {
     details: JSON.parse(e.details_json),
   }));
   {
-    const app = await getDatabaseBinding().prepare("SELECT a.id,a.stage_id,v.definition_json FROM hiring_applications a JOIN hiring_pipeline_versions v ON v.id=a.pipeline_version_id AND v.owner_email=a.owner_email WHERE a.owner_email=? AND a.interview_id=? ORDER BY a.created_at,a.id LIMIT 1").bind(owner, id).first<{id:string;stage_id:string;definition_json:string}>();
+    const app = await getDatabaseBinding().prepare("SELECT a.id,a.stage_id,a.pipeline_version_id FROM hiring_applications a WHERE a.owner_email=? AND a.interview_id=? ORDER BY a.created_at,a.id LIMIT 1").bind(owner, id).first<{id:string;stage_id:string;pipeline_version_id:string}>();
     if (app) {
       process.applicationId = app.id;
-      const stages = (JSON.parse(app.definition_json) as {stages:{id:string;name:string;activity:string}[]}).stages;
+      const { hiringConfiguration } = await import("@/features/hiring/hiring.server");
+      const stages = (await hiringConfiguration(owner)).versions.find((v) => v.id === app.pipeline_version_id)?.definition.stages ?? [];
       process.stageOptions = stages.filter(s=>s.activity === "interview").map(({id,name})=>({id,name}));
       process.applicationStage = stages.find(s=>s.id === app.stage_id);
     }
@@ -477,9 +478,10 @@ export async function mutateInterview(
     body.expectedVersion !== process.version
   )
     conflict();
-  const application = process.applicationId ? await db.prepare("SELECT a.revision,a.stage_id,a.hold,a.outcome,v.definition_json FROM hiring_applications a JOIN hiring_pipeline_versions v ON v.id=a.pipeline_version_id AND v.owner_email=a.owner_email WHERE a.id=? AND a.owner_email=? AND a.interview_id=?").bind(process.applicationId,owner,id).first<{revision:number;stage_id:string;hold:string|null;outcome:string|null;definition_json:string}>() : null;
+  const application = process.applicationId ? await db.prepare("SELECT a.revision,a.stage_id,a.hold,a.outcome,a.pipeline_version_id FROM hiring_applications a WHERE a.id=? AND a.owner_email=? AND a.interview_id=?").bind(process.applicationId,owner,id).first<{revision:number;stage_id:string;hold:string|null;outcome:string|null;pipeline_version_id:string}>() : null;
   if (process.applicationId && (!application || application.hold || application.outcome)) fail("Resume or reopen the hiring application before changing its interviews.",409);
-  const hiringStages = application ? (JSON.parse(application.definition_json) as { stages: { id:string;name:string;activity:string }[] }).stages : [];
+  const hiringPipeline = application ? (await (await import("@/features/hiring/hiring.server")).hiringConfiguration(owner)).versions.find((v) => v.id === application.pipeline_version_id) : undefined;
+  const hiringStages = hiringPipeline?.definition.stages ?? [];
   const action = boundedText(body.action, "an interview action", 1, 40),
     now = new Date().toISOString(),
     guardId = crypto.randomUUID();
@@ -748,9 +750,9 @@ export async function mutateInterview(
   const statements = [
     db
       .prepare(
-        `INSERT INTO interview_guards(id,check_passed) SELECT ?,CASE WHEN EXISTS(SELECT 1 FROM interview_processes WHERE id=? AND owner_email=? AND version=?) ${application ? "AND EXISTS(SELECT 1 FROM hiring_applications WHERE id=? AND owner_email=? AND revision=? AND hold IS NULL AND outcome IS NULL)" : ""} THEN 1 ELSE 0 END`,
+        `INSERT INTO interview_guards(id,check_passed) SELECT ?,CASE WHEN EXISTS(SELECT 1 FROM interview_processes WHERE id=? AND owner_email=? AND version=?) ${application ? "AND EXISTS(SELECT 1 FROM hiring_applications WHERE id=? AND owner_email=? AND revision=? AND hold IS NULL AND outcome IS NULL) AND EXISTS(SELECT 1 FROM hiring_pipelines WHERE current_version_id=? AND owner_email=? AND revision=?)" : ""} THEN 1 ELSE 0 END`,
       )
-      .bind(guardId, id, owner, process.version, ...(application ? [process.applicationId,owner,application.revision] : [])),
+      .bind(guardId, id, owner, process.version, ...(application ? [process.applicationId,owner,application.revision,application.pipeline_version_id,owner,hiringPipeline?.revision ?? -1] : [])),
     ...effects,
     db
       .prepare(

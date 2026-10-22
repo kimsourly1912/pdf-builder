@@ -30,7 +30,7 @@ For an existing legacy application, expand **Preparation automation** and explic
 
 Application events also include preparation completed, all required forms submitted, all required forms accepted, interview round feedback complete and explicit interview decision recorded. Empty required sets emit no form-completion event. A feedback event is a signal to evaluate routing; Move application still checks every configured requirement. Events commit with the evidence update. Paid AI and candidate sends are never implied by moving a card.
 
-An interview stage can choose completion across the whole application process or only rounds mapped to that stage. Configure this in the pipeline draft, then publish a new version. New rounds scheduled while in an interview stage are associated with that stage. Existing rounds can be explicitly mapped with a reason inside Interviews. A stage requirement needs a mapped completed round, every required submitted scorecard, and no scheduled mapped round; another interview stage's completion does not satisfy it. Existing published models retain their whole-process behavior until deliberately changed.
+An interview stage can choose completion across the whole application process or only rounds mapped to that stage. Configure this in the pipeline draft, then publish the updated pipeline. New rounds scheduled while in an interview stage are associated with that stage. Existing rounds can be explicitly mapped with a reason inside Interviews. A stage requirement needs a mapped completed round, every required submitted scorecard, and no scheduled mapped round; another interview stage's completion does not satisfy it. Existing published models retain their whole-process behavior until deliberately changed.
 
 ## Set up a hiring model
 
@@ -38,19 +38,19 @@ Use the **Pipelines** tab to edit hiring models and the **Job openings** tab to 
 
 1. Open **Candidates → Hiring pipeline → Manage pipelines & jobs**.
 2. Create a pipeline. Add, rename, reorder or remove draft stages. Each stage has a description, color, activity and optional entry/exit requirements. Reordering columns does not move applications or define allowed transitions.
-3. Save the draft, then **Review & publish**. Publication creates an immutable version. Existing applications and published workflows retain their selected version, including stages removed from later drafts.
-4. Create a job opening using a published pipeline version. Updating a job's selected version affects future applications; existing applications keep their version. Assigning the same job again provides an explicit destination-stage mapping for an application that needs to move to its job's newer version.
+3. **Save draft** updates this pipeline’s unpublished settings. **Review & publish** updates its single published definition in place. Neither action creates another pipeline or a numbered version. Existing jobs, applications and automation use its published stages and requirements; candidates stay in their current stages. A referenced stage cannot be removed until its applications, interviews and automation are updated.
+4. Create a job opening using a published pipeline. Publishing pipeline changes updates the job’s stages and requirements. Changing a job’s pipeline applies to future applications; explicitly assigning an existing application to another pipeline still requires a destination-stage mapping.
 5. Choose **Use as default inbox** on a published pipeline to enable automatic intake for future candidate-linked CV uploads. The initial stage of the default pipeline cannot have entry requirements. Unknown jobs remain unassigned until HR selects a job; the app does not infer a trusted job identity from CV text or run paid extraction.
 
 The starter model contains Applied, CV screening, Recruiter call, Technical interview, Document collection and Offer. These names and their order are editable. Closed outcomes are recorded separately as Hired, Not selected or Candidate withdrawn.
 
-Pipeline retirement is archival: old applications and workflow references continue to use their retained version. New jobs and new application workflows cannot select an archived pipeline. Choose another default before archiving the current inbox model. Duplicating a pipeline creates an unpublished draft.
+Pipeline retirement is archival: existing applications and workflow references remain accessible through their pipeline. New jobs and new application workflows cannot select an archived pipeline. Choose another default before archiving the current inbox model. Duplicating a pipeline creates an unpublished draft.
 
 ## Applications and the board
 
-Each application references one candidate, CV, optional job and published pipeline version. One person can apply for multiple jobs, with independent stages, interviews, outcomes and explicitly linked form requirements. There can be one active application per candidate/job. Intake creates one default application per candidate rather than another application whenever that candidate uploads a CV.
+Each application references one candidate, CV, optional job and published pipeline. One person can apply for multiple jobs, with independent stages, interviews, outcomes and explicitly linked form requirements. There can be one active application per candidate/job. Intake creates one default application per candidate rather than another application whenever that candidate uploads a CV.
 
-The board shows one pipeline version at a time; All pipelines uses a list. Search, job, status, stage, page and view preferences are scoped to the owner and remembered through the existing URL/session filter helper. Pages contain up to 50 applications; stage totals cover all matching applications. A column with more results offers a stage filter. Dragging and the accessible Move to dialog use the same guarded service as automation. Backward manual moves require a reason and preserve evidence. Refreshing and page reads perform no lifecycle actions.
+The board shows one pipeline at a time; All pipelines uses a list. Search, job, status, stage, page and view preferences are scoped to the owner and remembered through the existing URL/session filter helper. Pages contain up to 50 applications; stage totals cover all matching applications. A column with more results offers a stage filter. Dragging and the accessible Move to dialog use the same guarded service as automation. Backward manual moves require a reason and preserve evidence. Refreshing and page reads perform no lifecycle actions.
 
 While dragging, hold near either visible board edge to reveal off-screen stages; the page also scrolls near the top and bottom of the viewport. The current destination has a highlighted background, outline and **Drop to review move** indicator. The source card is dimmed during dragging and remains in its original stage until the move is confirmed. Dropping opens the existing review dialog; cancellation makes no change. After a successful move, the destination is brought into view and the moved card is briefly highlighted. Visual transitions respect reduced-motion preferences. On-hold applications remain non-draggable, and **Move to** remains available as the keyboard and touch alternative.
 
@@ -84,7 +84,7 @@ Offer stages support owner-recorded None, Draft, Sent, Accepted and Declined sta
 
 ## Application automation
 
-Create an Automation workflow with a custom application starting event, then choose its published pipeline version. Supported events are:
+Create an Automation workflow with a custom application starting event, then choose its published pipeline. Supported events are:
 
 - Application received.
 - Application job assigned.
@@ -96,13 +96,13 @@ Create an Automation workflow with a custom application starting event, then cho
 - Interview round feedback complete.
 - Explicit interview decision recorded.
 
-Initial application creation also counts as entering its first stage. Explicit job assignment can enter a mapped destination stage. Application workflows support Conditions, Move application, Prepare application, Complete and Stop. Conditions can compare source, free-text applied position, structured job ID or stage, with Is / Is not. Pipeline stages and jobs appear as named select options. Move application requires an expected source stage and destination from the selected version.
+Initial application creation also counts as entering its first stage. Explicit job assignment can enter a mapped destination stage. Application workflows support Conditions, Move application, Prepare application, Complete and Stop. Conditions can compare source, free-text applied position, structured job ID or stage, with Is / Is not. Pipeline stages and jobs appear as named select options. Move application requires an expected source stage and destination from the selected pipeline.
 
 For example, Application received or Job assigned → Job is Frontend Developer → Move Applied to CV screening. A separate Application CV approved event can move CV screening to Recruiter call. Receiving a frontend CV does not approve it.
 
 Application workflows support routing and Prepare application, which invokes a pinned preparation workflow under application context and its existing review gates. Legacy CV-only workflows retain once-per-CV behavior until preparation ownership is explicitly switched. The evidence-completion events described above can route applications after required submissions, acceptance or interview feedback. Stage moves do not implicitly perform business actions.
 
-CV workflows, including Telegram submissions, can also **Move application** after an approved review. That step selects its own published pipeline and resolves exactly one active application using the reviewed candidate and CV in that version. Its stage selectors become available after choosing that pipeline. New CVs receive applications automatically only when a published pipeline is enabled as the default inbox; existing CVs may need an application added explicitly. No application is created by Move application, and multiple matching applications require application-event routing. The selected application/revision is checkpointed before movement, and existing move receipts, evidence checks and leases protect retries. See [Telegram CV review and movement](candidate-workflows.md#move-an-application-after-telegram-cv-review).
+CV workflows, including Telegram submissions, can also **Move application** after an approved review. That step selects its own published pipeline and resolves exactly one active application using the reviewed candidate and CV in that pipeline. Its stage selectors become available after choosing that pipeline. New CVs receive applications automatically only when a published pipeline is enabled as the default inbox; existing CVs may need an application added explicitly. No application is created by Move application, and multiple matching applications require application-event routing. The selected application/revision is checkpointed before movement, and existing move receipts, evidence checks and leases protect retries. See [Telegram CV review and movement](candidate-workflows.md#move-an-application-after-telegram-cv-review).
 
 Application events and stage changes commit atomically in D1. A dispatcher pins active matching published workflow versions when it marks an event dispatched. Retries cannot select a newer version for the same event. Runs deduplicate by event/workflow/version; a genuine later stage entry has a new event identity. A move receipt protects recovery when the move committed but execution acknowledgement was lost.
 
@@ -120,6 +120,14 @@ CVs and preparation runs referenced by applications receive permanent-deletion b
 
 ## Implementation and checks
 
-Feature code lives in `features/hiring`, with thin owner-authorized `/api/hiring` routes. Migrations `0031_dynamic_hiring_pipelines.sql` and `0032_application_interviews.sql` add versioned configuration, applications, the durable event outbox, mutation receipts, guards and application-specific interview uniqueness. Migration `0033_unified_hiring_workspace.sql` adds scoped preparations/forms, interview stage mappings and evidence-event guards. Legacy preparation projections exclude application-owned executions, assignments and interviews.
+Feature code lives in `features/hiring`, with thin owner-authorized `/api/hiring` routes. Migrations `0031_dynamic_hiring_pipelines.sql` and `0032_application_interviews.sql` introduced pipeline configuration, applications, the durable event outbox, mutation receipts, guards and application-specific interview uniqueness. Migration `0033_unified_hiring_workspace.sql` adds scoped preparations/forms, interview stage mappings and evidence-event guards. Legacy preparation projections exclude application-owned executions, assignments and interviews.
 
-Run the repository's lint, typecheck, local migrations and `npm test`. `tests/hiring.test.mjs` exercises publication, ownership, evidence gates, competing updates, event deduplication, recovery, version pinning, loops, multiple applications/interviews, protected CV updates, legacy import, outcomes and reset dependencies. Provider calls remain mocked by existing suites; these tests never send candidate messages or start paid AI.
+Run the repository's lint, typecheck, local migrations and `npm test`. `tests/hiring.test.mjs` exercises publication, ownership, evidence gates, competing updates, event deduplication, recovery, workflow version pinning, stable pipeline identity, loops, multiple applications/interviews, protected CV updates, legacy import, outcomes and reset dependencies. Provider calls remain mocked by existing suites; these tests never send candidate messages or start paid AI.
+
+## Single pipeline identity (October 2026)
+
+A pipeline has one draft and one published definition. Repeated draft saves and publication retain its identity and produce no additional selectable copies or version numbers. The explicit Duplicate as draft action still creates a separate pipeline. Draft edits do not affect live stage rules until publication. Preparation automation ownership already recorded on an application remains unchanged.
+
+Migration `0035_single_hiring_pipeline.sql` consolidates earlier published copies into the current pipeline and reconnects jobs/applications without moving candidates, changing their revisions, or creating workflow events. Old IDs remain private compatibility references for immutable workflow snapshots and recorded events; they are not selectable versions. Stages still used by applications, mapped interview rounds or current automation are retained. Publication validates stage references, and database guards protect concurrent stage removal and stage moves against changed pipeline rules.
+
+The database and API retain some legacy field names such as `pipeline_version_id`, `currentVersionId` and `versions` for compatibility. They identify the single published pipeline and do not create or select revisions. Workflow, form, CV and interview snapshots retain their own existing history rules.

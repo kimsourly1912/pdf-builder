@@ -20,7 +20,14 @@ export const hiringPipelineVersions = sqliteTable("hiring_pipeline_versions", {
   id: text("id").primaryKey(), pipelineId: text("pipeline_id").notNull().references(() => hiringPipelines.id, { onDelete: "restrict" }),
   ownerEmail: text("owner_email").notNull(), name: text("name").notNull(), version: integer("version").notNull(),
   definitionJson: text("definition_json").notNull(), publishedAt: text("published_at").notNull(),
-}, t => [uniqueIndex("hiring_pipeline_version_unique").on(t.pipelineId, t.version)]);
+}, t => [uniqueIndex("hiring_pipeline_version_unique").on(t.pipelineId, t.version), uniqueIndex("hiring_pipeline_one_published").on(t.pipelineId)]);
+// Old published IDs remain resolvable without offering separate pipeline copies.
+export const hiringPipelineReferences = sqliteTable("hiring_pipeline_references", {
+  id: text("id").primaryKey(),
+  pipelineId: text("pipeline_id").notNull().references(() => hiringPipelines.id, { onDelete: "cascade" }),
+  ownerEmail: text("owner_email").notNull(),
+  definitionJson: text("definition_json").notNull(),
+});
 export const hiringJobs = sqliteTable("hiring_jobs", {
   id: text("id").primaryKey(), ownerEmail: text("owner_email").notNull(), title: text("title").notNull(),
   pipelineVersionId: text("pipeline_version_id").notNull().references(() => hiringPipelineVersions.id, { onDelete: "restrict" }),

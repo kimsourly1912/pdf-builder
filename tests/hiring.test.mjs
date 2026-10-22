@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test, { after } from "node:test";
 import { createServer } from "vite";
 import { fileURLToPath } from "node:url";
+import { readFileSync } from "node:fs";
 import { sqliteD1 } from "./helpers/sqlite-d1.mjs";
 import {
   seedAcceptedPreparation,
@@ -481,7 +482,7 @@ async function drain() {
   await automation.dispatchApplicationEvents();
   await runner.processPendingWorkflowRuns();
 }
-test("pipelines publish immutable snapshots and owner-scoped stage IDs; jobs keep their selected version", async (t) => {
+test("pipeline draft saves and publications update one pipeline with a stable identity", async (t) => {
   const f = fixture(t),
     p = await pipeline(f);
   await rejects(
@@ -499,33 +500,36 @@ test("pipelines publish immutable snapshots and owner-scoped stage IDs; jobs kee
   const definition = model.initialDefinition();
   definition.stages[1].name = "CV triage";
   definition.stages.reverse();
+  const saved = await service.savePipeline(f.owner, p.id, {
+    action: "save", name: "Engineering updated", definition, expectedRevision: p.revision,
+  });
+  assert.equal(saved.versions.length, 1);
+  assert.equal(saved.versions[0].definition.stages[1].name, "CV screening");
+  assert.equal(saved.pipelines[0].currentVersionId, p.currentVersionId);
   await service.savePipeline(f.owner, p.id, {
     action: "publish",
-    name: "Engineering v2",
+    name: "Engineering updated",
     definition,
-    expectedRevision: p.revision,
+    expectedRevision: saved.pipelines[0].revision,
   });
   const config = await service.hiringConfiguration(f.owner);
-  assert.equal(config.versions.length, 2);
+  assert.equal(config.versions.length, 1);
+  assert.equal(config.versions[0].id, p.currentVersionId);
   assert.equal(
     config.versions.find((v) => v.id === app.pipelineVersionId).definition
-      .stages[1].name,
-    "CV screening",
+      .stages.find((s) => s.id === "screening").name,
+    "CV triage",
   );
   assert.equal(config.jobs[0].pipelineVersionId, app.pipelineVersionId);
   assert.equal(
     (await service.getApplication(f.owner, app.id)).stageId,
     "applied",
   );
-  assert.throws(
-    () =>
-      f.db
-        .prepare(
-          "UPDATE hiring_pipeline_versions SET name='changed' WHERE id=?",
-        )
-        .run(p.currentVersionId),
-    /immutable/,
-  );
+  const again = await service.savePipeline(f.owner, p.id, {
+    action: "publish", name: "Engineering updated", definition, expectedRevision: config.pipelines[0].revision,
+  });
+  assert.equal(again.versions.length, 1);
+  assert.equal(f.db.prepare("SELECT count(*) n FROM hiring_pipeline_versions WHERE pipeline_id=?").get(p.id).n, 1);
   await rejects(
     service.savePipeline(f.owner, p.id, {
       action: "archive",
@@ -534,6 +538,169 @@ test("pipelines publish immutable snapshots and owner-scoped stage IDs; jobs kee
     409,
   );
 });
+test("publishing refuses to remove stages referenced by applications or automation", async (t) => {
+  const f = fixture(t), p = await pipeline(f), app = await application(f, p);
+  const definition = model.initialDefinition();
+  definition.stages = definition.stages.filter((s) => s.id !== "applied");
+  const draft = await service.savePipeline(f.owner, p.id, { action: "save", name: p.name, definition, expectedRevision: p.revision });
+  await rejects(service.savePipeline(f.owner, p.id, { action: "publish", name: p.name, definition, expectedRevision: draft.pipelines[0].revision }), 409);
+  assert.equal((await service.getApplication(f.owner, app.id)).stageId, "applied");
+  assert.throws(() => f.db.prepare("UPDATE hiring_pipeline_versions SET definition_json=? WHERE id=?").run(JSON.stringify(definition), p.currentVersionId), /HIRING_STAGE_IN_USE/);
+  await routing(f, p, { trigger: "stage_entered", stage: "recruiter", from: "recruiter", to: "technical" });
+  const current = await service.hiringConfiguration(f.owner);
+  const withoutAutomationStage = model.initialDefinition();
+  withoutAutomationStage.stages = withoutAutomationStage.stages.filter((s) => s.id !== "recruiter");
+  await rejects(service.savePipeline(f.owner, p.id, { action: "publish", name: p.name, definition: withoutAutomationStage, expectedRevision: current.pipelines[0].revision }), 409);
+  const withoutUnusedStage = model.initialDefinition();
+  withoutUnusedStage.stages = withoutUnusedStage.stages.filter((s) => s.id !== "documents");
+  const published = await service.savePipeline(f.owner, p.id, { action: "publish", name: p.name, definition: withoutUnusedStage, expectedRevision: current.pipelines[0].revision });
+  assert.equal(published.versions.length, 1);
+  assert(!published.versions[0].definition.stages.some((s) => s.id === "documents"));
+});
+
+test("pipeline publication changes live requirements for existing applications", async (t) => {
+  const f = fixture(t), p = await pipeline(f), app = await application(f, p);
+  const definition = model.initialDefinition();
+  definition.stages[1].entry = ["forms_accepted"];
+  await service.savePipeline(f.owner, p.id, { action: "publish", name: p.name, definition, expectedRevision: p.revision });
+  await rejects(mutate(f, app, { action: "move", stageId: "screening" }), 422);
+  assert.equal((await service.getApplication(f.owner, app.id)).stageId, "applied");
+});
+
+test("draft-only saves create no published copies and stale publication cannot create another", async (t) => {
+  const f = fixture(t), created = await service.createPipeline(f.owner, { name: "One pipeline" });
+  let p = (await service.hiringConfiguration(f.owner)).pipelines[0];
+  for (let i = 0; i < 3; i++) {
+    const config = await service.savePipeline(f.owner, created.id, { action: "save", name: p.name, definition: p.draft, expectedRevision: p.revision });
+    p = config.pipelines[0];
+    assert.equal(config.versions.length, 0);
+    assert.equal(config.pipelines.length, 1);
+  }
+  const published = await service.savePipeline(f.owner, p.id, { action: "publish", name: p.name, definition: p.draft, expectedRevision: p.revision });
+  await rejects(service.savePipeline(f.owner, p.id, { action: "publish", name: p.name, definition: p.draft, expectedRevision: p.revision }), 409);
+  assert.equal(published.versions.length, 1);
+  assert.equal(published.versions[0].version, undefined);
+  assert.equal(published.pipelines[0].publishedVersion, undefined);
+  assert.equal(f.db.prepare("SELECT count(*) n FROM hiring_pipeline_versions").get().n, 1);
+});
+
+test("a concurrent pipeline publication prevents a move based on stale requirements", async (t) => {
+  const f = fixture(t), p = await pipeline(f), app = await application(f, p);
+  const originalBatch = runtime.DB.batch.bind(runtime.DB);
+  let intercept = true;
+  runtime.DB.batch = async (statements) => {
+    if (intercept && statements.some((s) => s.query.includes("UPDATE hiring_applications SET resume_id="))) {
+      intercept = false;
+      const definition = model.initialDefinition();
+      definition.stages[1].entry = ["forms_accepted"];
+      await service.savePipeline(f.owner, p.id, { action: "publish", name: p.name, definition, expectedRevision: p.revision });
+    }
+    return originalBatch(statements);
+  };
+  try {
+    await rejects(mutate(f, app, { action: "move", stageId: "screening" }), 409);
+  } finally {
+    runtime.DB.batch = originalBatch;
+  }
+  assert.equal((await service.getApplication(f.owner, app.id)).stageId, "applied");
+});
+
+test("workflow publication rejects pipeline stages removed after validation", async (t) => {
+  const f = fixture(t), p = await pipeline(f), w = await workflow.createWorkflow(f.owner, "application_received");
+  const graph = graphs.applicationGraph("application_received");
+  graph.nodes[0].config.pipelineVersionId = p.currentVersionId;
+  graph.nodes[1].config = { fromStageId: "applied", stageId: "recruiter" };
+  const originalPrepare = runtime.DB.prepare;
+  let intercept = true;
+  runtime.DB.prepare = (query) => {
+    const statement = originalPrepare(query);
+    if (!intercept || !query.startsWith('update "workflows"')) return statement;
+    const originalBind = statement.bind.bind(statement);
+    statement.bind = (...values) => {
+      const bound = originalBind(...values), originalAll = bound.all.bind(bound), originalRaw = bound.raw.bind(bound);
+      const beforeQuery = async () => {
+        if (intercept) {
+          intercept = false;
+          const definition = model.initialDefinition();
+          definition.stages = definition.stages.filter((s) => s.id !== "recruiter");
+          await service.savePipeline(f.owner, p.id, { action: "publish", name: p.name, definition, expectedRevision: p.revision });
+        }
+      };
+      bound.all = async () => { await beforeQuery(); return originalAll(); };
+      bound.raw = async () => { await beforeQuery(); return originalRaw(); };
+      return bound;
+    };
+    return statement;
+  };
+  try {
+    await rejects(workflow.saveWorkflow(f.owner, w.id, { action: "publish", name: "New routing", graph, expectedUpdatedAt: w.updatedAt }), 409);
+  } finally {
+    runtime.DB.prepare = originalPrepare;
+  }
+  assert.equal(intercept, false);
+  assert.equal((await workflow.getWorkflow(f.owner, w.id)).published, null);
+});
+
+test("single-pipeline migration consolidates old copies and preserves applications, jobs, events and workflow snapshots", async (t) => {
+  runtime.DB?.close();
+  runtime.DB = sqliteD1({ through: "0034_record_deletion.sql" });
+  const db = runtime.DB.sqlite, f = { ...seedAcceptedPreparation(db), db };
+  t.mock.timers.enable({ apis: ["Date"], now: Date.UTC(2030, 0, 2) });
+  const definition = model.initialDefinition(), old = structuredClone(definition);
+  old.stages[1].id = "previous-screening";
+  old.stages[2].id = "previous-interview";
+  insertFixture(db, "hiring_pipelines", { id: "existing-pipeline", owner_email: f.owner, name: "Engineering", draft_json: JSON.stringify(definition), current_version_id: "current-published", published_version: 2 });
+  for (const [id, version, value] of [["old-published", 1, old], ["current-published", 2, definition]])
+    insertFixture(db, "hiring_pipeline_versions", { id, pipeline_id: "existing-pipeline", owner_email: f.owner, name: "Engineering", version, definition_json: JSON.stringify(value) });
+  insertFixture(db, "hiring_jobs", { id: "existing-job", owner_email: f.owner, title: "Frontend", pipeline_version_id: "old-published" });
+  insertFixture(db, "hiring_applications", { id: "existing-application", owner_email: f.owner, candidate_id: f.candidateId, resume_id: f.resumeId, job_id: "existing-job", pipeline_version_id: "old-published", stage_id: "previous-screening" });
+  const second = seedAcceptedPreparation(db, "retained-interview", f.owner);
+  insertFixture(db, "hiring_applications", { id: "retained-interview-app", owner_email: f.owner, candidate_id: second.candidateId, resume_id: second.resumeId, job_id: "existing-job", pipeline_version_id: "old-published", stage_id: "previous-interview" });
+  const graph = graphs.applicationGraph("application_received");
+  graph.nodes[0].config = { trigger: "application_received", pipelineVersionId: "old-published" };
+  graph.nodes[1].config = { fromStageId: "previous-screening", stageId: "screening" };
+  const snapshot = JSON.stringify(graph);
+  insertFixture(db, "workflows", { id: "existing-routing", owner_email: f.owner, name: "Existing application routing", active: 1, version: 1, draft_json: snapshot, published_json: snapshot });
+  const eventContext = JSON.stringify({ pipelineVersionId: "old-published", stageId: "previous-screening", fromStageId: null, jobId: "existing-job", applicationRevision: 1, chain: [] });
+  insertFixture(db, "hiring_events", { id: "existing-event", application_id: "existing-application", owner_email: f.owner, kind: "application_received", to_stage: "previous-screening", actor: f.owner, context_json: eventContext });
+  db.exec(readFileSync(new URL("../drizzle/0035_single_hiring_pipeline.sql", import.meta.url), "utf8"));
+  assert.deepEqual(db.prepare("PRAGMA foreign_key_check").all(), []);
+  assert.equal(db.prepare("SELECT count(*) n FROM hiring_pipeline_versions").get().n, 1);
+  assert.equal(db.prepare("SELECT pipeline_version_id FROM hiring_jobs WHERE id='existing-job'").get().pipeline_version_id, "current-published");
+  const raw = db.prepare("SELECT * FROM hiring_applications WHERE id='existing-application'").get();
+  assert.equal(raw.pipeline_version_id, "current-published");
+  assert.equal(raw.stage_id, "previous-screening");
+  assert.equal(raw.revision, 1);
+  assert.equal(db.prepare("SELECT published_json FROM workflows WHERE id='existing-routing'").get().published_json, snapshot);
+  assert.equal(db.prepare("SELECT context_json FROM hiring_events WHERE id='existing-event'").get().context_json, eventContext);
+  const config = await service.hiringConfiguration(f.owner);
+  assert.equal(config.versions.length, 1);
+  assert(config.versions[0].definition.stages.some((s) => s.id === "previous-screening"));
+  assert.equal(config.pipelineReferences["old-published"], "current-published");
+  const started = await interviews.startApplicationInterview(f.owner, "retained-interview-app", { expectedRevision: 1, mutationId: "retained-interview-start" });
+  assert(started.process.stageOptions.some((s) => s.id === "previous-interview"));
+  assert.equal(started.process.applicationStage.id, "previous-interview");
+  const updated = await service.savePipeline(f.owner, "existing-pipeline", { action: "publish", name: "Engineering", definition: config.pipelines[0].draft, expectedRevision: config.pipelines[0].revision });
+  assert.equal(updated.versions.length, 1);
+  assert.equal(updated.versions[0].id, "current-published");
+  const w = await workflow.getWorkflow(f.owner, "existing-routing");
+  assert.equal(w.draft.nodes[0].config.pipelineVersionId, "current-published");
+  await drain();
+  assert.equal((await service.getApplication(f.owner, "existing-application")).stageId, "screening");
+  assert.equal(db.prepare("SELECT count(*) n FROM workflow_runs WHERE event_id='existing-event'").get().n, 1);
+  // Retained Telegram snapshots can also resolve their old pipeline ID.
+  const p = config.pipelines[0];
+  const telegram = await publishedCvRouting(f, p, { fromStageId: "screening", stageId: "recruiter" });
+  const legacyCvGraph = structuredClone(telegram.published);
+  legacyCvGraph.nodes.find((n) => n.id === "move").config.pipelineVersionId = "old-published";
+  db.prepare("UPDATE workflows SET published_json=? WHERE id=?").run(JSON.stringify(legacyCvGraph), telegram.id);
+  const id = await reviewedCvRouting(f, telegram);
+  await runner.processWorkflowRun(id);
+  const run = await workflow.getRun(f.owner, id);
+  assert.equal(run.status, "completed", run.errorMessage);
+  assert.equal((await service.getApplication(f.owner, "existing-application")).stageId, "recruiter");
+});
+
 test("manual and automated stage moves require actual evidence; custom stages never mark approval", async (t) => {
   const f = fixture(t),
     p = await pipeline(f);
@@ -2109,5 +2276,5 @@ test("published preparation ownership defaults apply to new intake applications 
     (await service.getApplication(f.owner, a.id)).evidence.preparationMode,
     "application",
   );
-  assert.notEqual(a.pipelineVersionId, b.pipelineVersionId);
+  assert.equal(a.pipelineVersionId, b.pipelineVersionId);
 });

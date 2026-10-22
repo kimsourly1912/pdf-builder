@@ -1,10 +1,10 @@
 import { DatabaseSync } from "node:sqlite";
 import { readFileSync, readdirSync } from "node:fs";
-export function sqliteD1() {
+export function sqliteD1({ through } = {}) {
   const sqlite = new DatabaseSync(":memory:");
   sqlite.exec("PRAGMA foreign_keys=ON");
   for (const f of readdirSync(new URL("../../drizzle/", import.meta.url))
-    .filter((f) => f.endsWith(".sql"))
+    .filter((f) => f.endsWith(".sql") && (!through || f <= through))
     .sort())
     sqlite.exec(
       readFileSync(new URL("../../drizzle/" + f, import.meta.url), "utf8"),

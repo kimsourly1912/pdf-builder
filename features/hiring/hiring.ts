@@ -46,7 +46,9 @@ export const stageSchema = z.object({
 export const definitionSchema = z
   .object({
     preparationMode: z.enum(["legacy", "application"]).optional(),
-    stages: z.array(stageSchema).min(1).max(30),
+    // Consolidation can retain referenced stages from several old copies.
+    // The editor still limits adding new stages to 30.
+    stages: z.array(stageSchema).min(1).max(300),
   })
   .superRefine((v, ctx) => {
     if (new Set(v.stages.map((s) => s.id)).size !== v.stages.length)
@@ -77,8 +79,8 @@ export type Pipeline = {
   id: string;
   name: string;
   revision: number;
-  publishedVersion: number;
   currentVersionId: string | null;
+  usedStageIds?: string[];
   archived: boolean;
   isDefault: boolean;
   draft: PipelineDefinition;
@@ -87,7 +89,7 @@ export type PipelineVersion = {
   id: string;
   pipelineId: string;
   name: string;
-  version: number;
+  revision: number;
   definition: PipelineDefinition;
   archived: boolean;
 };

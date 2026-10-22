@@ -1,4 +1,6 @@
 import { workflowBusinessSummary } from "./business-summary";
+import { hiringConfiguration } from "@/features/hiring/hiring.server";
+import { resolvePipelineGraph } from "@/features/hiring/pipeline-references";
 import { presetGraph, WORKFLOW_PRESETS, type WorkflowPreset } from "./presets";
 import { isArchived } from "@/features/archive/archive.server";
 import { notArchived } from "@/features/archive/archive";
@@ -125,16 +127,18 @@ export async function getWorkflow(ownerEmail: string, id: string) {
     .where(and(eq(workflows.id, id), eq(workflows.ownerEmail, ownerEmail)))
     .limit(1);
   if (!row) fail("Workflow not found.", 404);
+  const references = row.draftJson.includes('"pipelineVersionId"') || row.publishedJson?.includes('"pipelineVersionId"')
+    ? await hiringConfiguration(ownerEmail) : {};
   return {
     id: row.id,
     name: row.name,
     active: row.active,
     version: row.version,
     updatedAt: row.updatedAt,
-    draft: JSON.parse(row.draftJson) as WorkflowGraph,
+    draft: resolvePipelineGraph(JSON.parse(row.draftJson) as WorkflowGraph, references),
     archived: await isArchived("workflow", row.id),
     published: row.publishedJson
-      ? (JSON.parse(row.publishedJson) as WorkflowGraph)
+      ? resolvePipelineGraph(JSON.parse(row.publishedJson) as WorkflowGraph, references)
       : null,
   };
 }
@@ -235,8 +239,9 @@ export async function saveWorkflow(
   const draftJson = JSON.stringify(graph);
   if (!publishing && body.action !== "save")
     fail("Choose save, publish, or pause.");
+  let pipelineRevisions: { id: string; revision: number }[] = [];
   if (publishing) {
-    await validateApplicationGraph(ownerEmail, graph);
+    pipelineRevisions = await validateApplicationGraph(ownerEmail, graph);
     const issues = graphIssues(graph);
     if (issues.length) fail(issues.join(" "), 422);
     // Published runs pin template versions and roles, independently of later edits.
@@ -293,10 +298,11 @@ export async function saveWorkflow(
         eq(workflows.ownerEmail, ownerEmail),
         eq(workflows.updatedAt, current.updatedAt),
         notArchived("workflow", workflows.id),
+        ...pipelineRevisions.map((pipeline) => sql`EXISTS(SELECT 1 FROM hiring_pipelines WHERE id=${pipeline.id} AND owner_email=${ownerEmail} AND revision=${pipeline.revision} AND archived=0)`),
       ),
     )
     .returning({ id: workflows.id });
-  if (!saved) fail("This workflow changed. Reload before saving.", 409);
+  if (!saved) fail("This workflow or its hiring pipeline changed. Reload before saving.", 409);
   await workflowAudit(
     ownerEmail,
     publishing ? "workflow.published" : "workflow.saved",

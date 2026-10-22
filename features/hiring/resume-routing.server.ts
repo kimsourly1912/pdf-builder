@@ -12,7 +12,9 @@ import {
   applicationProof,
   getApplication,
   mutateApplication,
+  hiringConfiguration,
 } from "./hiring.server";
+import { resolvePipelineReference } from "./pipeline-references";
 
 // CV workflows retain their once-per-CV identity. Do not change application_id:
 // that column owns independent application preparation and its uniqueness rules.
@@ -34,6 +36,7 @@ export async function moveResumeApplication(
   if (!context.candidateId || !context.profileVersionId || context.rejection)
     throw new WorkflowStepError("Approve this CV before moving its application.");
   const db = getDatabaseBinding();
+  const pipelineId = resolvePipelineReference(await hiringConfiguration(row.ownerEmail), node.config.pipelineVersionId);
   context.applicationMoves ??= {};
   let target = context.applicationMoves[node.id];
   if (!target) {
@@ -46,7 +49,7 @@ export async function moveResumeApplication(
           row.ownerEmail,
           row.resumeId,
           context.candidateId,
-          node.config.pipelineVersionId,
+          pipelineId,
           row.applicationId,
           row.applicationId,
         )
@@ -80,7 +83,7 @@ export async function moveResumeApplication(
       if (
         app.resumeId !== row.resumeId ||
         app.candidateId !== context.candidateId ||
-        app.pipelineVersionId !== node.config.pipelineVersionId
+        app.pipelineVersionId !== pipelineId
       )
         throw new WorkflowStepError(
           "This application's CV or pipeline changed. Review the application before continuing.",

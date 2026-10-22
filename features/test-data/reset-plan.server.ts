@@ -127,6 +127,7 @@ export function resetTables(choice: ResetChoice): ResetTable[] {
     add("ai_field_detection_runs", `owner_email=${own}`, "AI history");
     if (!choice.keepDefinitions) {
       add("hiring_jobs", `owner_email=${own}`, "Job openings");
+      add("hiring_pipeline_references", `owner_email=${own}`, "Legacy pipeline references");
       add("hiring_pipeline_versions", `owner_email=${own}`, "Published hiring models");
       add("hiring_pipelines", `owner_email=${own}`, "Hiring model drafts");
       add(

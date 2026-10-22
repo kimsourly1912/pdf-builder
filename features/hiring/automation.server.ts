@@ -20,17 +20,23 @@ import {
   nowIso,
 } from "./hiring.server";
 import { isApplicationTrigger } from "./hiring";
+import { resolvePipelineReference } from "./pipeline-references";
 
 export async function validateApplicationGraph(
   owner: string,
   graph: WorkflowGraph,
 ) {
   const application = isApplicationTrigger(workflowTrigger(graph));
-  if (!application && !graph.nodes.some((n) => n.kind === "move_stage")) return;
+  if (!application && !graph.nodes.some((n) => n.kind === "move_stage")) return [];
   const issues = graphIssues(graph);
   if (issues.length) hiringFail(issues[0]);
   const start = graph.nodes.find((n) => n.kind === "resume_uploaded")!,
     config = await hiringConfiguration(owner);
+  const revisions = new Map<string, number>();
+  for (const node of graph.nodes) {
+    if (node.config.pipelineVersionId)
+      node.config.pipelineVersionId = resolvePipelineReference(config, node.config.pipelineVersionId);
+  }
   for (const node of graph.nodes) {
     if (!application && node.kind !== "move_stage") continue;
     const version = config.versions.find(
@@ -40,6 +46,7 @@ export async function validateApplicationGraph(
       hiringFail(
         "Choose an active published hiring pipeline before publishing this workflow.",
       );
+    revisions.set(version.pipelineId, version.revision);
     const stageIds = new Set(version.definition.stages.map((s) => s.id));
     if (node.kind === "prepare_application") {
       const child = await (
@@ -84,7 +91,7 @@ export async function validateApplicationGraph(
       node.config.pipelineVersionId !== version.id
     )
       hiringFail(
-        "All application stages must use the starting event's pipeline version.",
+        "All application stages must use the starting event's pipeline.",
       );
     if (
       node.kind === "condition" &&
@@ -102,8 +109,9 @@ export async function validateApplicationGraph(
           j.pipelineVersionId === version.id,
       )
     )
-      hiringFail("Choose an active job using this pipeline version.");
+      hiringFail("Choose an active job using this pipeline.");
   }
+  return [...revisions].map(([id, revision]) => ({ id, revision }));
 }
 type EventRow = {
   id: string;
@@ -140,6 +148,8 @@ export async function dispatchApplicationEvents(limit = 50) {
     ).results;
   for (const event of events) {
     const context = JSON.parse(event.context_json) as Context;
+    const configuration = await hiringConfiguration(event.owner_email);
+    context.pipelineVersionId = resolvePipelineReference(configuration, context.pipelineVersionId);
     const workflows = (
       await db
         .prepare(
@@ -165,7 +175,7 @@ export async function dispatchApplicationEvents(limit = 50) {
       if (
         !start ||
         !isApplicationTrigger(trigger) ||
-        start.config.pipelineVersionId !== context.pipelineVersionId
+        resolvePipelineReference(configuration, start.config.pipelineVersionId ?? "") !== context.pipelineVersionId
       )
         continue;
       const matches =
