@@ -38,9 +38,8 @@ export async function startApplicationInterview(
   if (app.outcome || app.hold)
     hiringFail("Reopen or resume before starting interviews.");
   const config = await hiringConfiguration(owner),
-    stage = config.versions
-      .find((v) => v.id === app.pipelineVersionId)
-      ?.definition.stages.find((s) => s.id === app.stageId);
+    pipeline = config.versions.find((v) => v.id === app.pipelineVersionId),
+    stage = pipeline?.definition.stages.find((s) => s.id === app.stageId);
   if (stage?.activity !== "interview")
     hiringFail("Move to an interview stage before starting interviews.");
   if (!app.jobId) hiringFail("Assign a job before starting interviews.");
@@ -103,8 +102,8 @@ export async function startApplicationInterview(
     acceptedAt: at,
   };
   const [guard, cleanup] = hiringGuard(
-    `EXISTS(SELECT 1 FROM hiring_applications WHERE id=? AND owner_email=? AND revision=? AND interview_id IS NULL) AND (SELECT proof FROM (${preparationProofSql}))=?`,
-    [id, owner, app.revision, owner, app.candidateId, proof],
+    `EXISTS(SELECT 1 FROM hiring_applications WHERE id=? AND owner_email=? AND revision=? AND interview_id IS NULL) AND (SELECT proof FROM (${preparationProofSql}))=? AND EXISTS(SELECT 1 FROM hiring_pipelines WHERE current_version_id=? AND owner_email=? AND revision=?)`,
+    [id, owner, app.revision, owner, app.candidateId, proof, app.pipelineVersionId, owner, pipeline!.revision],
   );
   try {
     await hiringBatch([

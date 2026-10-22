@@ -7,6 +7,7 @@ import {
   followUpSql,
 } from "./work.server";
 import { applicationTask } from "./tasks";
+import { resolvePipelineReference, retainReferencedStages } from "./pipeline-references";
 import "server-only";
 import { archiveStatements, archivedGroup, restoreEntity } from "@/features/archive/archive.server";
 import { z } from "zod";
@@ -31,6 +32,7 @@ import {
   type PipelineVersion,
   type HiringJob,
   type Requirement,
+  type PipelineDefinition,
 } from "./hiring";
 
 export function hiringFail(message: string, status = 422): never {
@@ -82,6 +84,8 @@ export async function hiringBatch(statements: DatabaseStatement[]) {
     return await getDatabaseBinding().batch(statements);
   } catch (error) {
     if (isResponse(error)) throw error;
+    if (error instanceof Error && /HIRING_STAGE_IN_USE/u.test(error.message))
+      hiringFail("A stage is now used by applications, interviews or automation. Reload the pipeline before publishing.", 409);
     if (
       error instanceof Error &&
       /hiring_checked|UNIQUE constraint/u.test(error.message)
@@ -126,7 +130,7 @@ type PipelineRow = {
 };
 export async function hiringConfiguration(owner: string) {
   const db = getDatabaseBinding();
-  const [p, v, j] = await Promise.all([
+  const [p, v, j, aliases, usage] = await Promise.all([
     db
       .prepare(
         "SELECT * FROM hiring_pipelines WHERE owner_email=? ORDER BY is_default DESC,created_at,id",
@@ -135,7 +139,7 @@ export async function hiringConfiguration(owner: string) {
       .all<PipelineRow>(),
     db
       .prepare(
-        "SELECT v.*,p.archived FROM hiring_pipeline_versions v JOIN hiring_pipelines p ON p.id=v.pipeline_id AND p.owner_email=v.owner_email WHERE v.owner_email=? ORDER BY v.published_at DESC,v.version DESC",
+        "SELECT v.*,p.archived,p.revision pipeline_revision FROM hiring_pipeline_versions v JOIN hiring_pipelines p ON p.id=v.pipeline_id AND p.owner_email=v.owner_email WHERE v.owner_email=? ORDER BY v.published_at DESC,v.id",
       )
       .bind(owner)
       .all<{
@@ -143,6 +147,7 @@ export async function hiringConfiguration(owner: string) {
         pipeline_id: string;
         name: string;
         version: number;
+        pipeline_revision: number;
         definition_json: string;
         archived: number;
       }>(),
@@ -158,18 +163,38 @@ export async function hiringConfiguration(owner: string) {
         revision: number;
         archived: number;
       }>(),
+    db.prepare("SELECT id,pipeline_id,definition_json FROM hiring_pipeline_references WHERE owner_email=? ORDER BY rowid").bind(owner).all<{ id: string; pipeline_id: string; definition_json: string }>(),
+    db.prepare("SELECT DISTINCT pipeline_id,stage_id FROM hiring_pipeline_stage_references WHERE owner_email=?").bind(owner).all<{ pipeline_id: string; stage_id: string }>(),
   ]);
+  const pipelineReferences = Object.fromEntries(aliases.results.flatMap((a) => {
+    const pipeline = p.results.find((item) => item.id === a.pipeline_id);
+    return pipeline?.current_version_id ? [[a.id, pipeline.current_version_id]] : [];
+  }));
+  const retained = new Map<string, PipelineDefinition>();
+  const definitions = new Map(v.results.map((row) => {
+    const definition = parse(definitionSchema, JSON.parse(row.definition_json));
+    const used = new Set(usage.results.filter((r) => r.pipeline_id === row.pipeline_id).map((r) => r.stage_id));
+    const previous = aliases.results.filter((a) => a.pipeline_id === row.pipeline_id).map((a) => parse(definitionSchema, JSON.parse(a.definition_json)));
+    const result = retainReferencedStages(definition, previous, used);
+    retained.set(row.id, { stages: result.stages.filter((s) => !definition.stages.some((old) => old.id === s.id)) });
+    return [row.id, result];
+  }));
   return {
+    pipelineReferences,
     pipelines: p.results.map(
       (p): Pipeline => ({
         id: p.id,
         name: p.name,
         revision: p.revision,
-        publishedVersion: p.published_version,
         currentVersionId: p.current_version_id,
+        usedStageIds: usage.results.filter((r) => r.pipeline_id === p.id).map((r) => r.stage_id),
         archived: !!p.archived,
         isDefault: !!p.is_default,
-        draft: parse(definitionSchema, JSON.parse(p.draft_json)),
+        draft: retainReferencedStages(
+          parse(definitionSchema, JSON.parse(p.draft_json)),
+          [retained.get(p.current_version_id ?? "") ?? { stages: [] }],
+          new Set(usage.results.filter((r) => r.pipeline_id === p.id).map((r) => r.stage_id)),
+        ),
       }),
     ),
     versions: v.results.map(
@@ -177,8 +202,8 @@ export async function hiringConfiguration(owner: string) {
         id: v.id,
         pipelineId: v.pipeline_id,
         name: v.name,
-        version: v.version,
-        definition: parse(definitionSchema, JSON.parse(v.definition_json)),
+        revision: v.pipeline_revision,
+        definition: definitions.get(v.id)!,
         archived: !!v.archived,
       }),
     ),
@@ -283,23 +308,27 @@ export async function savePipeline(
       );
     if (!publishing && body.action !== "save")
       hiringFail("Choose Save draft or Publish.");
-    const versionId = publishing ? crypto.randomUUID() : p.currentVersionId;
-    if (publishing)
+    const versionId = p.currentVersionId ?? (publishing ? crypto.randomUUID() : null);
+    if (publishing) {
+      const published = config.versions.find((item) => item.id === p.currentVersionId);
+      const removed = published?.definition.stages.find((stage) => p.usedStageIds?.includes(stage.id) && !data.definition.stages.some((s) => s.id === stage.id));
+      if (removed)
+        hiringFail(`The stage "${removed.name}" is still used by applications, interviews or automation. Move those applications or update the automation before removing it.`, 409);
       statements.push(
         db
           .prepare(
-            "INSERT INTO hiring_pipeline_versions(id,pipeline_id,owner_email,name,version,definition_json,published_at) VALUES(?,?,?,?,?,?,?)",
+            "INSERT INTO hiring_pipeline_versions(id,pipeline_id,owner_email,name,version,definition_json,published_at) VALUES(?,?,?,?,1,?,?) ON CONFLICT(id) DO UPDATE SET name=excluded.name,definition_json=excluded.definition_json,published_at=excluded.published_at",
           )
           .bind(
             versionId,
             id,
             owner,
             data.name,
-            p.publishedVersion + 1,
             JSON.stringify(data.definition),
             at,
           ),
       );
+    }
     statements.push(
       db
         .prepare(
@@ -308,7 +337,7 @@ export async function savePipeline(
         .bind(
           data.name,
           JSON.stringify(data.definition),
-          p.publishedVersion + (publishing ? 1 : 0),
+          versionId ? 1 : 0,
           versionId,
           at,
           id,
@@ -332,6 +361,7 @@ export async function savePipeline(
 export async function saveJob(owner: string, body: Record<string, unknown>) {
   const data = parse(jobInputSchema, body),
     config = await hiringConfiguration(owner);
+  data.pipelineVersionId = resolvePipelineReference(config, data.pipelineVersionId);
   const version = config.versions.find(
     (v) => v.id === data.pipelineVersionId && !v.archived,
   );
@@ -458,7 +488,8 @@ export async function getApplication(owner: string, id: string) {
   return appDto(row);
 }
 export async function listApplications(owner: string, query: URLSearchParams) {
-  const versionId = query.get("pipeline") || "",
+  const configuration = await hiringConfiguration(owner);
+  const versionId = resolvePipelineReference(configuration, query.get("pipeline") || ""),
     job = query.get("job") || "",
     candidate = query.get("candidate") || "";
   const search = (query.get("search") ?? "").slice(0, 200),
@@ -514,7 +545,7 @@ export async function listApplications(owner: string, query: URLSearchParams) {
       .bind(...values, stage, stage, (page - 1) * 50)
       .all<ApplicationRow>()
   ).results;
-  const config = await hiringConfiguration(owner);
+  const config = configuration;
   const items = await Promise.all(
     rows.map(async (row) => {
       const app = appDto(row),
@@ -597,7 +628,10 @@ export async function applicationFacts(owner: string, app: HiringApplication) {
     )
     .bind(app.pipelineVersionId, owner, app.stageId)
     .first<{ scope: string | null }>();
-  const scopedRounds = selectedStage?.scope === "stage";
+  const scope = selectedStage?.scope ?? (!selectedStage
+    ? (await hiringConfiguration(owner)).versions.find((v) => v.id === app.pipelineVersionId)?.definition.stages.find((s) => s.id === app.stageId)?.interviewScope
+    : undefined);
+  const scopedRounds = scope === "stage";
   const roundScope =
     "r.process_id=p.id" + (scopedRounds ? " AND r.stage_id=?" : "");
   const interview = app.interviewId
@@ -782,7 +816,7 @@ export async function createApplication(
   if (body.jobId && !job) hiringFail("Choose an active job in your workspace.");
   const versionId =
     job?.pipelineVersionId ??
-    body.pipelineVersionId ??
+    (typeof body.pipelineVersionId === "string" ? resolvePipelineReference(config, body.pipelineVersionId) : undefined) ??
     config.pipelines.find((p) => p.isDefault && !p.archived)?.currentVersionId;
   const version = config.versions.find(
     (v) => v.id === versionId && !v.archived,
@@ -829,7 +863,7 @@ export async function createApplication(
   const proof = await applicationProof(owner, app);
   await requireEvidence(owner, app, version.definition.stages[0].entry);
   const [guard, cleanup] = hiringGuard(
-    `(SELECT proof FROM (${preparationProofSql}))=? AND EXISTS(SELECT 1 FROM hiring_pipeline_versions v JOIN hiring_pipelines p ON p.id=v.pipeline_id WHERE v.id=? AND v.owner_email=? AND p.archived=0)` +
+    `(SELECT proof FROM (${preparationProofSql}))=? AND EXISTS(SELECT 1 FROM hiring_pipeline_versions v JOIN hiring_pipelines p ON p.id=v.pipeline_id WHERE v.id=? AND v.owner_email=? AND p.archived=0 AND p.revision=?)` +
       (job
         ? " AND EXISTS(SELECT 1 FROM hiring_jobs WHERE id=? AND owner_email=? AND revision=? AND archived=0)"
         : ""),
@@ -839,6 +873,7 @@ export async function createApplication(
       proof,
       version.id,
       owner,
+      version.revision,
       ...(job ? [job.id, owner, job.revision] : []),
     ],
   );
@@ -1132,9 +1167,9 @@ export async function mutateApplication(
   )
     hiringFail("Automation loop stopped. Review the stage routing rules.", 409);
   const [guard, cleanup] = hiringGuard(
-    `EXISTS(SELECT 1 FROM hiring_applications WHERE id=? AND owner_email=? AND revision=?) AND (SELECT proof FROM (${preparationProofSql}))=?` +
+    `EXISTS(SELECT 1 FROM hiring_applications WHERE id=? AND owner_email=? AND revision=?) AND (SELECT proof FROM (${preparationProofSql}))=? AND EXISTS(SELECT 1 FROM hiring_pipelines WHERE id=? AND owner_email=? AND revision=?)` +
       (body.action === "assign_job"
-        ? " AND EXISTS(SELECT 1 FROM hiring_jobs j JOIN hiring_pipeline_versions v ON v.id=j.pipeline_version_id JOIN hiring_pipelines p ON p.id=v.pipeline_id WHERE j.id=? AND j.owner_email=? AND j.revision=? AND j.archived=0 AND p.archived=0)"
+        ? " AND EXISTS(SELECT 1 FROM hiring_jobs j JOIN hiring_pipeline_versions v ON v.id=j.pipeline_version_id JOIN hiring_pipelines p ON p.id=v.pipeline_id WHERE j.id=? AND j.owner_email=? AND j.revision=? AND j.archived=0 AND p.archived=0 AND p.revision=?)"
         : "") +
       (automation
         ? " AND EXISTS(SELECT 1 FROM workflow_runs WHERE id=? AND owner_email=? AND lock_token=? AND locked_until>?)"
@@ -1146,11 +1181,15 @@ export async function mutateApplication(
       owner,
       app.candidateId,
       proof,
+      version.pipelineId,
+      owner,
+      version.revision,
       ...(body.action === "assign_job"
         ? [
             next.jobId,
             owner,
             config.jobs.find((j) => j.id === next.jobId)!.revision,
+            config.versions.find((v) => v.id === next.pipelineVersionId)!.revision,
           ]
         : []),
       ...(automation

@@ -506,7 +506,7 @@ function deletionRule(type: ArchiveType) {
     reason = "This application has hiring progress, preparation, forms or interview history. Archive it to preserve that evidence.";
   }
   if (type === "hiring_pipeline") {
-    query = "SELECT 1 WHERE EXISTS(SELECT 1 FROM hiring_pipelines WHERE id=? AND is_default=1) OR EXISTS(SELECT 1 FROM hiring_jobs j JOIN hiring_pipeline_versions v ON v.id=j.pipeline_version_id WHERE v.pipeline_id=?) OR EXISTS(SELECT 1 FROM hiring_applications a JOIN hiring_pipeline_versions v ON v.id=a.pipeline_version_id WHERE v.pipeline_id=?) OR EXISTS(SELECT 1 FROM workflows w JOIN hiring_pipeline_versions v ON instr(w.draft_json,v.id)>0 OR instr(coalesce(w.published_json,''),v.id)>0 WHERE v.pipeline_id=?) OR EXISTS(SELECT 1 FROM workflow_versions w JOIN hiring_pipeline_versions v ON instr(w.graph_json,v.id)>0 WHERE v.pipeline_id=?)";
+    query = "SELECT 1 WHERE EXISTS(SELECT 1 FROM hiring_pipelines WHERE id=? AND is_default=1) OR EXISTS(SELECT 1 FROM hiring_jobs j JOIN hiring_pipeline_versions v ON v.id=j.pipeline_version_id WHERE v.pipeline_id=?) OR EXISTS(SELECT 1 FROM hiring_applications a JOIN hiring_pipeline_versions v ON v.id=a.pipeline_version_id WHERE v.pipeline_id=?) OR EXISTS(SELECT 1 FROM workflows w JOIN hiring_pipeline_reference_ids v ON instr(w.draft_json,v.id)>0 OR instr(coalesce(w.published_json,''),v.id)>0 WHERE v.pipeline_id=?) OR EXISTS(SELECT 1 FROM workflow_versions w JOIN hiring_pipeline_reference_ids v ON instr(w.graph_json,v.id)>0 WHERE v.pipeline_id=?)";
     reason = "This pipeline is the default inbox or is used by jobs, applications or workflow versions. Choose another default or archive it to preserve linked history.";
   }
   return { query, reason };

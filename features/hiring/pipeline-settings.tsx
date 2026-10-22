@@ -158,7 +158,7 @@ export function PipelineSettings({ displayName }: { displayName: string }) {
       setPublishing(false);
       setNotice(
         action === "publish"
-          ? "Pipeline published. Existing applications keep their previous version. Select this version for new jobs when ready."
+          ? "Pipeline updated. Jobs, applications and automation now use its published stages and requirements."
           : action === "default"
             ? "Default inbox enabled for future incoming candidates."
             : "Pipeline saved.",
@@ -214,7 +214,7 @@ export function PipelineSettings({ displayName }: { displayName: string }) {
     <AppShell displayName={displayName}>
       <PageHeader
         title="Hiring pipelines"
-        description="Build hiring stages and publish them for future applications."
+        description="Build and update the hiring stages used by your applications."
         actions={
           <>
             <Button variant="outline" asChild>
@@ -379,13 +379,13 @@ export function PipelineSettings({ displayName }: { displayName: string }) {
                     </div>
                     <div className="flex flex-wrap items-center gap-2 border-t pt-3">
                       <Badge variant="outline">
-                        {selected.publishedVersion
-                          ? `Published v${selected.publishedVersion}`
+                        {selected.currentVersionId
+                          ? "Published"
                           : "Draft"}
                       </Badge>
                       <span className="text-xs text-muted-foreground">
                         {dirty ? "Unsaved changes" : "Saved"} · Active
-                        applications stay on their published version.
+                        applications use the published stages and requirements.
                       </span>
                     </div>
                   </div>
@@ -546,7 +546,8 @@ export function PipelineSettings({ displayName }: { displayName: string }) {
                                     disabled={
                                       busy ||
                                       selected.archived ||
-                                      draft.stages.length === 1
+                                      draft.stages.length === 1 ||
+                                      selected.usedStageIds?.includes(stage.id)
                                     }
                                     onClick={() => {
                                       setNotice("");
@@ -574,7 +575,9 @@ export function PipelineSettings({ displayName }: { displayName: string }) {
                                   <p className="text-xs text-muted-foreground">
                                     {draft.stages.length === 1
                                       ? "Keep at least one stage in the pipeline."
-                                      : "Removes this stage from the draft. Existing applications keep their published stages."}
+                                      : selected.usedStageIds?.includes(stage.id)
+                                        ? "This stage is used by applications, interviews or automation. Update those references before removing it."
+                                      : "Removes this stage from the draft. Stages used by applications or automation must be kept."}
                                   </p>
                                 </PopoverContent>
                               </Popover>
@@ -823,7 +826,7 @@ export function PipelineSettings({ displayName }: { displayName: string }) {
                                 variant="ghost"
                                 className="w-full justify-start"
                                 disabled={
-                                  busy || !selected.publishedVersion || dirty
+                                  busy || !selected.currentVersionId || dirty
                                 }
                                 onClick={() => void save("default")}
                               >
@@ -832,7 +835,7 @@ export function PipelineSettings({ displayName }: { displayName: string }) {
                             )}
                             {!selected.isDefault &&
                               !selected.archived &&
-                              (!selected.publishedVersion || dirty) && (
+                              (!selected.currentVersionId || dirty) && (
                                 <p className="text-xs text-muted-foreground">
                                   Save and publish this pipeline before using it
                                   as the default inbox.
@@ -949,9 +952,8 @@ export function PipelineSettings({ displayName }: { displayName: string }) {
             <section className="space-y-4">
               <h2 className="text-lg font-semibold">Job openings</h2>
               <p className="text-sm text-muted-foreground">
-                Each job uses a published pipeline version. Updating the job
-                affects new applications; existing applications keep their
-                version.
+                Each job uses one published pipeline. Publishing changes updates
+                its stages and requirements for existing and future applications.
               </p>
               {config.jobs.map((job) => (
                 <JobEditor
@@ -971,11 +973,10 @@ export function PipelineSettings({ displayName }: { displayName: string }) {
           <DialogHeader>
             <DialogTitle>Publish {name}</DialogTitle>
             <DialogDescription>
-              This publishes the pipeline settings, preparation automation
-              choice, and {draft.stages.length} stages for new applications and
-              workflow selectors. Existing applications and automation keep
-              their published version. Reordering stages does not move
-              candidates.
+              This updates the pipeline’s {draft.stages.length} stages and
+              requirements for its jobs, applications and automation. Candidates
+              remain in their current stages. The preparation automation choice
+              applies to new applications.
             </DialogDescription>
           </DialogHeader>
           <ol className="max-h-60 list-decimal space-y-2 overflow-y-auto pl-5">
@@ -1132,13 +1133,13 @@ function JobEditor({
             id={`job-pipeline-${job?.id ?? "new"}`}
             value={versionId}
             onValueChange={setVersionId}
-            placeholder="Choose pipeline version"
+            placeholder="Choose pipeline"
           >
             {config.versions
               .filter((v) => !v.archived || v.id === versionId)
               .map((v) => (
                 <SelectFieldOption key={v.id} value={v.id}>
-                  {v.name} · v{v.version}
+                  {v.name}
                 </SelectFieldOption>
               ))}
           </SelectField>

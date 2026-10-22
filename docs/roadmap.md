@@ -1,5 +1,9 @@
 # Roadmap and current status
 
+## 2026-10-22 implementation: single hiring pipeline
+
+Draft saves and publication update the same pipeline instead of producing selectable version copies. Existing jobs/applications and legacy workflow references reconnect to one published definition. Referenced-stage protection, migration coverage and live-rule revision checks preserve application state. Pipeline version labels are removed from settings, the board, job selection and workflow stage selection. Deployment status is separate from this implementation record.
+
 ## 2026-10-16 implementation: hiring pipelines
 
 The unified workspace extension brings CV review, application-owned preparation/forms, interview tasks, offer records and activity into application detail. It adds evidence-event routing, pinned preparation actions, interview stage/round mapping, task queues, legacy adoption and compatible old links. Separate preparation/interview sidebar entries are consolidated into Hiring. GitHub Actions for the exact published commit records deployment verification. See [Hiring pipelines](hiring-pipelines.md#unified-application-workspace). First-time HR usability and user-confirmed real recipient delivery remain follow-up validation.

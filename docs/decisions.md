@@ -1,5 +1,9 @@
 # Decision log
 
+## 2026-10-22: Hiring pipelines publish in place
+
+Hiring pipelines have one draft and one stable published definition. Saving or publishing does not create copies or numbered pipeline versions. This supersedes the pipeline-version immutability decision below; workflow graphs, form/CV snapshots and recorded events remain immutable. The migration consolidates existing copies, reconnects jobs/applications without moving them and retains old IDs as private compatibility references. Existing preparation ownership stays explicit. Referenced application, interview and automation stages cannot be removed; live moves guard the pipeline revision as well as application/evidence revisions. Only the explicit Duplicate action creates a separate pipeline.
+
 ## 2026-10-22: CV workflows can move an existing application after review
 
 Telegram and other CV starting events retain their once-per-CV execution identity when a Move application step is added. The step selects a published pipeline and requires approved review before resolving one active application for the exact candidate/CV/version. It never creates an application or guesses between multiple jobs. New intake enrollment remains the default-inbox setting. The chosen application and revision are checkpointed before the existing guarded mutation, with stable receipts for recovery and current approval/evidence checks. Application-owned preparation identity and application-event routing remain unchanged.

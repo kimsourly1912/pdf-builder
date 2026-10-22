@@ -475,8 +475,7 @@ export function ApplicationDetail({
                     </summary>
                     <div className="mt-4 space-y-4">
                       <p className="text-sm">
-                        {version?.name ?? "Pipeline unavailable"} · Version{" "}
-                        {version?.version ?? "unavailable"}
+                        {version?.name ?? "Pipeline unavailable"}
                       </p>
                       {stage?.description && (
                         <p className="text-sm text-muted-foreground">

@@ -1,4 +1,5 @@
 "use client";
+import { resolvePipelineReference } from "./pipeline-references";
 import { ArchiveButton } from "@/features/archive/archive-button";
 import { DeleteButton } from "@/features/archive/delete-button";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -116,13 +117,13 @@ export function HiringBoard({
     setDraggingApp(null);
     setOverStage(null);
   }, []);
-  const versionId =
+  const versionId = resolvePipelineReference(config ?? {},
     filters.pipeline === "all"
       ? ""
       : filters.pipeline ||
         config?.pipelines.find((p) => p.isDefault)?.currentVersionId ||
         config?.versions.find((v) => !v.archived)?.id ||
-        "";
+        "");
   const version = config?.versions.find((v) => v.id === versionId),
     view =
       version && filters.closed !== "true" && filters.queue === "pipeline"
@@ -325,7 +326,7 @@ export function HiringBoard({
           </div>
           <div className="flex flex-wrap items-end gap-3">
             <div className="min-w-52 space-y-2">
-              <Label htmlFor="board-pipeline">Pipeline version</Label>
+              <Label htmlFor="board-pipeline">Pipeline</Label>
               <SelectField
                 id="board-pipeline"
                 value={filters.pipeline === "all" ? "all" : versionId}
@@ -338,7 +339,7 @@ export function HiringBoard({
                 </SelectFieldOption>
                 {config.versions.map((v) => (
                   <SelectFieldOption key={v.id} value={v.id}>
-                    {v.name} · v{v.version}
+                    {v.name}
                     {v.archived ? " · Archived" : ""}
                   </SelectFieldOption>
                 ))}
@@ -1042,7 +1043,7 @@ function AddApplication({
                   .filter((v) => !v.archived)
                   .map((v) => (
                     <SelectFieldOption key={v.id} value={v.id}>
-                      {v.name} · v{v.version}
+                      {v.name}
                     </SelectFieldOption>
                   ))}
               </SelectField>
