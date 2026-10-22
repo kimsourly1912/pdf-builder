@@ -1,6 +1,12 @@
 "use client";
 import { DeleteButton } from "@/features/archive/delete-button";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { useUnsavedChanges } from "@/features/resumes/use-unsaved-changes";
 import Link from "next/link";
 import {
@@ -91,12 +97,18 @@ export function PipelineSettings({ displayName }: { displayName: string }) {
     [notice, setNotice] = useState(""),
     [publishing, setPublishing] = useState(false),
     [activeTab, setActiveTab] = useState("pipelines"),
+    [dirtyJobs, setDirtyJobs] = useState<Record<string, boolean>>({}),
     [expandedStages, setExpandedStages] = useState<string[]>([]);
   const dirty =
     !!selected &&
     (name !== selected.name ||
       JSON.stringify(draft) !== JSON.stringify(selected.draft));
-  useUnsavedChanges(dirty);
+  useUnsavedChanges(dirty || Object.values(dirtyJobs).some(Boolean));
+  const onJobDirtyChange = useCallback((id: string, value: boolean) => {
+    setDirtyJobs((previous) =>
+      previous[id] === value ? previous : { ...previous, [id]: value },
+    );
+  }, []);
   function select(p: Pipeline) {
     if (selected?.id !== p.id)
       setExpandedStages(p.draft.stages.slice(0, 1).map((stage) => stage.id));
@@ -348,8 +360,7 @@ export function PipelineSettings({ displayName }: { displayName: string }) {
                             setDraft({
                               ...draft,
                               preparationMode: value as
-                                | "legacy"
-                                | "application",
+                                "legacy" | "application",
                             });
                           }}
                         >
@@ -379,9 +390,7 @@ export function PipelineSettings({ displayName }: { displayName: string }) {
                     </div>
                     <div className="flex flex-wrap items-center gap-2 border-t pt-3">
                       <Badge variant="outline">
-                        {selected.currentVersionId
-                          ? "Published"
-                          : "Draft"}
+                        {selected.currentVersionId ? "Published" : "Draft"}
                       </Badge>
                       <span className="text-xs text-muted-foreground">
                         {dirty ? "Unsaved changes" : "Saved"} · Active
@@ -575,9 +584,11 @@ export function PipelineSettings({ displayName }: { displayName: string }) {
                                   <p className="text-xs text-muted-foreground">
                                     {draft.stages.length === 1
                                       ? "Keep at least one stage in the pipeline."
-                                      : selected.usedStageIds?.includes(stage.id)
+                                      : selected.usedStageIds?.includes(
+                                            stage.id,
+                                          )
                                         ? "This stage is used by applications, interviews or automation. Update those references before removing it."
-                                      : "Removes this stage from the draft. Stages used by applications or automation must be kept."}
+                                        : "Removes this stage from the draft. Stages used by applications or automation must be kept."}
                                   </p>
                                 </PopoverContent>
                               </Popover>
@@ -690,8 +701,7 @@ export function PipelineSettings({ displayName }: { displayName: string }) {
                                     onValueChange={(value) =>
                                       patchStage(index, {
                                         interviewScope: value as
-                                          | "process"
-                                          | "stage",
+                                          "process" | "stage",
                                       })
                                     }
                                   >
@@ -953,7 +963,8 @@ export function PipelineSettings({ displayName }: { displayName: string }) {
               <h2 className="text-lg font-semibold">Job openings</h2>
               <p className="text-sm text-muted-foreground">
                 Each job uses one published pipeline. Publishing changes updates
-                its stages and requirements for existing and future applications.
+                its stages and requirements for existing and future
+                applications.
               </p>
               {config.jobs.map((job) => (
                 <JobEditor
@@ -961,9 +972,15 @@ export function PipelineSettings({ displayName }: { displayName: string }) {
                   job={job}
                   config={config}
                   reload={reload}
+                  onDirtyChange={onJobDirtyChange}
                 />
               ))}
-              <JobEditor key="new-job" config={config} reload={reload} />
+              <JobEditor
+                key="new-job"
+                config={config}
+                reload={reload}
+                onDirtyChange={onJobDirtyChange}
+              />
             </section>
           </TabsContent>
         </Tabs>
@@ -1075,15 +1092,25 @@ function JobEditor({
   job,
   config,
   reload,
+  onDirtyChange,
 }: {
   job?: HiringJob;
   config: HiringConfiguration;
   reload: () => Promise<unknown>;
+  onDirtyChange: (id: string, dirty: boolean) => void;
 }) {
   const [title, setTitle] = useState(job?.title ?? ""),
     [versionId, setVersionId] = useState(job?.pipelineVersionId ?? ""),
     [busy, setBusy] = useState(false),
     [error, setError] = useState("");
+  const dirty =
+    title !== (job?.title ?? "") ||
+    versionId !== (job?.pipelineVersionId ?? "");
+  const jobId = job?.id ?? "new-job";
+  useEffect(() => {
+    onDirtyChange(jobId, dirty);
+    return () => onDirtyChange(jobId, false);
+  }, [dirty, jobId, onDirtyChange]);
   async function save(archived = job?.archived ?? false) {
     setBusy(true);
     setError("");
@@ -1111,6 +1138,25 @@ function JobEditor({
   }
   return (
     <div className="space-y-3 rounded-xl border p-4">
+      {job && (
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge variant="outline">{job.archived ? "Closed" : "Open"}</Badge>
+            {dirty && (
+              <span className="text-xs text-amber-800 dark:text-amber-300">
+                Unsaved changes
+              </span>
+            )}
+          </div>
+          <Button variant="link" size="sm" asChild>
+            <Link
+              href={`/hiring?queue=pipeline&pipeline=${encodeURIComponent(job.pipelineVersionId)}&job=${encodeURIComponent(job.id)}&view=list&closed=false&page=1`}
+            >
+              View applications
+            </Link>
+          </Button>
+        </div>
+      )}
       <div className="grid items-end gap-4 sm:grid-cols-[1fr_1fr_auto]">
         <div className="space-y-2">
           <Label htmlFor={`job-title-${job?.id ?? "new"}`}>
@@ -1120,6 +1166,7 @@ function JobEditor({
           <Input
             id={`job-title-${job?.id ?? "new"}`}
             maxLength={160}
+            disabled={busy}
             value={title}
             onChange={(e) => setTitle(e.target.value)}
           />
@@ -1132,6 +1179,7 @@ function JobEditor({
             className="w-full"
             id={`job-pipeline-${job?.id ?? "new"}`}
             value={versionId}
+            disabled={busy}
             onValueChange={setVersionId}
             placeholder="Choose pipeline"
           >
@@ -1146,16 +1194,29 @@ function JobEditor({
         </div>
         <div className="flex flex-wrap gap-2">
           <Button
-            disabled={busy || !title.trim() || !versionId}
+            disabled={busy || !dirty || title.trim().length < 2 || !versionId}
             variant={job ? "outline" : "default"}
             onClick={() => void save()}
           >
-            {job ? "Save job" : "Create job"}
+            {busy ? "Saving…" : job ? "Save job" : "Create job"}
           </Button>
-          {job && (
+          {dirty && (
             <Button
               variant="ghost"
               disabled={busy}
+              onClick={() => {
+                setTitle(job?.title ?? "");
+                setVersionId(job?.pipelineVersionId ?? "");
+                setError("");
+              }}
+            >
+              Discard changes
+            </Button>
+          )}
+          {job && (
+            <Button
+              variant="ghost"
+              disabled={busy || dirty}
               onClick={() => void save(!job.archived)}
             >
               {job.archived ? "Reopen job" : "Close job"}
@@ -1163,6 +1224,12 @@ function JobEditor({
           )}
         </div>
       </div>
+      {job && dirty && (
+        <p className="text-xs text-muted-foreground">
+          Save or discard these changes before{" "}
+          {job.archived ? "reopening" : "closing"} the job.
+        </p>
+      )}
       {error && (
         <p role="alert" className="text-sm text-destructive">
           {error}

@@ -11,6 +11,11 @@ import {
   RefreshCw,
   GripVertical,
   MoveRight,
+  Search,
+  Settings2,
+  Clock3,
+  UsersRound,
+  MoreHorizontal,
 } from "lucide-react";
 import { AppShell } from "@/components/patterns/app-shell";
 import { PageHeader } from "@/components/patterns/page-header";
@@ -20,8 +25,10 @@ import {
 } from "@/components/patterns/select-field";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
   Dialog,
@@ -42,6 +49,11 @@ import {
 import { useUrlFilters } from "@/features/candidate-progress/use-url-filters";
 import { workflowApi, errorText } from "@/features/workflows/client";
 import type { HiringApplication } from "./hiring";
+import {
+  applicationStatusLabel,
+  stageAgeLabel,
+  applicationAppointmentLabel,
+} from "./presentation";
 import { startBoardAutoScroll, type DragPoint } from "./board-auto-scroll";
 import {
   useHiringConfiguration,
@@ -66,15 +78,18 @@ const defaults = {
   closed: "false",
   page: "1",
   view: "kanban",
+  sort: "recent",
 };
 const valid = (key: keyof typeof defaults, value: string) =>
   key === "view"
     ? ["kanban", "list"].includes(value)
-    : key === "closed"
-      ? ["true", "false"].includes(value)
-      : key === "page"
-        ? /^[1-9]\d{0,5}$/.test(value)
-        : value.length <= 200;
+    : key === "sort"
+      ? ["recent", "waiting", "newest"].includes(value)
+      : key === "closed"
+        ? ["true", "false"].includes(value)
+        : key === "page"
+          ? /^[1-9]\d{0,5}$/.test(value)
+          : value.length <= 200;
 export function HiringBoard({
   displayName,
   preferenceKey,
@@ -117,13 +132,15 @@ export function HiringBoard({
     setDraggingApp(null);
     setOverStage(null);
   }, []);
-  const versionId = resolvePipelineReference(config ?? {},
+  const versionId = resolvePipelineReference(
+    config ?? {},
     filters.pipeline === "all"
       ? ""
       : filters.pipeline ||
-        config?.pipelines.find((p) => p.isDefault)?.currentVersionId ||
-        config?.versions.find((v) => !v.archived)?.id ||
-        "");
+          config?.pipelines.find((p) => p.isDefault)?.currentVersionId ||
+          config?.versions.find((v) => !v.archived)?.id ||
+          "",
+  );
   const version = config?.versions.find((v) => v.id === versionId),
     view =
       version && filters.closed !== "true" && filters.queue === "pipeline"
@@ -238,18 +255,25 @@ export function HiringBoard({
       .find((v) => v.id === app.pipelineVersionId)
       ?.definition.stages.find((s) => s.id === app.stageId)?.name ??
     app.stageId;
+  const hasFilters = !!(
+    filters.search ||
+    filters.job ||
+    filters.stage ||
+    filters.candidate
+  );
+  const clearFilters = () =>
+    setFilters({ search: "", job: "", stage: "", candidate: "", page: "1" });
   return (
     <AppShell displayName={displayName} fullWidth={view === "kanban"}>
       <PageHeader
         title="Hiring pipeline"
-        description="Follow each job application from intake to hiring. Move candidates through your company's stages and review preparation and interviews together."
+        description="Keep every application moving. Review candidates, manage interviews, and track the next step in one place."
         actions={
           <>
             <Button variant="outline" asChild>
-              <Link href="/hiring/legacy">Legacy records</Link>
-            </Button>
-            <Button variant="outline" asChild>
-              <Link href="/hiring/pipelines">Manage pipelines & jobs</Link>
+              <Link href="/hiring/pipelines">
+                <Settings2 /> Manage pipelines & jobs
+              </Link>
             </Button>
             <Button
               disabled={!config?.versions.some((v) => !v.archived)}
@@ -278,7 +302,7 @@ export function HiringBoard({
         </Alert>
       )}
       {!config ? (
-        <p role="status">Loading hiring models…</p>
+        !configError && <BoardLoading label="Loading hiring pipelines…" />
       ) : !config.versions.length ? (
         <div className="space-y-4 rounded-xl border border-dashed p-8">
           <h2 className="text-lg font-semibold">
@@ -286,7 +310,6 @@ export function HiringBoard({
           </h2>
           <p className="text-sm text-muted-foreground">
             Publish a pipeline, create a job opening, then add applications.
-            Existing candidate preparation stays available.
           </p>
           <Button asChild>
             <Link href="/hiring/pipelines">Configure hiring pipeline</Link>
@@ -294,131 +317,229 @@ export function HiringBoard({
         </div>
       ) : (
         <>
-          <div className="space-y-2">
-            <Label htmlFor="hiring-work-view">Work view</Label>
-            <SelectField
-              id="hiring-work-view"
-              value={filters.queue}
-              onValueChange={(queue) =>
-                setFilters({
-                  queue,
-                  pipeline: queue === "pipeline" ? filters.pipeline : "all",
-                  stage: "",
-                  closed: "false",
-                  page: "1",
-                })
-              }
-            >
-              <SelectFieldOption value="pipeline">Pipeline</SelectFieldOption>
-              <SelectFieldOption value="attention">
-                Needs attention
-              </SelectFieldOption>
-              <SelectFieldOption value="upcoming">
-                Upcoming interviews
-              </SelectFieldOption>
-              <SelectFieldOption value="paused">
-                On hold / interviews paused
-              </SelectFieldOption>
-              <SelectFieldOption value="follow_up">
-                Interview follow-up due
-              </SelectFieldOption>
-            </SelectField>
-          </div>
-          <div className="flex flex-wrap items-end gap-3">
-            <div className="min-w-52 space-y-2">
-              <Label htmlFor="board-pipeline">Pipeline</Label>
-              <SelectField
-                id="board-pipeline"
-                value={filters.pipeline === "all" ? "all" : versionId}
-                onValueChange={(pipeline) =>
-                  setFilters({ pipeline, job: "", stage: "", page: "1" })
-                }
-              >
-                <SelectFieldOption value="all">
-                  All pipelines · list
-                </SelectFieldOption>
-                {config.versions.map((v) => (
-                  <SelectFieldOption key={v.id} value={v.id}>
-                    {v.name}
-                    {v.archived ? " · Archived" : ""}
+          <section
+            aria-label="Application filters"
+            className="space-y-4 rounded-xl border bg-card p-4 shadow-xs"
+          >
+            <div className="grid min-w-0 gap-4 sm:grid-cols-2 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.5fr)_minmax(0,0.7fr)]">
+              <div className="space-y-2">
+                <Label htmlFor="hiring-work-view">Work view</Label>
+                <SelectField
+                  id="hiring-work-view"
+                  aria-describedby="hiring-work-help"
+                  className="w-full"
+                  value={filters.queue}
+                  onValueChange={(queue) =>
+                    setFilters({
+                      queue,
+                      pipeline: queue === "pipeline" ? filters.pipeline : "all",
+                      stage: "",
+                      closed: "false",
+                      page: "1",
+                    })
+                  }
+                >
+                  <SelectFieldOption value="pipeline">
+                    Pipeline
                   </SelectFieldOption>
-                ))}
-              </SelectField>
-            </div>
-            <div className="min-w-44 space-y-2">
-              <Label htmlFor="board-job">Job opening</Label>
-              <SelectField
-                id="board-job"
-                value={filters.job}
-                placeholder="All jobs"
-                onValueChange={(job) => setFilters({ job, page: "1" })}
-              >
-                <SelectFieldOption value="">All jobs</SelectFieldOption>
-                {config.jobs
-                  .filter(
-                    (j) =>
-                      !versionId ||
-                      j.pipelineVersionId === versionId ||
-                      j.id === filters.job,
-                  )
-                  .map((j) => (
-                    <SelectFieldOption key={j.id} value={j.id}>
-                      {j.title}
-                      {j.archived ? " · Closed" : ""}
+                  <SelectFieldOption value="attention">
+                    Needs attention
+                  </SelectFieldOption>
+                  <SelectFieldOption value="upcoming">
+                    Upcoming interviews
+                  </SelectFieldOption>
+                  <SelectFieldOption value="paused">
+                    On hold / interviews paused
+                  </SelectFieldOption>
+                  <SelectFieldOption value="follow_up">
+                    Interview follow-up due
+                  </SelectFieldOption>
+                </SelectField>
+              </div>
+              <div className="min-w-0 space-y-2">
+                <Label htmlFor="board-pipeline">Pipeline</Label>
+                <SelectField
+                  id="board-pipeline"
+                  className="w-full"
+                  value={filters.pipeline === "all" ? "all" : versionId}
+                  onValueChange={(pipeline) =>
+                    setFilters({ pipeline, job: "", stage: "", page: "1" })
+                  }
+                >
+                  <SelectFieldOption value="all">
+                    All pipelines · list
+                  </SelectFieldOption>
+                  {config.versions.map((v) => (
+                    <SelectFieldOption key={v.id} value={v.id}>
+                      {v.name}
+                      {v.archived ? " · Archived" : ""}
                     </SelectFieldOption>
                   ))}
-              </SelectField>
+                </SelectField>
+              </div>
+              <div className="min-w-0 space-y-2">
+                <Label htmlFor="board-job">Job opening</Label>
+                <SelectField
+                  id="board-job"
+                  className="w-full"
+                  value={filters.job}
+                  placeholder="All jobs"
+                  onValueChange={(job) => setFilters({ job, page: "1" })}
+                >
+                  <SelectFieldOption value="">All jobs</SelectFieldOption>
+                  {config.jobs
+                    .filter(
+                      (j) =>
+                        !versionId ||
+                        j.pipelineVersionId === versionId ||
+                        j.id === filters.job,
+                    )
+                    .map((j) => (
+                      <SelectFieldOption key={j.id} value={j.id}>
+                        {j.title}
+                        {j.archived ? " · Closed" : ""}
+                      </SelectFieldOption>
+                    ))}
+                </SelectField>
+              </div>
+              <div className="min-w-0 space-y-2">
+                <Label htmlFor="board-search">Search applications</Label>
+                <div className="relative">
+                  <Search
+                    aria-hidden="true"
+                    className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground"
+                  />
+                  <Input
+                    id="board-search"
+                    className="pl-9"
+                    placeholder="Name, email or job"
+                    maxLength={200}
+                    value={filters.search}
+                    onChange={(e) =>
+                      setFilters({ search: e.target.value, page: "1" })
+                    }
+                  />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="board-status">Status</Label>
+                <SelectField
+                  id="board-status"
+                  className="w-full"
+                  value={filters.closed}
+                  onValueChange={(closed) => setFilters({ closed, page: "1" })}
+                >
+                  <SelectFieldOption value="false">Active</SelectFieldOption>
+                  <SelectFieldOption value="true">Closed</SelectFieldOption>
+                </SelectField>
+              </div>
             </div>
-            <div className="min-w-44 flex-1 space-y-2">
-              <Label htmlFor="board-search">Search applications</Label>
-              <Input
-                id="board-search"
-                placeholder="Name, email or job"
-                maxLength={200}
-                value={filters.search}
-                onChange={(e) =>
-                  setFilters({ search: e.target.value, page: "1" })
-                }
-              />
+            <p
+              id="hiring-work-help"
+              className="text-xs leading-5 text-muted-foreground"
+            >
+              {filters.queue === "attention"
+                ? "Applications needing job assignment, CV or document review, interview follow-up, or help with automation."
+                : filters.queue === "upcoming"
+                  ? "Scheduled interviews, including past appointments that still need attendance recorded."
+                  : filters.queue === "paused"
+                    ? "Applications on hold and applications whose interview process is paused."
+                    : filters.queue === "follow_up"
+                      ? "Paused interviews whose follow-up date has arrived."
+                      : "Track applications across your published hiring stages."}
+            </p>
+            <div className="flex flex-wrap items-center justify-between gap-2 border-t pt-4">
+              <div className="flex flex-wrap items-center gap-2 text-sm">
+                <span className="font-medium" role="status">
+                  {data
+                    ? `${data.total} ${data.total === 1 ? "application" : "applications"}`
+                    : error
+                      ? "Applications unavailable"
+                      : "Loading applications…"}
+                </span>
+                {filters.candidate && (
+                  <Badge variant="outline">Candidate filter active</Badge>
+                )}
+                {hasFilters && (
+                  <Button variant="ghost" size="sm" onClick={clearFilters}>
+                    Clear filters
+                  </Button>
+                )}
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="min-w-0 space-y-2">
+                  <Label htmlFor="board-sort" className="sr-only">
+                    Sort applications
+                  </Label>
+                  <SelectField
+                    id="board-sort"
+                    value={filters.sort}
+                    onValueChange={(sort) => setFilters({ sort, page: "1" })}
+                  >
+                    <SelectFieldOption value="recent">
+                      {filters.queue === "upcoming"
+                        ? "Soonest interview"
+                        : "Recent activity"}
+                    </SelectFieldOption>
+                    <SelectFieldOption value="waiting">
+                      Longest in stage
+                    </SelectFieldOption>
+                    <SelectFieldOption value="newest">
+                      Newest application
+                    </SelectFieldOption>
+                  </SelectField>
+                </div>
+                <div
+                  role="group"
+                  aria-label="Application view"
+                  className="flex gap-2 rounded-lg bg-muted p-1"
+                >
+                  <Button
+                    variant="ghost"
+                    className={
+                      view === "kanban"
+                        ? "bg-background shadow-xs hover:bg-background"
+                        : "text-muted-foreground"
+                    }
+                    size="sm"
+                    aria-pressed={view === "kanban"}
+                    disabled={
+                      !version ||
+                      filters.closed === "true" ||
+                      filters.queue !== "pipeline"
+                    }
+                    onClick={() => setFilters({ view: "kanban" })}
+                  >
+                    <Columns3 />
+                    Board
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    className={
+                      view === "list"
+                        ? "bg-background shadow-xs hover:bg-background"
+                        : "text-muted-foreground"
+                    }
+                    size="sm"
+                    aria-pressed={view === "list"}
+                    onClick={() => setFilters({ view: "list" })}
+                  >
+                    <List />
+                    List
+                  </Button>
+                </div>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  aria-label="Refresh applications"
+                  disabled={loading}
+                  onClick={() => void reload()}
+                >
+                  <RefreshCw className={loading ? "animate-spin" : ""} />
+                </Button>
+              </div>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="board-status">Status</Label>
-              <SelectField
-                id="board-status"
-                value={filters.closed}
-                onValueChange={(closed) => setFilters({ closed, page: "1" })}
-              >
-                <SelectFieldOption value="false">Active</SelectFieldOption>
-                <SelectFieldOption value="true">Closed</SelectFieldOption>
-              </SelectField>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <Button
-                variant={view === "kanban" ? "secondary" : "outline"}
-                disabled={!version || filters.closed === "true"}
-                onClick={() => setFilters({ view: "kanban" })}
-              >
-                <Columns3 />
-                Board
-              </Button>
-              <Button
-                variant={view === "list" ? "secondary" : "outline"}
-                onClick={() => setFilters({ view: "list" })}
-              >
-                <List />
-                List
-              </Button>
-              <Button
-                variant="outline"
-                size="icon"
-                aria-label="Refresh applications"
-                disabled={loading}
-                onClick={() => void reload()}
-              >
-                <RefreshCw className={loading ? "animate-spin" : ""} />
-              </Button>
-            </div>
-          </div>
+          </section>
           {filters.stage && (
             <div className="flex flex-wrap items-center gap-2 text-sm">
               <span>
@@ -436,15 +557,15 @@ export function HiringBoard({
             </div>
           )}
           {!data ? (
-            <p role="status">Loading applications…</p>
+            !error && <BoardLoading label="Loading applications…" />
           ) : view === "kanban" && version ? (
             <div className="min-w-0 space-y-2">
               <p
                 id="hiring-drag-help"
                 className="text-xs text-muted-foreground"
               >
-                Drag a card to another stage, or use Move to. Hold near the
-                board edges to scroll. Dropping opens a review before moving.
+                Drag cards between stages or choose Move to. Hold near an edge
+                to scroll; review each move before confirming.
               </p>
               <p role="status" aria-live="polite" className="sr-only">
                 {draggingId
@@ -459,7 +580,8 @@ export function HiringBoard({
                 ref={board}
                 aria-label="Hiring stages"
                 aria-describedby="hiring-drag-help"
-                className="flex min-h-80 gap-4 overflow-x-auto scroll-auto p-1 pb-4"
+                aria-busy={loading}
+                className="flex min-h-[26rem] gap-4 overflow-x-auto scroll-auto p-1 pb-4"
               >
                 {version.definition.stages.map((stage) => {
                   const items = data.items.filter(
@@ -476,7 +598,7 @@ export function HiringBoard({
                       data-hiring-stage={stage.id}
                       data-drag-over={isOver || undefined}
                       aria-label={`${stage.name} stage`}
-                      className={`w-80 shrink-0 space-y-4 rounded-xl border border-t-4 p-4 transition-[background-color,box-shadow] duration-200 motion-reduce:transition-none ${stageTone[stage.color]} ${isOver ? "bg-primary/10 ring-2 ring-primary shadow-md" : "bg-muted/30"}`}
+                      className={`w-72 min-w-72 flex-1 space-y-4 rounded-xl border border-t-4 p-3 transition-[background-color,box-shadow] duration-200 motion-reduce:transition-none ${stageTone[stage.color]} ${isOver ? "bg-primary/10 ring-2 ring-primary shadow-md" : "bg-muted/30"}`}
                       onDragOver={(e) => {
                         if (drag.current?.pipelineVersionId === version.id) {
                           e.preventDefault();
@@ -497,9 +619,14 @@ export function HiringBoard({
                           setMove({ app, target: stage.id });
                       }}
                     >
-                      <div className="flex items-center justify-between gap-2">
-                        <h2 className="font-semibold">{stage.name}</h2>
-                        <Badge variant="secondary">
+                      <div className="flex items-center justify-between gap-2 px-1 py-1">
+                        <h2 className="min-w-0 break-words text-sm font-semibold">
+                          {stage.name}
+                        </h2>
+                        <Badge
+                          variant="secondary"
+                          className="shrink-0 tabular-nums"
+                        >
                           {data.stats[stage.id] ?? 0}
                         </Badge>
                       </div>
@@ -529,7 +656,7 @@ export function HiringBoard({
                             if (
                               app.hold ||
                               (event.target as HTMLElement).closest(
-                                "a, button, input, textarea, select",
+                                "a, button, input, textarea, select, summary",
                               )
                             ) {
                               event.preventDefault();
@@ -548,26 +675,43 @@ export function HiringBoard({
                           onDragEnd={endDrag}
                           className={`space-y-3 rounded-lg border bg-card p-4 shadow-xs transition-[opacity,box-shadow,background-color] duration-200 motion-reduce:transition-none ${!app.hold ? "cursor-grab active:cursor-grabbing" : ""} ${draggingId === app.id ? "opacity-40 ring-2 ring-primary/40" : ""} ${recentMove?.id === app.id && recentMove.stage === app.stageId ? "bg-primary/10 ring-2 ring-primary motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-left-2 motion-safe:duration-300" : ""}`}
                         >
-                          <div className="flex items-start gap-2">
+                          <div className="flex items-start gap-3">
+                            <span
+                              aria-hidden="true"
+                              className="flex size-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary"
+                            >
+                              {(app.name || "Unnamed candidate")
+                                .trim()
+                                .split(/\s+/)
+                                .slice(0, 2)
+                                .map((part) => part[0])
+                                .join("")
+                                .toUpperCase()}
+                            </span>
+                            <div className="min-w-0 flex-1 space-y-1">
+                              <Link
+                                href={`/hiring/${app.id}`}
+                                className="block break-words text-sm font-semibold hover:underline"
+                              >
+                                {app.name || "Unnamed candidate"}
+                              </Link>
+                              {app.email && (
+                                <p className="break-words text-xs text-muted-foreground">
+                                  {app.email}
+                                </p>
+                              )}
+                            </div>
                             {!app.hold && (
                               <GripVertical
                                 aria-hidden="true"
                                 className="pointer-events-none mt-0.5 size-4 shrink-0 text-muted-foreground"
                               />
                             )}
-                            <Link
-                              href={`/hiring/${app.id}`}
-                              className="block font-semibold hover:underline"
-                            >
-                              {app.name || "Unnamed candidate"}
-                            </Link>
                           </div>
-                          <p className="break-words text-xs text-muted-foreground">
-                            {app.email}
-                            <br />
+                          <p className="break-words text-xs font-medium text-muted-foreground">
                             {app.jobTitle}
                           </p>
-                          <div className="flex flex-wrap gap-2">
+                          <div className="flex flex-wrap gap-2 empty:hidden">
                             {app.hold && (
                               <Badge variant="outline">On hold</Badge>
                             )}
@@ -587,12 +731,14 @@ export function HiringBoard({
                                 {app.documentCounts.required} documents accepted
                               </Badge>
                             )}
-                          <p className="text-xs text-muted-foreground">
-                            {app.stageEnteredAt
-                              ? `${Math.max(0, Math.floor((Date.now() - Date.parse(app.stageEnteredAt)) / 86400000))} days in stage`
-                              : "Stage start unknown"}
+                          <p className="flex items-center gap-2 text-xs text-muted-foreground">
+                            <Clock3
+                              aria-hidden="true"
+                              className="size-3.5 shrink-0"
+                            />
+                            {stageAgeLabel(app.stageEnteredAt)}
                           </p>
-                          <div className="flex flex-wrap gap-2">
+                          <div className="flex flex-wrap items-center gap-2 border-t pt-3">
                             <Button variant="outline" size="sm" asChild>
                               <Link
                                 href={`/hiring/${app.id}?tab=${app.nextTask?.tab ?? "overview"}`}
@@ -616,9 +762,17 @@ export function HiringBoard({
                         </article>
                       ))}
                       {!items.length && (
-                        <p className="py-6 text-center text-xs text-muted-foreground">
-                          No applications on this page.
-                        </p>
+                        <div className="flex min-h-36 flex-col items-center justify-center gap-2 rounded-lg border border-dashed p-4 text-center text-muted-foreground">
+                          <UsersRound
+                            aria-hidden="true"
+                            className="size-5 opacity-60"
+                          />
+                          <p className="text-xs">
+                            {(data.stats[stage.id] ?? 0) > 0
+                              ? "No applications on this page"
+                              : "No applications yet"}
+                          </p>
+                        </div>
                       )}
                       {(data.stats[stage.id] ?? 0) > items.length && (
                         <Button
@@ -637,22 +791,31 @@ export function HiringBoard({
               </div>
             </div>
           ) : (
-            <div className="overflow-x-auto rounded-xl border">
+            <div
+              aria-busy={loading}
+              className="overflow-x-auto rounded-xl border"
+            >
               <Table>
                 <TableHeader>
                   <TableRow>
                     <TableHead>Candidate</TableHead>
                     <TableHead>Job</TableHead>
                     <TableHead>Stage</TableHead>
+                    <TableHead>Time in stage</TableHead>
                     <TableHead>Status</TableHead>
-                    <TableHead>Application</TableHead>
+                    <TableHead>Next action</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {data.items.map((app) => (
                     <TableRow key={app.id}>
                       <TableCell className="font-medium">
-                        {app.name}
+                        <Link
+                          href={`/hiring/${app.id}`}
+                          className="hover:underline"
+                        >
+                          {app.name || "Unnamed candidate"}
+                        </Link>
                         <p className="text-xs text-muted-foreground">
                           {app.email}
                         </p>
@@ -668,18 +831,24 @@ export function HiringBoard({
                             </p>
                           )}
                       </TableCell>
+                      <TableCell className="text-xs text-muted-foreground">
+                        {stageAgeLabel(app.stageEnteredAt)}
+                      </TableCell>
                       <TableCell>
-                        {app.outcome ?? (app.hold ? "On hold" : "Active")}
+                        <Badge variant="outline">
+                          {applicationStatusLabel(app)}
+                        </Badge>
+                        {app.hold && (
+                          <p className="mt-1 max-w-64 text-xs text-muted-foreground">
+                            {app.hold}
+                          </p>
+                        )}
                         {app.nextAppointment && (
                           <p className="text-xs text-muted-foreground">
-                            {new Date(app.nextAppointment).toLocaleString(
-                              undefined,
-                              {
-                                timeZone:
-                                  app.nextAppointmentTimezone ?? undefined,
-                              },
-                            )}{" "}
-                            ({app.nextAppointmentTimezone ?? "local time"})
+                            {applicationAppointmentLabel(
+                              app.nextAppointment,
+                              app.nextAppointmentTimezone,
+                            )}
                           </p>
                         )}
                       </TableCell>
@@ -692,6 +861,11 @@ export function HiringBoard({
                               {app.nextTask?.label ?? "Open"}
                             </Link>
                           </Button>
+                          {app.nextTask?.description && (
+                            <p className="max-w-sm text-xs leading-5 text-muted-foreground">
+                              {app.nextTask.description}
+                            </p>
+                          )}
                           <ApplicationRemoval
                             app={app}
                             onChanged={() => void reload()}
@@ -702,8 +876,23 @@ export function HiringBoard({
                   ))}
                   {!data.items.length && (
                     <TableRow>
-                      <TableCell colSpan={5} className="py-8 text-center">
-                        No applications match these filters.
+                      <TableCell colSpan={6} className="py-8 text-center">
+                        <p className="font-medium">
+                          No applications match this view
+                        </p>
+                        <p className="mt-1 text-sm text-muted-foreground">
+                          Try another work view or adjust your filters.
+                        </p>
+                        {hasFilters && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="mt-4"
+                            onClick={clearFilters}
+                          >
+                            Clear filters
+                          </Button>
+                        )}
                       </TableCell>
                     </TableRow>
                   )}
@@ -712,36 +901,42 @@ export function HiringBoard({
             </div>
           )}
           {data && (
-            <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-t pt-4 text-xs text-muted-foreground">
               <span>
-                {data.total} applications · Page {data.page} · Up to 50 per
-                page. Column counts cover all matches.
+                {data.total > 0
+                  ? `Showing ${(data.page - 1) * data.pageSize + 1}–${Math.min(data.page * data.pageSize, data.total)} of ${data.total}`
+                  : "No applications"}
+                {view === "kanban" && " · Stage counts include all matches"}
               </span>
-              <div className="flex gap-2">
-                <Button
-                  variant="outline"
-                  disabled={data.page <= 1 || loading}
-                  onClick={() => setFilters({ page: String(data.page - 1) })}
-                >
-                  Previous
-                </Button>
-                <Button
-                  variant="outline"
-                  disabled={data.page * 50 >= data.total || loading}
-                  onClick={() => setFilters({ page: String(data.page + 1) })}
-                >
-                  Next
-                </Button>
-              </div>
+              {data.total > data.pageSize && (
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    disabled={data.page <= 1 || loading}
+                    onClick={() => setFilters({ page: String(data.page - 1) })}
+                  >
+                    Previous
+                  </Button>
+                  <Button
+                    variant="outline"
+                    disabled={
+                      data.page * data.pageSize >= data.total || loading
+                    }
+                    onClick={() => setFilters({ page: String(data.page + 1) })}
+                  >
+                    Next
+                  </Button>
+                </div>
+              )}
             </div>
           )}
-          <LegacyImport onDone={reload} />
         </>
       )}
       {adding && config && (
         <AddApplication
           config={config}
           versionId={versionId}
+          initialJob={filters.job}
           close={() => setAdding(false)}
           onDone={reload}
         />
@@ -770,22 +965,45 @@ function ApplicationRemoval({
 }) {
   const label = `${app.name || "Unnamed candidate"} — ${app.jobTitle}`;
   return (
-    <>
-      <ArchiveButton
-        type="hiring_application"
-        id={app.id}
-        label={label}
-        onArchived={onChanged}
-      />
-      <DeleteButton
-        type="hiring_application"
-        id={app.id}
-        label={label}
-        onDeleted={onChanged}
-      />
-    </>
+    <details className="group w-full">
+      <summary
+        className="flex min-h-8 w-fit cursor-pointer list-none items-center gap-2 rounded-md px-2 text-xs font-medium text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden"
+        aria-label={`More actions for ${app.name || "Unnamed candidate"}`}
+      >
+        <MoreHorizontal aria-hidden="true" className="size-4" /> More actions
+      </summary>
+      <div className="mt-2 flex flex-wrap gap-2 rounded-lg bg-muted/50 p-2">
+        <ArchiveButton
+          type="hiring_application"
+          id={app.id}
+          label={label}
+          onArchived={onChanged}
+        />
+        <DeleteButton
+          type="hiring_application"
+          id={app.id}
+          label={label}
+          onDeleted={onChanged}
+        />
+      </div>
+    </details>
   );
 }
+
+function BoardLoading({ label }: { label: string }) {
+  return (
+    <div role="status" className="space-y-4">
+      <span className="sr-only">{label}</span>
+      <Skeleton className="h-24 w-full rounded-xl" />
+      <div aria-hidden="true" className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        {Array.from({ length: 3 }, (_, i) => (
+          <Skeleton key={i} className="h-72 rounded-xl" />
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export function MoveApplication({
   app,
   initialTarget,
@@ -806,6 +1024,13 @@ export function MoveApplication({
   const stages =
     config.versions.find((v) => v.id === app.pipelineVersionId)?.definition
       .stages ?? [];
+  const currentStage = stages.find((stage) => stage.id === app.stageId);
+  const destination = stages.find((stage) => stage.id === target);
+  const backward =
+    !!destination &&
+    stages.indexOf(destination) <
+      stages.findIndex((stage) => stage.id === app.stageId);
+  const reasonMissing = backward && reason.trim().length < 3;
   async function save() {
     setBusy(true);
     setError("");
@@ -835,7 +1060,7 @@ export function MoveApplication({
         if (!open && !busy) close();
       }}
     >
-      <DialogContent>
+      <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Move {app.name}</DialogTitle>
           <DialogDescription>
@@ -844,10 +1069,24 @@ export function MoveApplication({
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4">
+          <p className="rounded-lg bg-muted p-3 text-sm">
+            <span className="text-muted-foreground">Current stage: </span>
+            {currentStage?.name ?? "Stage unavailable"}
+            {destination && (
+              <>
+                <span className="mx-2" aria-hidden="true">
+                  →
+                </span>
+                {destination.name}
+              </>
+            )}
+          </p>
           <div className="space-y-2">
             <Label htmlFor="move-stage">Destination</Label>
             <SelectField
               id="move-stage"
+              className="w-full"
+              disabled={busy}
               value={target}
               onValueChange={setTarget}
               placeholder="Choose stage"
@@ -863,14 +1102,22 @@ export function MoveApplication({
           </div>
           <div className="space-y-2">
             <Label htmlFor="move-reason">
-              Reason · required for a backward move
+              {backward ? "Reason for moving back" : "Reason (optional)"}
             </Label>
-            <Input
+            <Textarea
               id="move-reason"
+              required={backward}
+              aria-describedby="move-reason-help"
+              disabled={busy}
               maxLength={1000}
               value={reason}
               onChange={(e) => setReason(e.target.value)}
             />
+            <p id="move-reason-help" className="text-xs text-muted-foreground">
+              {backward
+                ? "This moves the application to an earlier stage. Enter at least 3 characters to explain why."
+                : "Add context for the application's activity history."}
+            </p>
           </div>
           {error && (
             <p role="alert" className="text-sm text-destructive">
@@ -882,7 +1129,10 @@ export function MoveApplication({
           <Button variant="outline" disabled={busy} onClick={close}>
             Cancel
           </Button>
-          <Button disabled={busy || !target} onClick={() => void save()}>
+          <Button
+            disabled={busy || !destination || reasonMissing}
+            onClick={() => void save()}
+          >
             {busy ? "Moving…" : "Move application"}
           </Button>
         </DialogFooter>
@@ -893,11 +1143,13 @@ export function MoveApplication({
 function AddApplication({
   config,
   versionId,
+  initialJob,
   close,
   onDone,
 }: {
   config: HiringConfiguration;
   versionId: string;
+  initialJob: string;
   close: () => void;
   onDone: () => Promise<unknown>;
 }) {
@@ -912,11 +1164,33 @@ function AddApplication({
       }[]
     >([]),
     [cvId, setCvId] = useState(""),
-    [job, setJob] = useState(""),
-    [pipeline, setPipeline] = useState(versionId),
+    [job, setJob] = useState(
+      () =>
+        config.jobs.find(
+          (job) =>
+            job.id === initialJob &&
+            !job.archived &&
+            config.versions.some(
+              (version) =>
+                version.id === job.pipelineVersionId && !version.archived,
+            ),
+        )?.id ?? "",
+    ),
+    [pipeline, setPipeline] = useState(
+      () =>
+        config.versions.find(
+          (version) => version.id === versionId && !version.archived,
+        )?.id ??
+        config.versions.find((version) => !version.archived)?.id ??
+        "",
+    ),
+    [loadedSearch, setLoadedSearch] = useState<string | null>(null),
+    [searchAttempt, setSearchAttempt] = useState(0),
     [busy, setBusy] = useState(false),
     [error, setError] = useState("");
   const requestId = useRef(crypto.randomUUID());
+  const searching = loadedSearch !== search;
+  const selectedCv = cvs.find((cv) => cv.resumeId === cvId);
   useEffect(() => {
     let alive = true;
     const timer = setTimeout(() => {
@@ -924,20 +1198,28 @@ function AddApplication({
         `/api/hiring/candidates?search=${encodeURIComponent(search)}`,
       )
         .then((data) => {
-          if (alive) setCvs(data.items);
+          if (alive) {
+            setCvs(data.items);
+            setError("");
+            setLoadedSearch(search);
+          }
         })
         .catch((e) => {
-          if (alive) setError(errorText(e));
+          if (alive) {
+            setCvs([]);
+            setError(errorText(e));
+            setLoadedSearch(search);
+          }
         });
     }, 250);
     return () => {
       alive = false;
       clearTimeout(timer);
     };
-  }, [search]);
+  }, [search, searchAttempt]);
   async function save() {
-    const cv = cvs.find((c) => c.resumeId === cvId);
-    if (!cv) return;
+    const cv = selectedCv;
+    if (!cv || searching || busy) return;
     setBusy(true);
     setError("");
     try {
@@ -966,12 +1248,13 @@ function AddApplication({
         if (!open && !busy) close();
       }}
     >
-      <DialogContent>
+      <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Add job application</DialogTitle>
           <DialogDescription>
             Choose the candidate&apos;s CV and job. Applying to another job
-            creates an independent application.
+            creates an independent application. Adding it may start the
+            pipeline&apos;s configured automation.
           </DialogDescription>
         </DialogHeader>
         <fieldset disabled={busy} className="space-y-4">
@@ -980,10 +1263,14 @@ function AddApplication({
             <Input
               id="application-search"
               maxLength={200}
+              placeholder="Name, email or CV filename"
               value={search}
               onChange={(e) => {
                 setSearch(e.target.value);
                 setCvId("");
+                setCvs([]);
+                setLoadedSearch(null);
+                setError("");
                 requestId.current = crypto.randomUUID();
               }}
             />
@@ -992,6 +1279,9 @@ function AddApplication({
             <Label htmlFor="application-cv">Candidate and CV</Label>
             <SelectField
               id="application-cv"
+              className="w-full"
+              disabled={busy || searching || !cvs.length}
+              aria-describedby="application-cv-help"
               value={cvId}
               onValueChange={(v) => {
                 setCvId(v);
@@ -1005,11 +1295,25 @@ function AddApplication({
                 </SelectFieldOption>
               ))}
             </SelectField>
+            <p
+              id="application-cv-help"
+              role="status"
+              className="text-xs leading-5 text-muted-foreground"
+            >
+              {searching
+                ? "Searching candidates…"
+                : !cvs.length
+                  ? error
+                    ? "Candidate search failed. Try again below."
+                    : "No candidates found. Try another name, email or CV filename."
+                  : `${cvs.length === 100 ? "First 100" : cvs.length} available CV${cvs.length === 1 ? "" : "s"}. ${cvs.length === 100 ? "Refine your search to find more candidates." : "Choose the CV for this application."}`}
+            </p>
           </div>
           <div className="space-y-2">
             <Label htmlFor="application-job">Job opening</Label>
             <SelectField
               id="application-job"
+              className="w-full"
               value={job}
               placeholder="Assign a job later"
               onValueChange={(v) => {
@@ -1019,7 +1323,14 @@ function AddApplication({
             >
               <SelectFieldOption value="">Assign a job later</SelectFieldOption>
               {config.jobs
-                .filter((j) => !j.archived)
+                .filter(
+                  (j) =>
+                    !j.archived &&
+                    config.versions.some(
+                      (version) =>
+                        version.id === j.pipelineVersionId && !version.archived,
+                    ),
+                )
                 .map((j) => (
                   <SelectFieldOption key={j.id} value={j.id}>
                     {j.title}
@@ -1032,6 +1343,7 @@ function AddApplication({
               <Label htmlFor="application-pipeline">Pipeline</Label>
               <SelectField
                 id="application-pipeline"
+                className="w-full"
                 value={pipeline}
                 onValueChange={(v) => {
                   setPipeline(v);
@@ -1049,10 +1361,45 @@ function AddApplication({
               </SelectField>
             </div>
           )}
+          {selectedCv && (
+            <div className="space-y-1 rounded-lg bg-muted p-3 text-sm">
+              <p className="font-medium break-words">
+                {selectedCv.name || "Unnamed candidate"}
+              </p>
+              <p className="break-words text-xs text-muted-foreground">
+                {selectedCv.email} · {selectedCv.fileName}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                {config.jobs.find((item) => item.id === job)?.title ??
+                  "Job will be assigned later"}{" "}
+                ·{" "}
+                {
+                  config.versions.find(
+                    (item) =>
+                      item.id ===
+                      (config.jobs.find((item) => item.id === job)
+                        ?.pipelineVersionId ?? pipeline),
+                  )?.name
+                }
+              </p>
+            </div>
+          )}
           {error && (
-            <p role="alert" className="text-sm text-destructive">
+            <div role="alert" className="text-sm text-destructive">
               {error}
-            </p>
+              {!selectedCv && (
+                <Button
+                  variant="link"
+                  onClick={() => {
+                    setLoadedSearch(null);
+                    setError("");
+                    setSearchAttempt((attempt) => attempt + 1);
+                  }}
+                >
+                  Retry candidate search
+                </Button>
+              )}
+            </div>
           )}
         </fieldset>
         <DialogFooter>
@@ -1060,7 +1407,7 @@ function AddApplication({
             Cancel
           </Button>
           <Button
-            disabled={busy || !cvId || (!job && !pipeline)}
+            disabled={busy || searching || !selectedCv || (!job && !pipeline)}
             onClick={() => void save()}
           >
             {busy ? "Adding…" : "Add application"}
@@ -1068,102 +1415,5 @@ function AddApplication({
         </DialogFooter>
       </DialogContent>
     </Dialog>
-  );
-}
-function LegacyImport({ onDone }: { onDone: () => Promise<unknown> }) {
-  const [preview, setPreview] = useState<{
-      items: {
-        candidateId: string;
-        name: string;
-        stage: string;
-        expectedRevision: string;
-      }[];
-      total: number;
-    } | null>(null),
-    [busy, setBusy] = useState(false),
-    [error, setError] = useState(""),
-    [notice, setNotice] = useState("");
-  async function load() {
-    setBusy(true);
-    setError("");
-    try {
-      setPreview(await workflowApi("/api/hiring/import"));
-    } catch (e) {
-      setError(errorText(e));
-    } finally {
-      setBusy(false);
-    }
-  }
-  async function apply() {
-    if (!preview) return;
-    setBusy(true);
-    setError("");
-    try {
-      const result = await workflowApi<{ imported: number }>(
-        "/api/hiring/import",
-        {
-          method: "POST",
-          body: JSON.stringify({ items: preview.items.slice(0, 20) }),
-        },
-      );
-      setNotice(
-        `${result.imported} applications imported. Existing evidence was retained; no automation was started.`,
-      );
-      setPreview(await workflowApi("/api/hiring/import"));
-      await onDone();
-    } catch (e) {
-      setError(errorText(e));
-    } finally {
-      setBusy(false);
-    }
-  }
-  return (
-    <details className="rounded-xl border p-4">
-      <summary className="cursor-pointer text-sm font-medium">
-        Bring existing candidate preparation onto the hiring board
-      </summary>
-      <div className="mt-4 space-y-4">
-        <p className="text-sm text-muted-foreground">
-          Preview a legacy pipeline that retains the current preparation stages
-          and interview links. Importing does not send invitations or start
-          workflows.
-        </p>
-        <Button variant="outline" disabled={busy} onClick={() => void load()}>
-          Preview existing candidates
-        </Button>
-        {preview && (
-          <>
-            <ul className="max-h-52 space-y-2 overflow-y-auto text-sm">
-              {preview.items.slice(0, 20).map((p) => (
-                <li key={p.candidateId}>
-                  {p.name} · {p.stage}
-                </li>
-              ))}
-            </ul>
-            <p className="text-sm">
-              {preview.items.length
-                ? `Showing up to 20 pending imports from ${preview.total} candidate preparations.`
-                : "No pending active candidates to import."}
-            </p>
-            <Button
-              disabled={busy || !preview.items.length}
-              onClick={() => void apply()}
-            >
-              Import displayed candidates
-            </Button>
-          </>
-        )}
-        {error && (
-          <p role="alert" className="text-sm text-destructive">
-            {error}
-          </p>
-        )}
-        {notice && (
-          <p role="status" className="text-sm">
-            {notice}
-          </p>
-        )}
-      </div>
-    </details>
   );
 }

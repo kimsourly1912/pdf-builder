@@ -48,6 +48,7 @@ import {
 } from "./hiring";
 import { useHiringConfiguration } from "./client";
 import { MoveApplication } from "./hiring-board";
+import { applicationStatusLabel, stageAgeLabel } from "./presentation";
 type Detail = {
   application: HiringApplication;
   facts: Record<keyof typeof REQUIREMENTS, boolean> & {
@@ -106,10 +107,15 @@ export function ApplicationDetail({
     dirty.current = false;
     router.push(`/hiring/${id}?tab=${value}`, { scroll: false });
   }
-  const { config, error: configError } = useHiringConfiguration(),
+  const {
+      config,
+      error: configError,
+      reload: reloadConfig,
+    } = useHiringConfiguration(),
     [data, setData] = useState<Detail | null>(null),
     [error, setError] = useState(""),
     [busy, setBusy] = useState(false),
+    [refreshing, setRefreshing] = useState(false),
     [moving, setMoving] = useState(false),
     [managingRecords, setManagingRecords] = useState(false),
     [action, setAction] = useState<Action | null>(null),
@@ -123,22 +129,41 @@ export function ApplicationDetail({
   const [cvs, setCvs] = useState<{ resumeId: string; fileName: string }[]>([]),
     [resumeId, setResumeId] = useState("");
   const requestId = useRef(crypto.randomUUID());
+  const loadNumber = useRef(0);
   const reload = useCallback(async () => {
+    const request = ++loadNumber.current;
     try {
-      setData(await workflowApi<Detail>(`/api/hiring/applications/${id}`));
-      setError("");
+      const result = await workflowApi<Detail>(
+        `/api/hiring/applications/${id}`,
+      );
+      if (request === loadNumber.current) {
+        setData(result);
+        setError("");
+      }
     } catch (e) {
-      setError(errorText(e));
+      if (request === loadNumber.current) setError(errorText(e));
     }
   }, [id]);
+  const cancelRequests = useCallback(() => {
+    loadNumber.current++;
+  }, []);
+  async function refresh() {
+    setRefreshing(true);
+    try {
+      await Promise.all([reload(), reloadConfig()]);
+    } finally {
+      setRefreshing(false);
+    }
+  }
   useEffect(() => {
     const timer = setTimeout(() => void reload(), 0),
       interval = setInterval(() => void reload(), 15000);
     return () => {
       clearTimeout(timer);
       clearInterval(interval);
+      cancelRequests();
     };
-  }, [reload]);
+  }, [reload, cancelRequests]);
   const app = data?.application,
     version = config?.versions.find((v) => v.id === app?.pipelineVersionId),
     stage = version?.definition.stages.find((s) => s.id === app?.stageId),
@@ -262,17 +287,26 @@ export function ApplicationDetail({
             </Button>
             <Button
               variant="outline"
-              disabled={busy}
-              onClick={() => void reload()}
+              disabled={busy || refreshing}
+              onClick={() => void refresh()}
             >
-              Refresh
+              {refreshing ? "Refreshing…" : "Refresh"}
             </Button>
           </>
         }
       />
       {(error || configError) && (
         <Alert variant="destructive">
-          <AlertDescription>{error || configError}</AlertDescription>
+          <AlertDescription>
+            {error || configError}{" "}
+            <Button
+              variant="link"
+              disabled={refreshing}
+              onClick={() => void refresh()}
+            >
+              Retry loading
+            </Button>
+          </AlertDescription>
         </Alert>
       )}
       {!app || !config || !data ? (
@@ -296,17 +330,10 @@ export function ApplicationDetail({
                   Current stage
                 </span>
                 <Badge>{stage?.name ?? "Stage unavailable"}</Badge>
-                <Badge variant="outline">
-                  {app.outcome === "rejected"
-                    ? "Not selected"
-                    : app.outcome === "hired"
-                      ? "Hired"
-                      : app.outcome === "withdrawn"
-                        ? "Withdrawn"
-                        : app.hold
-                          ? "On hold"
-                          : "Active"}
-                </Badge>
+                <Badge variant="outline">{applicationStatusLabel(app)}</Badge>
+                <span className="text-xs text-muted-foreground">
+                  {stageAgeLabel(app.stageEnteredAt)}
+                </span>
                 {app.offer !== "none" && (
                   <Badge variant="secondary">Offer {app.offer}</Badge>
                 )}

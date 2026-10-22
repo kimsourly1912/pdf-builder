@@ -43,6 +43,7 @@ const workflow = await vite.ssrLoadModule(
 );
 const runner = await vite.ssrLoadModule("/features/workflows/runner.server.ts");
 const model = await vite.ssrLoadModule("/features/hiring/hiring.ts");
+const presentation = await vite.ssrLoadModule("/features/hiring/presentation.ts");
 const graphs = await vite.ssrLoadModule("/features/workflows/workflow.ts");
 const interviews = await vite.ssrLoadModule(
   "/features/hiring/interview.server.ts",
@@ -1903,6 +1904,126 @@ test("legacy review discovers archived and CV-less records; adoption preserves h
     (await legacyWorkspace.adoptLegacy(f.owner, { candidateId: f.candidateId }))
       .applicationId,
     result.applicationId,
+  );
+});
+
+test("application sorting happens before pagination and puts unknown stage starts last", async (t) => {
+  const f = fixture(t),
+    p = await pipeline(f);
+  const apps = [];
+  for (let i = 0; i < 53; i++) {
+    const app = await application(f, p);
+    apps.push(app);
+    f.db
+      .prepare(
+        "UPDATE hiring_applications SET stage_entered_at=?,created_at=? WHERE id=?",
+      )
+      .run(
+        "2026-06-01T00:00:00.000Z",
+        new Date(Date.UTC(2024, 0, i + 1)).toISOString(),
+        app.id,
+      );
+  }
+  f.db
+    .prepare("UPDATE hiring_applications SET stage_entered_at=? WHERE id=?")
+    .run("2025-01-01T00:00:00.000Z", apps[0].id);
+  f.db
+    .prepare("UPDATE hiring_applications SET stage_entered_at=? WHERE id=?")
+    .run("2026-01-01T00:00:00.000Z", apps[1].id);
+  f.db
+    .prepare("UPDATE hiring_applications SET stage_entered_at=NULL WHERE id=?")
+    .run(apps[2].id);
+  f.db
+    .prepare(
+      "UPDATE hiring_applications SET stage_entered_at='unknown' WHERE id=?",
+    )
+    .run(apps[3].id);
+  const first = await service.listApplications(
+    f.owner,
+    new URLSearchParams({ sort: "waiting" }),
+  );
+  const second = await service.listApplications(
+    f.owner,
+    new URLSearchParams({ sort: "waiting", page: "2" }),
+  );
+  assert.equal(first.total, 53);
+  assert.equal(first.items.length, 50);
+  assert.deepEqual(
+    first.items.slice(0, 2).map((app) => app.id),
+    [apps[0].id, apps[1].id],
+  );
+  assert.deepEqual(
+    new Set(second.items.slice(-2).map((app) => app.id)),
+    new Set([apps[2].id, apps[3].id]),
+  );
+  assert.equal(
+    new Set([...first.items, ...second.items].map((app) => app.id)).size,
+    53,
+  );
+  const newest = await service.listApplications(
+    f.owner,
+    new URLSearchParams({ sort: "newest" }),
+  );
+  assert.equal(newest.items[0].id, apps[52].id);
+  const fallback = await service.listApplications(
+    f.owner,
+    new URLSearchParams({ sort: "a.id; DROP TABLE hiring_applications" }),
+  );
+  const recent = await service.listApplications(f.owner, new URLSearchParams());
+  assert.deepEqual(
+    fallback.items.map((app) => app.id),
+    recent.items.map((app) => app.id),
+  );
+});
+
+test("application labels preserve outcomes and handle unknown stage dates and appointment timezones", () => {
+  assert.equal(
+    presentation.applicationStatusLabel({ outcome: "rejected", hold: null }),
+    "Not selected",
+  );
+  assert.equal(
+    presentation.applicationStatusLabel({ outcome: "hired", hold: "Old hold" }),
+    "Hired",
+  );
+  assert.equal(
+    presentation.applicationStatusLabel({ outcome: null, hold: "Waiting" }),
+    "On hold",
+  );
+  const now = Date.parse("2026-10-22T00:00:00Z");
+  assert.equal(presentation.stageAgeLabel(null, now), "Stage start unknown");
+  assert.equal(
+    presentation.stageAgeLabel("unknown", now),
+    "Stage start unknown",
+  );
+  assert.equal(
+    presentation.stageAgeLabel("2026-10-22T01:00:00Z", now),
+    "Today in stage",
+  );
+  assert.equal(
+    presentation.stageAgeLabel("2026-10-21T00:00:00Z", now),
+    "1 day in stage",
+  );
+  assert.equal(
+    presentation.stageAgeLabel("2026-10-20T00:00:00Z", now),
+    "2 days in stage",
+  );
+  assert.match(
+    presentation.applicationAppointmentLabel(
+      "2026-10-22T00:00:00Z",
+      "Asia/Bangkok",
+    ),
+    /7:00 AM.*Asia\/Bangkok/,
+  );
+  assert.match(
+    presentation.applicationAppointmentLabel(
+      "2026-10-22T00:00:00Z",
+      "invalid-timezone",
+    ),
+    /UTC/,
+  );
+  assert.equal(
+    presentation.applicationAppointmentLabel("bad-date", "Asia/Bangkok"),
+    "Interview time unavailable",
   );
 });
 

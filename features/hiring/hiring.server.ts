@@ -496,6 +496,13 @@ export async function listApplications(owner: string, query: URLSearchParams) {
     closed = query.get("closed") === "true";
   const stage = query.get("stage") || "";
   const queue = query.get("queue") ?? "pipeline";
+  const sort = query.get("sort");
+  const orderBy =
+    sort === "waiting"
+      ? "julianday(a.stage_entered_at) IS NULL ASC,julianday(a.stage_entered_at) ASC,a.updated_at DESC,a.id"
+      : sort === "newest"
+        ? "a.created_at DESC,a.id"
+        : `${queue === "upcoming" ? "next_appointment ASC," : ""}a.updated_at DESC,a.id`;
   const queueClause =
     queue === "attention"
       ? ` AND ${attentionSql}`
@@ -540,7 +547,7 @@ export async function listApplications(owner: string, query: URLSearchParams) {
       .prepare(
         applicationSelect +
           clause +
-          ` AND (?='' OR a.stage_id=?) ORDER BY ${queue === "upcoming" ? "next_appointment ASC," : ""}a.updated_at DESC,a.id LIMIT 50 OFFSET ?`,
+          ` AND (?='' OR a.stage_id=?) ORDER BY ${orderBy} LIMIT 50 OFFSET ?`,
       )
       .bind(...values, stage, stage, (page - 1) * 50)
       .all<ApplicationRow>()
