@@ -20,6 +20,21 @@ test("publishing blocks account actions that bypass review", () => {
   const graph = configuredGraph(); graph.edges.find(e => e.source === "extract").target = "account";
   assert.ok(graphIssues(graph).some(i => i.includes("approved review")));
 });
+test("Telegram workflows can move an application only after approved review and with a selected pipeline", () => {
+  const graph = configuredGraph();
+  graph.nodes[0].config.trigger = "telegram_submission";
+  graph.nodes.push({ id: "move", kind: "move_stage", position: { x: 0, y: 0 }, config: { pipelineVersionId: "published-pipeline", fromStageId: "applied", stageId: "screening" } });
+  graph.edges.find((e) => e.id === "review-account").target = "move";
+  graph.edges.push({ id: "move-account", source: "move", target: "account", outcome: "next" });
+  assert.deepEqual(graphIssues(graph), []);
+  assert.equal(parseGraph(graph).nodes.find((n) => n.id === "move").config.pipelineVersionId, "published-pipeline");
+  graph.nodes.find((n) => n.id === "move").config.pipelineVersionId = "";
+  assert(graphIssues(graph).some((i) => i.includes("pipeline in Move application")));
+  graph.edges.find((e) => e.id === "extract-review").target = "move";
+  assert(graphIssues(graph).some((i) => i.includes("follow an approved CV review")));
+  graph.nodes[0].config.trigger = "stage_entered";
+  assert(graphIssues(graph).some((i) => i.includes("Application workflows support")));
+});
 test("rejected CVs cannot create accounts", () => {
   const graph = configuredGraph(); graph.edges.find(e => e.outcome === "rejected").target = "account";
   assert.ok(graphIssues(graph).some(i => i.includes("Rejected reviews")));

@@ -4,6 +4,7 @@ import { deliverWorkflowInvitation } from "@/features/telegram/delivery.server";
 import { TelegramSendError } from "@/features/telegram/bot.server";
 import "server-only";
 import { processApplicationRouting } from "@/features/hiring/automation.server";
+import { moveResumeApplication } from "@/features/hiring/resume-routing.server";
 
 import { and, desc, eq, isNull, isNotNull, lt, or } from "drizzle-orm";
 import { getDb } from "@/db";
@@ -163,6 +164,12 @@ export async function processWorkflowRun(id: string): Promise<void> {
         outcome = conditionMatches(node.config, resume) ? "yes" : "no";
         note =
           outcome === "yes" ? "Condition matched" : "Condition did not match";
+      }
+      if (node.kind === "move_stage") {
+        await moveResumeApplication(row, token, node, context, () =>
+          checkpoint(row, token, context, nodeId, "running"),
+        );
+        note = "Application moved after HR approval and live stage requirement checks";
       }
       if (node.kind === "create_account") {
         if (

@@ -102,6 +102,183 @@ async function application(f, p, jobId) {
     mutationId: crypto.randomUUID(),
   });
 }
+async function publishedCvRouting(f, p, values = {}) {
+  const w = await workflow.createWorkflow(f.owner, "telegram_submission");
+  const graph = graphs.defaultGraph();
+  graph.nodes = graph.nodes.filter((n) => ["upload", "extract", "review", "done", "stop"].includes(n.id));
+  graph.nodes[0].config.trigger = "telegram_submission";
+  graph.nodes.push(
+    { id: "position", kind: "condition", position: { x: 0, y: 0 }, config: { field: "appliedPosition", value: "Frontend Dev" } },
+    { id: "move", kind: "move_stage", position: { x: 0, y: 0 }, config: { pipelineVersionId: p.currentVersionId, fromStageId: "applied", stageId: "screening", ...values } },
+  );
+  graph.edges = graph.edges.filter((e) => ["upload-extract", "extract-review", "review-stop"].includes(e.id));
+  graph.edges.push(
+    { id: "review-position", source: "review", target: "position", outcome: "approved" },
+    { id: "position-move", source: "position", target: "move", outcome: "yes" },
+    { id: "position-stop", source: "position", target: "stop", outcome: "no" },
+    { id: "move-done", source: "move", target: "done", outcome: "next" },
+  );
+  return workflow.saveWorkflow(f.owner, w.id, { action: "publish", name: "TEST Telegram CV routing", graph, expectedUpdatedAt: w.updatedAt });
+}
+async function reviewedCvRouting(f, w, action = "approve") {
+  f.db.prepare("UPDATE candidates SET normalized_email=email,date_of_birth=NULL WHERE id=?").run(f.candidateId);
+  f.db.prepare("UPDATE resumes SET source='telegram',applied_position='Frontend Dev' WHERE id=?").run(f.resumeId);
+  await runtime.DB.batch(await workflow.uploadWorkflowStatements(f.owner, f.resumeId, new Date().toISOString(), "telegram_submission"));
+  const { id } = f.db.prepare("SELECT id FROM workflow_runs WHERE workflow_id=?").get(w.id);
+  await runner.processWorkflowRun(id);
+  assert.equal((await workflow.getRun(f.owner, id)).status, "waiting_review");
+  const reviews = await vite.ssrLoadModule("/features/workflows/review.server.ts");
+  const data = await reviews.getReviewData(f.owner, id);
+  await reviews.reviewRun(f.owner, id, {
+    action, candidate: data.candidate, checks: [true, true, true],
+    resumeRevision: data.resumeRevision, candidateRevision: data.candidateRevision,
+    existingAccountId: f.userId, note: action === "reject" ? "CV does not meet the requirements" : "Reviewed CV",
+  });
+  return id;
+}
+
+test("Telegram CV workflow keeps its trigger and moves its default-inbox application only after HR review", async (t) => {
+  const original = fixture(t), p = await pipeline(original);
+  await service.savePipeline(original.owner, p.id, { action: "default", expectedRevision: p.revision });
+  const f = { ...seedAcceptedPreparation(original.db, "telegram", original.owner), db: original.db };
+  const app = await service.getApplication(f.owner, `inbox_${f.candidateId}`);
+  const w = await publishedCvRouting(f, p);
+  assert.equal(w.published.nodes[0].config.trigger, "telegram_submission");
+  assert.equal(w.published.nodes.find((n) => n.id === "move").config.stageLabel, "CV screening");
+  const id = await reviewedCvRouting(f, w);
+  assert.equal((await service.getApplication(f.owner, app.id)).stageId, "applied");
+  await runner.processWorkflowRun(id);
+  const run = await workflow.getRun(f.owner, id);
+  assert.equal(run.status, "completed", run.errorMessage);
+  assert.equal((await service.getApplication(f.owner, app.id)).stageId, "screening");
+  assert.equal(run.context.applicationMoves.move.applicationId, app.id);
+  const row = f.db.prepare("SELECT event_id,application_id FROM workflow_runs WHERE id=?").get(id);
+  assert.equal(row.event_id, null);
+  assert.equal(row.application_id, null);
+  await runtime.DB.batch(await workflow.uploadWorkflowStatements(f.owner, f.resumeId, new Date().toISOString(), "telegram_submission"));
+  assert.equal(f.db.prepare("SELECT count(*) n FROM workflow_runs WHERE workflow_id=?").get(w.id).n, 1);
+  assert.equal(f.db.prepare("SELECT count(*) n FROM telegram_deliveries").get().n, 0);
+});
+
+test("rejected CVs and unmatched positions never move an application", async (t) => {
+  const f = fixture(t), p = await pipeline(f), app = await application(f, p), w = await publishedCvRouting(f, p);
+  const id = await reviewedCvRouting(f, w, "reject");
+  await runner.processWorkflowRun(id);
+  assert.equal((await workflow.getRun(f.owner, id)).status, "rejected");
+  assert.equal((await service.getApplication(f.owner, app.id)).stageId, "applied");
+  const second = await publishedCvRouting(f, p);
+  const next = await reviewedCvRouting(f, second);
+  f.db.prepare("UPDATE resumes SET applied_position='Backend Dev' WHERE id=?").run(f.resumeId);
+  await runner.processWorkflowRun(next);
+  const run = await workflow.getRun(f.owner, next);
+  assert.equal(run.status, "completed");
+  assert.equal(run.context.applicationMoves, undefined);
+  assert.equal((await service.getApplication(f.owner, app.id)).stageId, "applied");
+});
+
+test("CV routing fails clearly when no application exists in the chosen pipeline", async (t) => {
+  const f = fixture(t), p = await pipeline(f), other = await pipeline(f), app = await application(f, other);
+  const w = await publishedCvRouting(f, p), id = await reviewedCvRouting(f, w);
+  await runner.processWorkflowRun(id);
+  const run = await workflow.getRun(f.owner, id);
+  assert.equal(run.status, "failed");
+  assert.match(run.errorMessage, /No active application.*default inbox/);
+  assert.equal((await service.getApplication(f.owner, app.id)).stageId, "applied");
+});
+
+test("CV routing never guesses between multiple applications, even if only one is in the expected stage", async (t) => {
+  const f = fixture(t), p = await pipeline(f), a = await application(f, p), b = await application(f, p);
+  await mutate(f, b, { action: "move", stageId: "screening" });
+  const w = await publishedCvRouting(f, p), id = await reviewedCvRouting(f, w);
+  await runner.processWorkflowRun(id);
+  assert.match((await workflow.getRun(f.owner, id)).errorMessage, /More than one active application/);
+  assert.equal((await service.getApplication(f.owner, a.id)).stageId, "applied");
+});
+
+test("CV routing retains stage evidence requirements and blocks incomplete preparation", async (t) => {
+  const f = fixture(t), definition = model.initialDefinition();
+  definition.stages[1].entry = ["preparation_ready"];
+  const p = await pipeline(f, definition), app = await application(f, p), w = await publishedCvRouting(f, p);
+  const id = await reviewedCvRouting(f, w);
+  await runner.processWorkflowRun(id);
+  const run = await workflow.getRun(f.owner, id);
+  assert.equal(run.status, "failed");
+  assert.match(run.errorMessage, /preparation/i);
+  assert.equal((await service.getApplication(f.owner, app.id)).stageId, "applied");
+});
+
+test("CV routing rejects changed approval and unexpected current stages", async (t) => {
+  const f = fixture(t), p = await pipeline(f), app = await application(f, p);
+  const w = await publishedCvRouting(f, p), id = await reviewedCvRouting(f, w);
+  f.db.prepare("UPDATE resumes SET verification_status='unverified' WHERE id=?").run(f.resumeId);
+  await runner.processWorkflowRun(id);
+  assert.match((await workflow.getRun(f.owner, id)).errorMessage, /approved CV changed/);
+  assert.equal((await service.getApplication(f.owner, app.id)).stageId, "applied");
+  const second = await publishedCvRouting(f, p, { fromStageId: "screening", stageId: "recruiter" });
+  const next = await reviewedCvRouting(f, second);
+  await runner.processWorkflowRun(next);
+  assert.match((await workflow.getRun(f.owner, next)).errorMessage, /expected source stage/);
+  assert.equal((await service.getApplication(f.owner, app.id)).stageId, "applied");
+});
+
+test("CV routing reuses a committed move receipt after its execution checkpoint is lost", async (t) => {
+  const f = fixture(t), p = await pipeline(f), app = await application(f, p), w = await publishedCvRouting(f, p);
+  const id = await reviewedCvRouting(f, w);
+  await runner.processWorkflowRun(id);
+  const first = await workflow.getRun(f.owner, id);
+  assert.equal(first.status, "completed", first.errorMessage);
+  const context = structuredClone(first.context);
+  delete context.steps.move;
+  delete context.steps.done;
+  f.db.prepare("UPDATE workflow_runs SET status='queued',current_node_id='move',context_json=? WHERE id=?").run(JSON.stringify(context), id);
+  await runner.processWorkflowRun(id);
+  const run = await workflow.getRun(f.owner, id);
+  assert.equal(run.status, "completed", run.errorMessage);
+  assert.equal((await service.getApplication(f.owner, app.id)).revision, 2);
+  assert.equal(f.db.prepare("SELECT count(*) n FROM hiring_events WHERE application_id=? AND kind='stage_entered'").get(app.id).n, 1);
+});
+
+test("CV move publication validates pipeline ownership and stage membership on the server", async (t) => {
+  const f = fixture(t), p = await pipeline(f);
+  await rejects(publishedCvRouting(f, p, { stageId: "foreign-stage" }), 422);
+  await rejects(publishedCvRouting(f, { currentVersionId: "foreign-pipeline" }), 422);
+  await rejects(publishedCvRouting(f, p, { pipelineVersionId: "" }), 422);
+  const foreign = { ...seedAcceptedPreparation(f.db, "foreign"), db: f.db };
+  const foreignPipeline = await pipeline(foreign);
+  await rejects(publishedCvRouting(f, foreignPipeline), 422);
+});
+
+test("CV routing cannot move after losing its worker lease or a competing application revision", async (t) => {
+  const f = fixture(t), p = await pipeline(f), app = await application(f, p), w = await publishedCvRouting(f, p);
+  const id = await reviewedCvRouting(f, w), claim = await workflow.claimRun(id);
+  const move = (await vite.ssrLoadModule("/features/hiring/resume-routing.server.ts")).moveResumeApplication;
+  const node = w.published.nodes.find((n) => n.id === "move");
+  const context = JSON.parse(claim.row.contextJson);
+  await assert.rejects(move(claim.row, claim.token, node, context, async () => {
+    f.db.prepare("UPDATE workflow_runs SET lock_token='another-worker' WHERE id=?").run(id);
+  }), /Hiring records changed/);
+  assert.equal((await service.getApplication(f.owner, app.id)).stageId, "applied");
+  assert.equal(f.db.prepare("SELECT count(*) n FROM hiring_events WHERE kind='stage_entered'").get().n, 0);
+  f.db.prepare("UPDATE workflow_runs SET status='queued',lock_token=NULL,locked_until=NULL WHERE id=?").run(id);
+  const next = await workflow.claimRun(id);
+  const changedContext = JSON.parse(next.row.contextJson);
+  await assert.rejects(move(next.row, next.token, node, changedContext, async () => {
+    await mutate(f, app, { action: "hold", reason: "Owner paused this application" });
+  }), /application changed/);
+  assert.equal((await service.getApplication(f.owner, app.id)).stageId, "applied");
+});
+
+test("CV routing's approval proof cannot change between approval checking and mutation", async (t) => {
+  const f = fixture(t), p = await pipeline(f), app = await application(f, p), w = await publishedCvRouting(f, p);
+  const id = await reviewedCvRouting(f, w), claim = await workflow.claimRun(id);
+  const proof = await service.applicationProof(f.owner, app);
+  f.db.prepare("UPDATE resumes SET updated_at='2031-01-01T00:00:00.000Z',verification_status='unverified' WHERE id=?").run(f.resumeId);
+  await rejects(service.mutateApplication(f.owner, app.id, {
+    action: "move", stageId: "screening", fromStageId: "applied", expectedRevision: app.revision,
+    mutationId: "test-cv-proof-race", reason: "Published CV workflow after HR approval",
+  }, { runId: id, token: claim.token, chain: [], workflowId: w.id, expectedProof: proof }), 409);
+  assert.equal((await service.getApplication(f.owner, app.id)).stageId, "applied");
+});
 async function mutate(f, app, values) {
   return service.mutateApplication(f.owner, app.id, {
     expectedRevision: app.revision,

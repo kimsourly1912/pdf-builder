@@ -4,6 +4,16 @@ For application-received, job-assigned, stage-entry/exit and application-CV-appr
 
 The Workflows page automates candidate preparation from staff uploads, Telegram submissions, HR verification, or a manual start. The starting event is chosen when creating a workflow and can be edited in its starting step. AI extraction is optional; workflows reuse stored data and never make a paid extraction request.
 
+### Move an application after Telegram CV review
+
+Keep **Telegram candidate submits a CV** as the starting event. A CV workflow can use **Move application** after the approved branch of **Review resume**. In **Move application**, select **Published hiring pipeline**, then **Expected current stage** and **Move to stage**. Selecting the pipeline enables the two stage selectors; changing it clears both previous stage choices. You do not need to replace the Telegram trigger with an application event.
+
+For example: Telegram CV submission → Prepare resume data → Review resume → approved → Applied position is Frontend Dev → Yes → Move application → Complete. Connect rejected reviews and the condition's No path to Stop. The expected stage must be where the application actually sits; uploading a CV does not automatically put it in CV screening.
+
+The move uses exactly one active, unarchived application for the reviewed candidate, that CV and the selected published pipeline version. Enable **Use as default inbox** on the published pipeline before new Telegram uploads to create their inbox applications automatically, or add an application in Hiring. Creating or publishing a pipeline alone does not enroll existing CVs. The move does not create an application, guess between jobs, or select another CV's application. Missing or ambiguous applications stop with an actionable error; use an application event for independent routing of multiple applications.
+
+The runner preserves CV-workflow deduplication, requires current HR approval and checks live stage requirements, application revisions and the worker lease. It records the chosen application before the move and uses a receipt to recover a committed move without repeating it. The application must already satisfy any **Linked preparation completed** requirement; a Complete node later in the same workflow cannot satisfy an earlier move.
+
 ## Configure and run
 
 1. Open **Workflows → Create workflow** and choose a purpose preset or starting event.

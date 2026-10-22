@@ -864,7 +864,8 @@ function EditorBody({
         </TabsContent>
         <TabsContent value="parameters">
           <StepSettings
-            pipelineVersionId={graph.nodes.find(n=>n.kind==="resume_uploaded")?.config.pipelineVersionId}
+            pipelineVersionId={isApplicationTrigger(workflowTrigger(graph)) ? graph.nodes.find(n=>n.kind==="resume_uploaded")?.config.pipelineVersionId : undefined}
+            applicationWorkflow={isApplicationTrigger(workflowTrigger(graph))}
             node={selectedNode}
             options={options}
             disabled={!editable}

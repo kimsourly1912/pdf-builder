@@ -12,18 +12,20 @@ import { isApplicationTrigger } from "./hiring";
 export function WorkflowStageSettings({
   node,
   pipelineVersionId,
+  applicationWorkflow = false,
   onChange,
 }: {
   node: WorkflowNode;
   pipelineVersionId?: string;
+  applicationWorkflow?: boolean;
   onChange: (config: StepConfig) => void;
 }) {
   const { config, error, reload } = useHiringConfiguration(),
     settings = node.config;
-  const versionId =
-    node.kind === "resume_uploaded"
-      ? settings.pipelineVersionId
-      : pipelineVersionId;
+  const choosesPipeline =
+    (node.kind === "resume_uploaded" && isApplicationTrigger(settings.trigger ?? "")) ||
+    (node.kind === "move_stage" && !applicationWorkflow);
+  const versionId = choosesPipeline ? settings.pipelineVersionId : pipelineVersionId;
   const version = config?.versions.find((v) => v.id === versionId);
   const patch = (values: Partial<StepConfig>) =>
     onChange({ ...settings, ...values });
@@ -61,8 +63,8 @@ export function WorkflowStageSettings({
           </Button>
         </p>
       )}
-      {node.kind === "resume_uploaded" &&
-        isApplicationTrigger(settings.trigger ?? "") && (
+      {!config && !error && <p role="status" className="text-xs text-muted-foreground">Loading hiring pipelines…</p>}
+      {choosesPipeline && (
           <>
             <div className="space-y-2">
               <Label htmlFor="workflow-hiring-pipeline">
@@ -72,7 +74,7 @@ export function WorkflowStageSettings({
                 id="workflow-hiring-pipeline"
                 value={settings.pipelineVersionId ?? ""}
                 onValueChange={(v) =>
-                  patch({ pipelineVersionId: v, stageId: "" })
+                  patch({ pipelineVersionId: v, stageId: "", fromStageId: "", stageLabel: undefined, fromStageLabel: undefined })
                 }
                 placeholder="Choose pipeline version"
               >
@@ -85,7 +87,7 @@ export function WorkflowStageSettings({
                   ))}
               </SelectField>
             </div>
-            {["stage_entered", "stage_left"].includes(settings.trigger ?? "") &&
+            {node.kind === "resume_uploaded" && ["stage_entered", "stage_left"].includes(settings.trigger ?? "") &&
               stageSelect(
                 "workflow-trigger-stage",
                 settings.trigger === "stage_left"
@@ -102,6 +104,14 @@ export function WorkflowStageSettings({
         )}
       {node.kind === "move_stage" && (
         <>
+          {!applicationWorkflow && (
+            <p className="text-xs text-muted-foreground">
+              After CV approval, move the one active application using this CV in
+              the selected pipeline. This step does not create an application.
+              Use this pipeline as the default inbox to add applications for new
+              Telegram CVs automatically, or add an application in Hiring.
+            </p>
+          )}
           {stageSelect(
             "workflow-source-stage",
             "Expected current stage",
@@ -167,10 +177,14 @@ export function WorkflowStageSettings({
           </SelectField>
         </div>
       )}
+      {config && choosesPipeline && !config.versions.some((v) => !v.archived) && (
+        <p className="text-xs text-muted-foreground">Publish a hiring pipeline to choose its stages.</p>
+      )}
       {!version && node.kind !== "resume_uploaded" && (
         <p className="text-xs text-muted-foreground">
-          Choose an application starting event and published pipeline in the
-          first step.
+          {choosesPipeline
+            ? "Choose a published hiring pipeline above to enable the stage selectors."
+            : "Choose a published hiring pipeline in the first step to enable the stage selectors."}
         </p>
       )}
       <Link href="/hiring/pipelines" className="text-xs underline">

@@ -102,13 +102,13 @@ export function SampleTest({
           {isApplicationTrigger(
             graph.nodes.find((n) => n.kind === "resume_uploaded")?.config
               .trigger ?? "",
-          ) && (
+          ) || graph.nodes.some((n) => n.kind === "move_stage") ? (
             <ApplicationSampleFields
               graph={graph}
               sample={sample}
               onChange={setSample}
             />
-          )}
+          ) : null}
         </fieldset>
         <div className="min-w-0 space-y-3">
           <SampleCanvas graph={graph} result={result} onFocus={onFocus} />
@@ -192,8 +192,9 @@ function ApplicationSampleFields({
   onChange: (v: SampleInput) => void;
 }) {
   const { config } = useHiringConfiguration(),
-    versionId = graph.nodes.find((n) => n.kind === "resume_uploaded")?.config
-      .pipelineVersionId,
+    versionId = isApplicationTrigger(graph.nodes.find((n) => n.kind === "resume_uploaded")?.config.trigger ?? "")
+      ? graph.nodes.find((n) => n.kind === "resume_uploaded")?.config.pipelineVersionId
+      : graph.nodes.find((n) => n.kind === "move_stage")?.config.pipelineVersionId,
     version = config?.versions.find((v) => v.id === versionId);
   return (
     <div className="space-y-4">

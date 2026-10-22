@@ -25,20 +25,22 @@ export async function validateApplicationGraph(
   owner: string,
   graph: WorkflowGraph,
 ) {
-  if (!isApplicationTrigger(workflowTrigger(graph))) return;
+  const application = isApplicationTrigger(workflowTrigger(graph));
+  if (!application && !graph.nodes.some((n) => n.kind === "move_stage")) return;
   const issues = graphIssues(graph);
   if (issues.length) hiringFail(issues[0]);
   const start = graph.nodes.find((n) => n.kind === "resume_uploaded")!,
     config = await hiringConfiguration(owner);
-  const version = config.versions.find(
-    (v) => v.id === start.config.pipelineVersionId && !v.archived,
-  );
-  if (!version)
-    hiringFail(
-      "Choose an active published hiring pipeline before publishing this workflow.",
-    );
-  const stageIds = new Set(version.definition.stages.map((s) => s.id));
   for (const node of graph.nodes) {
+    if (!application && node.kind !== "move_stage") continue;
+    const version = config.versions.find(
+      (v) => v.id === (application ? start.config.pipelineVersionId : node.config.pipelineVersionId) && !v.archived,
+    );
+    if (!version)
+      hiringFail(
+        "Choose an active published hiring pipeline before publishing this workflow.",
+      );
+    const stageIds = new Set(version.definition.stages.map((s) => s.id));
     if (node.kind === "prepare_application") {
       const child = await (
         await import("@/features/workflows/workflow.server")
@@ -78,7 +80,7 @@ export async function validateApplicationGraph(
           "A referenced stage does not belong to the selected published pipeline.",
         );
     if (
-      node.config.pipelineVersionId &&
+      application && node.config.pipelineVersionId &&
       node.config.pipelineVersionId !== version.id
     )
       hiringFail(

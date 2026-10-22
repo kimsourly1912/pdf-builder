@@ -15,6 +15,17 @@ const { workflowBusinessSummary } = await vite.ssrLoadModule('/features/workflow
 const setupDiagnostics = await vite.ssrLoadModule('/features/workflows/setup-issues.ts');
 const geometry = await vite.ssrLoadModule('/features/workflows/canvas-geometry.ts');
 function graph(){const g=defaultGraph();g.nodes.find(n=>n.kind==='assign_forms').config.forms=[{templateId:'form-1',roleId:'form_user'}];return g;}
+test('CV Move application setup diagnostics focus its own pipeline and stage controls',()=>{
+ const g=graph();g.nodes[0].config.trigger='telegram_submission';
+ const move=tools.newStep('move_stage',{x:0,y:0},'move');
+ const inserted=tools.insertStep(g,move,'review','approved');
+ assert.deepEqual(setupDiagnostics.stepSetupIssues(inserted,move).map(i=>i.control),['workflow-hiring-pipeline','workflow-source-stage','workflow-destination-stage']);
+ move.config={pipelineVersionId:'pipeline',fromStageId:'applied',stageId:'screening'};
+ inserted.nodes=inserted.nodes.map(n=>n.id===move.id?move:n);
+ assert.deepEqual(setupDiagnostics.stepSetupIssues(inserted,move),[]);
+ const result=workspace.previewWorkflow(inserted,{name:'Test',email:'test@example.test',source:'telegram',appliedPosition:'Frontend Dev',approved:true,existingAccount:true,telegramConfirmed:true,stageId:'applied'},[]);
+ assert.equal(result.steps.find(s=>s.id==='move').state,'followed');
+});
 test('contextual insertion preserves approved branch and does not mutate the saved graph',()=>{
  const original=graph(),before=structuredClone(original),node=tools.newStep('condition',{x:500,y:100},'extra');
  const inserted=tools.insertStep(original,node,'review','approved');

@@ -187,7 +187,7 @@ export function nodeIssues(graph: WorkflowGraph, node: WorkflowNode): string[] {
 }
 export const DATA_HELP: Record<StepKind, { input: string; output: string }> = {
   prepare_application: { input: "Application, published preparation and approved CV.", output: "One application preparation run, waiting for explicit HR account/contact review." },
-  move_stage: { input: "Application, expected source stage and current evidence.", output: "A guarded stage transition and its recorded event." },
+  move_stage: { input: "Application event, or an approved CV with exactly one active application in the selected published pipeline.", output: "Stage move after live requirements and revision checks. No application is created." },
   resume_uploaded: {
     input: "The selected starting event and its CV.",
     output: "Candidate and CV references for this run.",

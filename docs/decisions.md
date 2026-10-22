@@ -1,5 +1,9 @@
 # Decision log
 
+## 2026-10-22: CV workflows can move an existing application after review
+
+Telegram and other CV starting events retain their once-per-CV execution identity when a Move application step is added. The step selects a published pipeline and requires approved review before resolving one active application for the exact candidate/CV/version. It never creates an application or guesses between multiple jobs. New intake enrollment remains the default-inbox setting. The chosen application and revision are checkpointed before the existing guarded mutation, with stable receipts for recovery and current approval/evidence checks. Application-owned preparation identity and application-event routing remain unchanged.
+
 ## 2026-10-17: Confirmed deletion is available beside archive
 
 Management lists may offer permanent deletion directly after an owner-authorized preview and typed confirmation. Eligible active records are archived and deleted atomically, preserving the archive-before-delete rule and durable file cleanup. Application deletion may remove only an unused application's initial receipt event; later hiring progress and linked preparation, forms and interviews remain protected. Pipeline deletion preserves job, application and workflow references. Archiving remains independently available and reversible.
