@@ -111,6 +111,7 @@ export type StepResult = {
   outcome?: WorkflowEdge["outcome"];
 };
 export type RunContext = {
+  applicationMoves?: Record<string, { applicationId: string; revision: number }>;
   preparationApplicationId?: string;
   applicationChain?: string[];
   applicationEvent?: { id: string; applicationId: string; pipelineVersionId: string; stageId: string; fromStageId: string | null; jobId: string | null; applicationRevision: number; chain: string[] };
@@ -449,8 +450,10 @@ export function graphIssues(graph: WorkflowGraph): string[] {
   for (const n of graph.nodes) {
     if (application && !["resume_uploaded", "condition", "move_stage", "prepare_application", "complete", "stop"].includes(n.kind))
       issues.add("Application workflows support conditions, Move application, Prepare application, Complete and Stop.");
-    if (!application && (["move_stage", "prepare_application"].includes(n.kind) || ["stageId", "jobId"].includes(n.config.field ?? "")))
+    if (!application && (n.kind === "prepare_application" || ["stageId", "jobId"].includes(n.config.field ?? "")))
       issues.add("Choose an application starting event before using application stages or jobs.");
+    if (!application && n.kind === "move_stage" && !n.config.pipelineVersionId)
+      issues.add("Choose a published hiring pipeline in Move application.");
     if (application && n.kind === "resume_uploaded" && !n.config.pipelineVersionId)
       issues.add("Choose a published hiring pipeline for this application event.");
     if (application && n.kind === "resume_uploaded" && ["stage_entered", "stage_left"].includes(n.config.trigger ?? "") && !n.config.stageId)
@@ -524,6 +527,8 @@ export function graphIssues(graph: WorkflowGraph): string[] {
       issues.add(
         "Prepare saved resume data before manual review. AI extraction is optional.",
       );
+    if (!application && n.kind === "move_stage" && !state.has("review_resume"))
+      issues.add("Move application must follow an approved CV review.");
     if (
       [
         "create_account",

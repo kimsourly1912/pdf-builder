@@ -1,5 +1,5 @@
 import { outcomes } from "./editor-tools";
-import type { WorkflowGraph, WorkflowNode } from "./workflow";
+import { isApplicationTrigger, workflowTrigger, type WorkflowGraph, type WorkflowNode } from "./workflow";
 
 export type SetupIssue = {
   message: string;
@@ -9,6 +9,17 @@ export type SetupIssue = {
 // Navigation diagnostics complement graphIssues; publication still uses the full validator.
 export function stepSetupIssues(graph: WorkflowGraph, node: WorkflowNode): SetupIssue[] {
   const issues: SetupIssue[] = [];
+  const application = isApplicationTrigger(workflowTrigger(graph));
+  if (node.kind === "resume_uploaded" && application && !node.config.pipelineVersionId)
+    issues.push({ message: "Choose a published hiring pipeline.", action: "Choose pipeline", control: "workflow-hiring-pipeline" });
+  if (node.kind === "move_stage") {
+    if (!application && !node.config.pipelineVersionId)
+      issues.push({ message: "Choose a published hiring pipeline for this CV's application.", action: "Choose pipeline", control: "workflow-hiring-pipeline" });
+    if (!node.config.fromStageId)
+      issues.push({ message: "Choose the expected current stage.", action: "Choose current stage", control: "workflow-source-stage" });
+    if (!node.config.stageId)
+      issues.push({ message: "Choose the destination stage.", action: "Choose destination", control: "workflow-destination-stage" });
+  }
   for (const outcome of outcomes(node.kind)) {
     const edges = graph.edges.filter((e) => e.source === node.id && e.outcome === outcome);
     if (edges.length !== 1 || !graph.nodes.some((n) => n.id === edges[0]?.target)) {

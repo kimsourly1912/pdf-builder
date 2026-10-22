@@ -21,6 +21,7 @@ import { isApplicationTrigger } from "@/features/hiring/hiring";
 export function StepSettings(props: {
   node: WorkflowNode;
   pipelineVersionId?: string;
+  applicationWorkflow?: boolean;
   options: TemplateOption[];
   disabled?: boolean;
   onChange: (config: StepConfig) => void;
@@ -271,6 +272,7 @@ export function StepSettings(props: {
             <WorkflowStageSettings
               node={node}
               pipelineVersionId={props.pipelineVersionId}
+              applicationWorkflow={props.applicationWorkflow}
               onChange={props.onChange}
             />
           )}
@@ -292,7 +294,7 @@ export function StepSettings(props: {
         </div>
       )}
       {node.kind === "prepare_application" && <WorkflowPreparationSettings config={config} onChange={props.onChange}/>}
-      {((node.kind==="resume_uploaded"&&isApplicationTrigger(config.trigger??""))||node.kind==="move_stage")&&<WorkflowStageSettings node={node} pipelineVersionId={props.pipelineVersionId} onChange={props.onChange}/>}
+      {((node.kind==="resume_uploaded"&&isApplicationTrigger(config.trigger??""))||node.kind==="move_stage")&&<WorkflowStageSettings node={node} pipelineVersionId={props.pipelineVersionId} applicationWorkflow={props.applicationWorkflow} onChange={props.onChange}/>}
       {node.kind === "review_resume" && (
         <p className="text-sm text-muted-foreground">
           Uses the current saved CV approval; otherwise waits for HR review.

@@ -882,6 +882,7 @@ export type AutomationGuard = {
   token: string;
   chain: string[];
   workflowId: string;
+  expectedProof?: string;
 };
 export async function mutateApplication(
   owner: string,
@@ -917,6 +918,8 @@ export async function mutateApplication(
   const proof = await applicationProof(owner, app),
     reason = reasonText(body.reason),
     next = { ...app, revision: app.revision + 1 };
+  if (automation?.expectedProof !== undefined && automation.expectedProof !== proof)
+    hiringFail("The approved CV or application evidence changed. Review it before retrying.", 409);
   let kind = "",
     from: string | null = null;
   if (body.action === "move") {
