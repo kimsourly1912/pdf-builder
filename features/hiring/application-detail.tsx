@@ -95,7 +95,8 @@ export function ApplicationDetail({
   const router = useRouter(),
     search = useSearchParams();
   const dirty = useRef(false);
-  const rawTab = search.get("tab") ?? "overview";
+  const requestedTab = search.get("tab") ?? "overview";
+  const rawTab = requestedTab === "document" ? "documents" : requestedTab;
   const tab = ["documents", "interviews", "offer", "activity"].includes(rawTab)
     ? rawTab
     : ["history", "automation"].includes(rawTab)
